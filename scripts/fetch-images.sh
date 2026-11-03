@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # =============================================================
-#  پرستو — سازندهٔ بستهٔ آفلاین ایمیج‌ها (راه‌حل مطمئن تحریم‌ها)
+#  Parastoo — offline image bundle builder (the reliable sanctions route)
 #
-#  کِی استفاده کنیم؟ وقتی سرور ایران به هیچ آینه‌ای هم دسترسی ندارد
-#  یا می‌خواهید نصب ۱۰۰٪ بدون اینترنت خارجی باشد.
+#  When? When the Iran server cannot reach any mirror, or you want a
+#  100% offline install with zero foreign internet access.
 #
-#  چطور؟ این اسکریپت را روی «یک ماشین بدون تحریم» اجرا کنید
-#  (لپ‌تاپ شخصی با تغییر IP، سرور خارج، یا GitHub Actions):
+#  How? Run this script on "an unsanctioned machine" (a personal laptop
+#  with a changed IP, a foreign server, or GitHub Actions):
 #
-#      docker version           # داکر لازم است
+#      docker version           # docker is required
 #      bash scripts/fetch-images.sh
 #
-#  خروجی: offline-images/parastoo-images.tar.gz
-#  آن پوشه را کنار پکیج پرستو روی سرور ایران منتقل کنید و install.sh
-#  را دوباره اجرا کنید — ایمیج‌ها از بستهٔ محلی بارگذاری می‌شوند،
-#  هیچ pull از Docker Hub انجام نمی‌شود.
+#  Output: offline-images/parastoo-images.tar.gz
+#  Copy that folder next to the Parastoo package on the Iran server
+#  (scp) and run install.sh again — images load from the local bundle;
+#  no Docker Hub pull happens at all.
 # =============================================================
 set -euo pipefail
 
@@ -22,9 +22,9 @@ cd "$(dirname "$0")/.."
 IMAGES_FILE="deploy/images.txt"
 OUT_DIR="${1:-offline-images}"
 
-command -v docker >/dev/null 2>&1 || { echo "خطا: داکر نصب نیست."; exit 1; }
+command -v docker >/dev/null 2>&1 || { echo "error: docker is not installed."; exit 1; }
 
-# --- خواندن لیست ایمیج‌ها (خط‌های غیر خالی و غیر کامنت) ---
+# --- read the image list (non-empty, non-comment lines) ---
 LIST=()
 while IFS= read -r line || [ -n "$line" ]; do
   line="${line%%#*}"
@@ -33,9 +33,9 @@ while IFS= read -r line || [ -n "$line" ]; do
   LIST+=("$line")
 done < "$IMAGES_FILE"
 
-[ ${#LIST[@]} -gt 0 ] || { echo "خطا: $IMAGES_FILE خالی است."; exit 1; }
+[ ${#LIST[@]} -gt 0 ] || { echo "error: $IMAGES_FILE is empty."; exit 1; }
 
-echo "==> pull ${#LIST[@]} ایمیج برای پلتفرم linux/amd64 ..."
+echo "==> pulling ${#LIST[@]} images for linux/amd64 ..."
 for img in "${LIST[@]}"; do
   echo "    docker pull --platform linux/amd64 $img"
   docker pull --platform linux/amd64 "$img"
@@ -43,9 +43,9 @@ done
 
 mkdir -p "$OUT_DIR"
 ARCHIVE="$OUT_DIR/parastoo-images.tar.gz"
-echo "==> ساخت آرشیو: $ARCHIVE"
+echo "==> building archive: $ARCHIVE"
 docker save "${LIST[@]}" | gzip > "$ARCHIVE"
 
 echo ""
-echo "  انجام شد: $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
-echo "  قدم بعدی: پوشهٔ «$OUT_DIR» را کنار پکیج پرستو روی سرور منتقل کنید (scp) و sudo bash install.sh را دوباره اجرا کنید."
+echo "  done: $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
+echo "  next step: copy the '$OUT_DIR' folder next to the Parastoo package on the server (scp) and run sudo bash install.sh again."

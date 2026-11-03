@@ -1,4 +1,4 @@
-# پرستو (Parastoo) v0.2.3
+# پرستو (Parastoo) v0.2.4
 
 [![CI](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml/badge.svg)](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml)
 
@@ -29,7 +29,8 @@ curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/b
 
 `bootstrap.sh` بسته را از گیت‌هاب می‌گیرد (ترتیب تلاش: **ریلیز zip ← تاربال مخزن ← git clone**)، در `/opt/parastoo` می‌ریزد و `install.sh` را اجرا می‌کند — داکر، عبور از تحریم، توکن نصب و کل استک، همه خودکار.
 
-- **نسخهٔ پایدار به‌جای main:**  `PARASTOO_REF=v0.2.3 curl -fsSL https://raw.githubusercontent.com/... | sudo bash`
+- **نسخهٔ پایدار به‌جای main:**  `PARASTOO_REF=v0.2.4 curl -fsSL https://raw.githubusercontent.com/... | sudo bash`
+- **زبان خروجی نصب:** ترمینال هنگام نصب کاملاً انگلیسی است — متن فارسی/RTL در SSH به‌هم می‌ریزد. پنل وب و مستندات همچنان فارسی‌اند.
 - **اگر در ایران گیت‌هاب کند یا مسدود بود:**  `curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash`  — یا دستی: `git clone https://github.com/SelfEvolvingNetwork/parastoo.git && cd parastoo && sudo bash setup.sh`
 - **اجرای مجدد = آپدیت امن:** همان دستور را دوباره بزنید؛ کد به‌روز می‌شود ولی `.env`، پیکربندی ترافیک، بستهٔ آفلاین، پشتیبان‌ها و داده‌ها (ولیوم‌های داکر) دست‌نخورده می‌مانند.
 
@@ -39,11 +40,11 @@ curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/b
 
 ```bash
 sudo bash setup.sh                                  # فایل zip کنار setup.sh باشد
-sudo bash setup.sh parastoo-v0.2.3.zip              # یا مسیر/نام فایل
-sudo bash setup.sh https://HOST/parastoo-v0.2.3.zip # یا دانلود مستقیم (zip یا tar.gz)
+sudo bash setup.sh parastoo-v0.2.4.zip              # یا مسیر/نام فایل
+sudo bash setup.sh https://HOST/parastoo-v0.2.4.zip # یا دانلود مستقیم (zip یا tar.gz)
 ```
 
-`setup.sh` خودش وابستگی‌ها (curl/unzip)، دانلود، استخراج و کپی در `/opt/parastoo` را انجام می‌دهد و بعد `install.sh` را اجرا می‌کند. حالت کلاسیک: `curl -fsSL https://HOST/setup.sh | bash -s -- https://HOST/parastoo-v0.2.3.zip` — و اگر خودتان پکیج را از قبل باز کرده‌اید، داخل همان پوشه: `sudo bash setup.sh` (معادل `sudo bash install.sh`).
+`setup.sh` خودش وابستگی‌ها (curl/unzip)، دانلود، استخراج و کپی در `/opt/parastoo` را انجام می‌دهد و بعد `install.sh` را اجرا می‌کند. حالت کلاسیک: `curl -fsSL https://HOST/setup.sh | bash -s -- https://HOST/parastoo-v0.2.4.zip` — و اگر خودتان پکیج را از قبل باز کرده‌اید، داخل همان پوشه: `sudo bash setup.sh` (معادل `sudo bash install.sh`).
 
 ### install.sh چه می‌کند (هیچ سوالی نمی‌پرسد)
 1. داکر را نصب می‌کند (اگر نباشد)
@@ -76,7 +77,7 @@ sudo PARASTOO_BASE_DOMAIN=example.com bash install.sh
 1. **نصب داکر**: اگر `get.docker.com` مسدود بود (403 در ایران)، خودش از مخازن اوبونتو نصب می‌کند — همیشه کار می‌کند.
 2. **آینه‌های Docker Hub**: اگر Hub پاسخ نداد، کاندیدهای `deploy/mirrors.txt` را از داخل همان سرور تست می‌کند (حذف مرده‌ها، مرتب‌سازی بر سرعت) و فقط زنده‌ها — آروان‌کلاد، نوین‌کلاد، docker.ir و پشتیبان خارجی — را در `/etc/docker/daemon.json` ثبت و داکر را ری‌استارت می‌کند. لیست دستی: `PARASTOO_REGISTRY_MIRRORS="آدرس‌ها" sudo -E bash install.sh` — عیب‌یابی: `bash scripts/check-mirrors.sh`
 3. **آفلاین کامل (مطمئن‌ترین)**: روی یک ماشین بدون تحریم `bash scripts/fetch-images.sh` اجرا کنید → پوشهٔ `offline-images/` را کنار پکیج روی سرور بگذارید → دوباره install.sh — ایمیج‌ها از بستهٔ محلی بارگذاری می‌شوند، هیچ pull از اینترنت نمی‌زند.
-4. **بیلدها (pip/npm)**: اگر PyPI یا npm روی سرور در دسترس نبود (بعضی ISPها DNS-بلاک می‌کنند)، اولین آینهٔ زنده — آروان‌کلاد / Tsinghua / Aliyun برای pip و npmjs.ir / npmmirror برای npm — از داخل سرور تست و خودکار در `.env` و build-arg هسته ثبت می‌شود؛ بیلد هسته و بیلدهای کاربران از آینه می‌گذرد.
+4. **بیلدها (pip/npm)**: اگر PyPI یا npm روی سرور در دسترس نبود (بعضی ISPها DNS-بلاک می‌کنند)، اولین آینهٔ زنده — به ترتیب: لیارا، پارس‌پک (آبرها)، رانفلر، کارگادان، آروان‌کلاد و پشتیبان بین‌المللی برای pip؛ npmjs.ir / npmmirror برای npm — از داخل سرور تست و خودکار در `.env` و build-arg هسته ثبت می‌شود؛ بیلد هسته و بیلدهای کاربران از آینه می‌گذرد.
 
 بازنویسی دستی آینه‌های بیلد: `PARASTOO_PIP_INDEX_URL` و `PARASTOO_NPM_REGISTRY` در `.env` (بعد `parastoo update`). جزئیات کامل: [docs/SANCTIONS.md](docs/SANCTIONS.md)
 

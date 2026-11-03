@@ -121,8 +121,10 @@ sudo bash install.sh
 
 1. پروب `pypi.org/simple/` و `registry.npmjs.org/-/ping` **از داخل همین سرور**. اگر باز بودند، کاری نمی‌کند.
 2. اگر مسدود بودند، آینه‌های کاندید را به ترتیب تست می‌کند و اولین زنده را در `.env` می‌نویسد:
-   - pip: `mirrors.arvancloud.ir/pypi/simple` ← `pypi.tuna.tsinghua.edu.cn` ← `mirrors.aliyun.com/pypi/simple`
+   - pip (ایرانی، به ترتیب): `package-mirror.liara.ir/repository/pypi/simple` ← `mirror.abrha.net/repository/pypi/simple` (پارس‌پک) ← `mirror-pypi.runflare.com/simple` ← `mirror.kargadan.ir/repository/pypi-group/simple` ← `mirrors.arvancloud.ir/pypi/simple`
+   - pip (پشتیبان بین‌المللی): `pypi.tuna.tsinghua.edu.cn/simple` ← `mirrors.aliyun.com/pypi/simple`
    - npm: `registry.npmjs.ir` ← `registry.npmmirror.com`
+   - پروب با `curl -L` انجام می‌شود (ریدایرکت‌های آینه‌ها دنبال می‌شوند) و آدرس همیشه با اسلش انتهایی تست می‌شود.
 3. همان مقدار به build-arg هسته (`PIP_INDEX_URL`) هم می‌رسد — پس بیلد هسته همان لحظه از آینه نصب می‌کند.
 4. اولویت: env صریح ← مقدار موجود `.env` ← تشخیص خودکار ← خالی (پیش‌فرض رسمی).
 

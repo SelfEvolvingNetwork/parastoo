@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# parastoo — ابزار خط فرمان مدیریت پرستو
+# parastoo — Parastoo command-line management tool (English output: SSH-safe)
 set -euo pipefail
 
 DIR_FILE="/etc/parastoo-install-path"
@@ -11,15 +11,15 @@ fi
 
 usage() {
   cat <<'EOF'
-پرستو — دستورهای مدیریتی:
+Parastoo — management commands:
 
-  parastoo status     وضعیت سرویس‌ها
-  parastoo logs [سرویس]   نمایش لاگ (core | gitea | traefik | postgres)
-  parastoo restart    ری‌استارت کامل استک
-  parastoo update     به‌روزرسانی پرستو (بازسازی هسته)
-  parastoo backup     پشتیبان‌گیری دیتابیس و مخزن‌ها در پوشه backups
-  parastoo version    نسخه پرستو
-  parastoo help       راهنما
+  parastoo status     service status
+  parastoo logs [svc] show logs (core | gitea | traefik | postgres)
+  parastoo restart    restart the whole stack
+  parastoo update     update Parastoo (rebuild the core)
+  parastoo backup     back up the database and git repos into backups/
+  parastoo version    Parastoo version
+  parastoo help       this help
 EOF
 }
 
@@ -29,7 +29,7 @@ case "${1:-help}" in
   status)
     docker compose ps
     echo ""
-    docker compose exec -T core curl -fsS http://localhost:8000/healthz 2>/dev/null && echo "" || echo "هسته پرستو پاسخ نمی‌دهد"
+    docker compose exec -T core curl -fsS http://localhost:8000/healthz 2>/dev/null && echo "" || echo "Parastoo core is not responding"
     ;;
   logs)
     docker compose logs -f --tail 100 "${2:-core}"
@@ -38,24 +38,24 @@ case "${1:-help}" in
     docker compose restart
     ;;
   update)
-    echo "بازسازی و به‌روزرسانی هسته پرستو..."
+    echo "Rebuilding and updating the Parastoo core..."
     docker compose build core
     docker compose up -d
-    echo "انجام شد."
+    echo "Done."
     ;;
   backup)
     TS="$(date +%Y%m%d-%H%M%S)"
     mkdir -p backups
-    echo "پشتیبان دیتابیس..."
+    echo "Backing up the database..."
     docker compose exec -T postgres pg_dump -U parastoo parastoo | gzip > "backups/db-${TS}.sql.gz"
-    echo "پشتیبان مخزن‌های گیت..."
-    # alpine:3.20 پین‌شده است تا در سرورهای تحریمی pull از latest (Docker Hub) لازم نشود — deploy/images.txt
+    echo "Backing up git repositories..."
+    # alpine:3.20 is pinned so sanction-less servers never need a latest pull from Docker Hub — deploy/images.txt
     docker run --rm -v parastoo_gitea_data:/data -v "$APP_DIR/backups":/backup alpine:3.20 \
       tar czf "/backup/gitea-${TS}.tar.gz" /data
-    echo "پشتیبان کامل شد: backups/db-${TS}.sql.gz و backups/gitea-${TS}.tar.gz"
+    echo "Backup complete: backups/db-${TS}.sql.gz and backups/gitea-${TS}.tar.gz"
     ;;
   version)
-    docker compose exec -T core curl -fsS http://localhost:8000/healthz 2>/dev/null || echo "پرستو در حال اجرا نیست"
+    docker compose exec -T core curl -fsS http://localhost:8000/healthz 2>/dev/null || echo "Parastoo is not running"
     ;;
   help|--help|-h|*)
     usage

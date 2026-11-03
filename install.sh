@@ -1,41 +1,45 @@
 #!/usr/bin/env bash
 # =============================================================
-#  پرستو — نصب‌کنندهٔ تک‌فرمانی، سازگار با تحریم‌های ایران
-#  استفاده:  sudo bash install.sh
-#  نتیجه:    یک سرور کامل PaaS (پنل + گیت + رجیستری + میزبانی سایت)
+#  Parastoo — single-command installer, sanctions-aware (Iran)
+#  Usage:   sudo bash install.sh
+#  Result:  a complete single-server PaaS (panel + git + hosting)
 #
-#  لایه‌های ضدتحریم (خودکار، بدون هیچ سوالی):
-#    ۱) نصب داکر: get.docker.com ← در صورت تحریم ← مخازن اوبونتو
-#    ۲) ایمیج‌ها: Docker Hub ← در صورت تحریم ← آینه‌های ایرانی در daemon.json
-#    ۳) آفلاین کامل: پوشهٔ offline-images/ کنار پکیج → docker load (بدون هیچ pull)
-#  جزئیات: docs/SANCTIONS.md
+#  Anti-sanctions layers (automatic, zero questions):
+#    1) Docker install: get.docker.com <- on sanctions -> Ubuntu repos
+#    2) Images:         Docker Hub     <- on sanctions -> Iranian mirrors in daemon.json
+#    3) Fully offline:  offline-images/ folder next to the package -> docker load (no pull at all)
+#    4) Builds:         PyPI/npm       <- on sanctions -> Iranian mirrors written into .env
+#  Details: docs/SANCTIONS.md
+#
+#  NOTE: all installer output is English on purpose — Persian/RTL
+#  text gets mangled over SSH. The web panel itself stays Persian.
 # =============================================================
 set -euo pipefail
 
-# ---------- رنگ‌ها ----------
+# ---------- colors ----------
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 say()   { echo -e "${BLUE}==>${NC} $*"; }
-ok()    { echo -e "${GREEN} ✔${NC} $*"; }
-warn()  { echo -e "${YELLOW} !${NC} $*"; }
-die()   { echo -e "${RED} خطا:${NC} $*" >&2; exit 1; }
+ok()    { echo -e "${GREEN} [ok]${NC} $*"; }
+warn()  { echo -e "${YELLOW} [warn]${NC} $*"; }
+die()   { echo -e "${RED} error:${NC} $*" >&2; exit 1; }
 
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$INSTALL_DIR"
 
-[ "$(id -u)" -eq 0 ] || die "این اسکریپت باید با sudo اجرا شود."
-[ -f docker-compose.yml ] || die "install.sh باید از ریشه پوشه پرستو اجرا شود."
+[ "$(id -u)" -eq 0 ] || die "This script must run with sudo."
+[ -f docker-compose.yml ] || die "install.sh must run from the Parastoo package root."
 
-# ---------- ۱) پیش‌نیازها ----------
-say "بررسی پیش‌نیازها..."
+# ---------- 1) prerequisites ----------
+say "Checking prerequisites..."
 if ! command -v curl >/dev/null 2>&1; then
-  say "نصب curl..."
+  say "Installing curl..."
   apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null
 fi
 
-# ---------- ۱الف) نصب داکر — با مسیر جایگزین تحریم ----------
+# ---------- 1a) Docker install — with sanctions fallback ----------
 install_docker_from_ubuntu() {
-  # مخازن خود اوبونتو (ir.archive.ubuntu.com و آینه‌های داخلی) تحریم نیستند
-  say "نصب داکر از مخازن اوبونتو..."
+  # Ubuntu's own repos (ir.archive.ubuntu.com and local mirrors) are not sanctioned
+  say "Installing Docker from Ubuntu repositories..."
   apt-get update -qq
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io docker-compose-v2 docker-buildx >/dev/null 2>&1 \
     || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io docker-compose-v2 >/dev/null 2>&1 \
@@ -45,47 +49,47 @@ install_docker_from_ubuntu() {
 }
 
 if ! command -v docker >/dev/null 2>&1; then
-  say "داکر نصب نیست؛ نصب خودکار داکر..."
-  # مسیر ۱: اسکریپت رسمی (روی سرور غیرتحریمی بهترین گزینه است — پلاگین compose را هم می‌دهد)
+  say "Docker not found; installing automatically..."
+  # route 1: official script (best on non-sanctioned servers — also installs the compose plugin)
   if timeout 90 curl -fsSL --max-time 60 https://get.docker.com -o /tmp/get-docker.sh 2>/dev/null \
      && sh /tmp/get-docker.sh >/dev/null 2>&1; then
-    ok "داکر از اسکریپت رسمی نصب شد."
+    ok "Docker installed from the official script."
   else
-    # مسیر ۲: مخازن اوبونتو — از داخل ایران همیشه در دسترس است
-    warn "get.docker.com در دسترس نیست (تحریم)؛ مسیر جایگزین: مخازن اوبونتو"
+    # route 2: Ubuntu repos — always reachable from inside Iran
+    warn "get.docker.com is not reachable (sanctions); falling back to Ubuntu repositories"
     install_docker_from_ubuntu \
-      || die "نصب داکر ناموفق بود. راه‌حل دستی: docs/SANCTIONS.md بخش «نصب داکر»"
-    ok "داکر از مخازن اوبونتو نصب شد."
+      || die "Docker install failed. Manual fix: docs/SANCTIONS.md, section 'Docker install'"
+    ok "Docker installed from Ubuntu repositories."
   fi
 else
-  ok "داکر موجود است: $(docker --version)"
+  ok "Docker present: $(docker --version)"
 fi
 systemctl enable --now docker >/dev/null 2>&1 || true
 
 if ! docker compose version >/dev/null 2>&1; then
-  die "افزونه docker compose پیدا نشد. docker-compose-v2 را نصب کنید (docs/SANCTIONS.md)."
+  die "docker compose plugin not found. Install docker-compose-v2 (docs/SANCTIONS.md)."
 fi
 
-# ---------- ۱ب) بستهٔ آفلاین ایمیج‌ها (اختیاری — مطمئن‌ترین مسیر) ----------
+# ---------- 1b) offline image bundle (optional — the most reliable route) ----------
 shopt -s nullglob
 OFFLINE_TARS=(offline-images/*.tar offline-images/*.tar.gz parastoo-images*.tar.gz)
 shopt -u nullglob
 OFFLINE_LOADED=0
 if [ ${#OFFLINE_TARS[@]} -gt 0 ]; then
-  say "بستهٔ آفلاین ایمیج‌ها پیدا شد؛ بارگذاری مستقیم (بدون هیچ اتصال به Docker Hub)..."
+  say "Offline image bundle found; loading directly (no Docker Hub contact)..."
   for tar in "${OFFLINE_TARS[@]}"; do
-    if docker load -i "$tar"; then ok "بارگذاری شد: $tar"; OFFLINE_LOADED=1; else warn "بارگذاری ناموفق: $tar"; fi
+    if docker load -i "$tar"; then ok "Loaded: $tar"; OFFLINE_LOADED=1; else warn "Load failed: $tar"; fi
   done
 fi
 
-# ---------- ۱ج) آینه‌های رجیستری — عبور از تحریم Docker Hub ----------
-# سرویس‌های ایرانی (docker.ir، آروان‌کلاد، نوین‌کلاد و ...) فقط پیکربندی
-# daemon.json می‌خواهند؛ لیست کاندیدها: deploy/mirrors.txt
-# این بخش خودش: تشخیص تحریم ← تست زنده‌بودن آینه‌ها از داخل همین سرور
-# ← نوشتن سالم‌ها به ترتیب سرعت ← تأیید با یک pull واقعی.
+# ---------- 1c) registry mirrors — bypassing Docker Hub sanctions ----------
+# Iranian services (registry.docker.ir, ArvanCloud, NovinCloud, ...) only
+# need daemon.json config; candidate list: deploy/mirrors.txt
+# This section: detect sanctions <- test mirror liveness from this very
+# server <- write healthy ones ordered by speed <- verify with a real pull.
 
 hub_reachable() {
-  # endpoint استاندارد رجیستری: 401 یعنی در دسترس است (سریع؛ بدون pull)
+  # standard registry endpoint: 401 means reachable (fast; no pull)
   [ "$(timeout 12 curl -fsS -o /dev/null -w '%{http_code}' --max-time 8 https://registry-1.docker.io/v2/ 2>/dev/null)" = "401" ]
 }
 
@@ -102,87 +106,98 @@ apply_mirrors() {
 }
 
 if [ -n "${PARASTOO_REGISTRY_MIRRORS:-}" ]; then
-  say "پیکربندی آینه‌ها از env (PARASTOO_REGISTRY_MIRRORS)..."
+  say "Configuring mirrors from env (PARASTOO_REGISTRY_MIRRORS)..."
   apply_mirrors "$PARASTOO_REGISTRY_MIRRORS" \
-    && ok "آینه‌ها تنظیم شد." \
-    || die "تنظیم آینه‌ها ناموفق بود؛ /etc/docker/daemon.json را دستی ویرایش کنید (docs/SANCTIONS.md)."
+    && ok "Mirrors configured." \
+    || die "Failed to set mirrors; edit /etc/docker/daemon.json manually (docs/SANCTIONS.md)."
 elif hub_reachable; then
-  ok "دسترسی به Docker Hub برقرار است (بدون آینه)."
+  ok "Docker Hub is reachable (no mirrors needed)."
 else
-  say "Docker Hub پاسخ نمی‌دهد (تحریم)؛ تست خودکار آینه‌های ایرانی از داخل سرور..."
+  say "Docker Hub is not responding (sanctions); testing Iranian mirrors from this server..."
   if [ "$OFFLINE_LOADED" = "1" ]; then
-    # ایمیج‌های لازم از بستهٔ آفلاین آمده‌اند؛ آینه فقط برای آیندهٔ کاربران مفید است
+    # required images came from the offline bundle; mirrors only help future builds
     ALIVE="$(bash scripts/check-mirrors.sh 2>/dev/null || true)" || true
     if [ -n "$ALIVE" ]; then
-      apply_mirrors "$ALIVE" && ok "آینه‌ها هم برای بیلدهای بعدی تنظیم شد." || true
+      apply_mirrors "$ALIVE" && ok "Mirrors also configured for future builds." || true
     else
-      warn "آینهٔ زنده‌ای پیدا نشد — نصب با بستهٔ آفلاین ادامه می‌یابد؛ برای بیلدهای بعدی docs/SANCTIONS.md را ببینید."
+      warn "No live mirror found — continuing with the offline bundle; for future builds see docs/SANCTIONS.md."
     fi
   else
     ALIVE="$(bash scripts/check-mirrors.sh || true)"
     if [ -n "$ALIVE" ]; then
       apply_mirrors "$ALIVE" \
-        && ok "$(echo "$ALIVE" | wc -l) آینهٔ زنده در /etc/docker/daemon.json ثبت شد (سریع‌ترین اول)." \
-        || warn "نوشتن آینه‌ها ناموفق بود — docs/SANCTIONS.md"
+        && ok "$(echo "$ALIVE" | wc -l) live mirror(s) written to /etc/docker/daemon.json (fastest first)." \
+        || warn "Failed to write mirrors — docs/SANCTIONS.md"
     else
-      warn "هیچ آینه‌ای زنده نبود؛ لیست را به‌روز کنید: deploy/mirrors.txt یا PARASTOO_REGISTRY_MIRRORS"
-      warn "بدون آینه، pull ایمیج‌ها شکست می‌خورد — مسیر مطمئن: بستهٔ آفلاین (docs/SANCTIONS.md لایهٔ ۳)"
+      warn "No live mirror found; update the list: deploy/mirrors.txt or use PARASTOO_REGISTRY_MIRRORS"
+      warn "Without mirrors, image pulls fail — reliable route: offline bundle (docs/SANCTIONS.md, layer 3)"
     fi
-    # تأیید نهایی: یک pull واقعی کوچک (همان ایمیجی که backup هم لازم دارد)
+    # final verification: a small real pull (same image the backup command needs)
     if timeout 90 docker pull -q alpine:3.20 >/dev/null 2>&1; then
-      ok "تأیید نهایی: pull از طریق آینه کار می‌کند."
+      ok "Final check: pull through the mirror works."
     else
-      warn "pull آزمایشی هم ناموفق بود. مسیر مطمئن: bash scripts/fetch-images.sh روی سرور خارج → پوشهٔ offline-images/ → دوباره install.sh"
+      warn "Test pull also failed. Reliable route: bash scripts/fetch-images.sh on an unsanctioned machine -> offline-images/ folder -> run install.sh again"
     fi
   fi
 fi
 
-# ---------- ۱د) لایهٔ ۴ — آینهٔ PyPI/npm (برای بیلد هسته و بیلدهای کاربران) ----------
-# بعضی ISPهای ایران pypi.org و files.pythonhosted.org را DNS-بلاک می‌کنند؛
-# مثل آینه‌های داکر، از داخل همین سرور تست و آینهٔ زنده در .env ثبت می‌شود.
+# ---------- 1d) layer 4 — PyPI/npm mirrors (core build and user builds) ----------
+# Some Iranian ISPs DNS-block pypi.org and files.pythonhosted.org;
+# like Docker mirrors, these are probed from this very server and the
+# live one is written into .env. Iranian mirrors first (low latency),
+# international mirrors last as fallback.
 pypi_ok() { [ "$(timeout 12 curl -fsS -o /dev/null -w '%{http_code}' --max-time 8 https://pypi.org/simple/ 2>/dev/null)" = "200" ]; }
 npm_ok()  { [ "$(timeout 12 curl -fsS -o /dev/null -w '%{http_code}' --max-time 8 https://registry.npmjs.org/-/ping 2>/dev/null)" = "200" ]; }
 
 DETECTED_PIP_MIRROR=""; DETECTED_NPM_MIRROR=""
 if [ -z "${PARASTOO_PIP_INDEX_URL:-}" ] && ! pypi_ok; then
-  say "PyPI در دسترس نیست (DNS/تحریم)؛ تست آینه‌های پایتون از داخل سرور..."
-  for m in https://mirrors.arvancloud.ir/pypi/simple https://pypi.tuna.tsinghua.edu.cn/simple https://mirrors.aliyun.com/pypi/simple; do
-    if [ "$(timeout 12 curl -fsS -o /dev/null -w '%{http_code}' --max-time 8 "${m%/}/" 2>/dev/null)" = "200" ]; then
-      DETECTED_PIP_MIRROR="$m"; ok "آینهٔ pip زنده: $m (در .env ثبت می‌شود)"; break
+  say "PyPI is not reachable (DNS/sanctions); probing Python mirrors from this server..."
+  for m in \
+    https://package-mirror.liara.ir/repository/pypi/simple \
+    https://mirror.abrha.net/repository/pypi/simple \
+    https://mirror-pypi.runflare.com/simple \
+    https://mirror.kargadan.ir/repository/pypi-group/simple \
+    https://mirrors.arvancloud.ir/pypi/simple \
+    https://pypi.tuna.tsinghua.edu.cn/simple \
+    https://mirrors.aliyun.com/pypi/simple; do
+    # -L follows redirects; trailing slash matters for some mirrors
+    if [ "$(timeout 12 curl -fsSL -o /dev/null -w '%{http_code}' --max-time 8 "${m%/}/" 2>/dev/null)" = "200" ]; then
+      DETECTED_PIP_MIRROR="$m"; ok "Live pip mirror: $m (will be written to .env)"; break
     fi
   done
-  [ -n "$DETECTED_PIP_MIRROR" ] || warn "هیچ آینهٔ pip زنده‌ای پیدا نشد؛ بیلد هسته ممکن است شکست بخورد — docs/SANCTIONS.md لایهٔ ۴"
+  [ -n "$DETECTED_PIP_MIRROR" ] || warn "No live pip mirror found; the core build may fail — docs/SANCTIONS.md, layer 4"
 elif [ -z "${PARASTOO_PIP_INDEX_URL:-}" ]; then
-  ok "PyPI در دسترس است (بدون آینه)."
+  ok "PyPI is reachable (no mirror needed)."
 fi
 if [ -z "${PARASTOO_NPM_REGISTRY:-}" ] && ! npm_ok; then
-  say "npm رسمی در دسترس نیست؛ تست آینه‌های npm از داخل سرور..."
+  say "Official npm is not reachable; probing npm mirrors from this server..."
   for m in https://registry.npmjs.ir https://registry.npmmirror.com; do
-    if [ "$(timeout 12 curl -fsS -o /dev/null -w '%{http_code}' --max-time 8 "$m/-/ping" 2>/dev/null)" = "200" ]; then
-      DETECTED_NPM_MIRROR="$m"; ok "آینهٔ npm زنده: $m (در .env ثبت می‌شود)"; break
+    if [ "$(timeout 12 curl -fsSL -o /dev/null -w '%{http_code}' --max-time 8 "$m/-/ping" 2>/dev/null)" = "200" ]; then
+      DETECTED_NPM_MIRROR="$m"; ok "Live npm mirror: $m (will be written to .env)"; break
     fi
   done
-  [ -n "$DETECTED_NPM_MIRROR" ] || warn "هیچ آینهٔ npm زنده‌ای پیدا نشد؛ بیلدهای node ممکن است شکست بخورد."
+  [ -n "$DETECTED_NPM_MIRROR" ] || warn "No live npm mirror found; node builds may fail."
 elif [ -z "${PARASTOO_NPM_REGISTRY:-}" ]; then
-  ok "npm رسمی در دسترس است (بدون آینه)."
+  ok "Official npm is reachable (no mirror needed)."
 fi
 
-# ---------- ۲) دامنه پایه — بدون هیچ سوالی ----------
-# نصب همیشه با دامنه موقت (nip.io) شروع می‌شود تا صفر سوال بپرسد؛
-# دامنه واقعی و HTTPS بعداً از پنل وب (ویزارد دامنه) با توکن نصب تنظیم می‌شود.
+# ---------- 2) base domain — zero questions ----------
+# Install always starts with a temporary domain (nip.io) so it asks
+# nothing; the real domain and HTTPS are set later from the web panel
+# (domain wizard) using the one-time setup token.
 BASE_DOMAIN="${PARASTOO_BASE_DOMAIN:-}"
-say "تشخیص IP عمومی سرور..."
+say "Detecting server public IP..."
 PUBLIC_IP="$(curl -fs4 --max-time 10 https://api.ipify.org 2>/dev/null \
           || curl -fs4 --max-time 10 https://ifconfig.me 2>/dev/null \
           || curl -fs4 --max-time 10 https://checkip.amazonaws.com 2>/dev/null \
           || curl -fs4 --max-time 10 https://icanhazip.com 2>/dev/null \
           || true)"
-[ -n "$PUBLIC_IP" ] || die "IP عمومی شناسایی نشد. دستی بدهید: PARASTOO_PUBLIC_IP=1.2.3.4 PARASTOO_BASE_DOMAIN=example.com bash install.sh"
+[ -n "$PUBLIC_IP" ] || die "Could not detect the public IP. Set it manually: PARASTOO_PUBLIC_IP=1.2.3.4 PARASTOO_BASE_DOMAIN=example.com bash install.sh"
 if [ -z "$BASE_DOMAIN" ]; then
   BASE_DOMAIN="${PUBLIC_IP}.nip.io"
-  ok "دامنه موقت: ${BASE_DOMAIN} (دامنه واقعی بعداً از پنل وب تنظیم می‌شود)"
+  ok "Temporary domain: ${BASE_DOMAIN} (real domain is set later from the web panel)"
 else
-  ok "دامنه از env: ${BASE_DOMAIN}"
+  ok "Domain from env: ${BASE_DOMAIN}"
 fi
 
 BASE_DOMAIN="${BASE_DOMAIN%,}"
@@ -190,10 +205,10 @@ PANEL_DOMAIN="panel.${BASE_DOMAIN}"
 GIT_DOMAIN="git.${BASE_DOMAIN}"
 APPS_DOMAIN="apps.${BASE_DOMAIN}"
 
-# TLS: برای دامنه واقعی روشن، برای nip.io خاموش (محدودیت گواهی)
-# حالت پیش‌فرض نصب = nip.io + HTTP؛ دامنه واقعی و HTTPS را ویزارد وب فعال می‌کند
+# TLS: on for a real domain, off for raw nip.io (certificate limitation)
+# default install = nip.io + HTTP; the web wizard enables the real domain + HTTPS
 case "$BASE_DOMAIN" in
-  *.nip.io) TLS_ENABLED="false"; warn "دامنه nip.io است؛ HTTPS خاموش شد (بعداً از پنل وب با دامنه واقعی فعال کنید)." ;;
+  *.nip.io) TLS_ENABLED="false"; warn "Domain is nip.io; HTTPS disabled (enable later from the web panel with a real domain)." ;;
   *)        TLS_ENABLED="true" ;;
 esac
 
@@ -203,14 +218,14 @@ if [ "$TLS_ENABLED" = "true" ]; then TRAEFIK_ENTRYPOINTS="web,websecure"; TRAEFI
 
 GITEA_ROOT_URL_SCHEME="http"; [ "$TLS_ENABLED" = "true" ] && GITEA_ROOT_URL_SCHEME="https"
 
-# ---------- ۳) رمزها و فایل .env ----------
-say "تولید رمزهای امن + توکن نصب..."
+# ---------- 3) secrets and .env ----------
+say "Generating secure secrets + setup token..."
 gen() { openssl rand -hex 24; }
-# توکن یک‌بارمصرف نصب: فقط همین‌جا چاپ می‌شود و گیتِ ویزارد وب است
+# one-time setup token: printed only here; the web wizard consumes it
 SETUP_TOKEN="$(openssl rand -hex 6 | sed -E 's/(.{4})(.{4})(.{4})/\1-\2-\3/')"
 
 if [ -f .env ]; then
-  warn ".env موجود است؛ رمزهای قبلی حفظ می‌شوند."
+  warn ".env already exists; keeping previous secrets."
   set -a; . ./.env; set +a
 fi
 
@@ -226,14 +241,14 @@ PARASTOO_DEBT_LIMIT="${PARASTOO_DEBT_LIMIT:-0}"
 PARASTOO_COMMISSION="${PARASTOO_COMMISSION:-10}"
 PARASTOO_SETUP_TOKEN="${PARASTOO_SETUP_TOKEN:-$SETUP_TOKEN}"
 PARASTOO_PUBLIC_IP="${PARASTOO_PUBLIC_IP:-$PUBLIC_IP}"
-# تحریم‌ها: آینه pip/npm — اولویت: env صریح ← مقدار موجود .env ← تشخیص خودکار لایهٔ ۴ ← خالی
+# sanctions: pip/npm mirrors — priority: explicit env <- existing .env <- auto-detect <- empty
 PARASTOO_PIP_INDEX_URL="${PARASTOO_PIP_INDEX_URL:-${DETECTED_PIP_MIRROR:-}}"
 PARASTOO_NPM_REGISTRY="${PARASTOO_NPM_REGISTRY:-${DETECTED_NPM_MIRROR:-}}"
-[ -n "$PARASTOO_PIP_INDEX_URL" ] && ok "آینهٔ pip فعال: $PARASTOO_PIP_INDEX_URL"
-[ -n "$PARASTOO_NPM_REGISTRY" ] && ok "آینهٔ npm فعال: $PARASTOO_NPM_REGISTRY"
+[ -n "$PARASTOO_PIP_INDEX_URL" ] && ok "pip mirror active: $PARASTOO_PIP_INDEX_URL"
+[ -n "$PARASTOO_NPM_REGISTRY" ] && ok "npm mirror active: $PARASTOO_NPM_REGISTRY"
 
 cat > .env <<ENV
-# ===== پرستو (ساخته‌شده توسط install.sh) =====
+# ===== Parastoo (generated by install.sh) =====
 BASE_DOMAIN=${BASE_DOMAIN}
 PANEL_DOMAIN=${PANEL_DOMAIN}
 GIT_DOMAIN=${GIT_DOMAIN}
@@ -258,17 +273,17 @@ PARASTOO_COMMISSION=${PARASTOO_COMMISSION}
 PARASTOO_SETUP_TOKEN=${PARASTOO_SETUP_TOKEN}
 PARASTOO_PUBLIC_IP=${PARASTOO_PUBLIC_IP}
 
-# --- تحریم‌ها (اختیاری؛ docs/SANCTIONS.md) ---
-# آینه pip برای بیلد پایتون، مثال: https://mirrors.arvancloud.ir/pypi/simple
+# --- sanctions (optional; docs/SANCTIONS.md) ---
+# pip mirror for Python builds, e.g.: https://package-mirror.liara.ir/repository/pypi/simple
 PARASTOO_PIP_INDEX_URL=${PARASTOO_PIP_INDEX_URL}
-# رجیستری npm برای بیلد نود، مثال: https://registry.npmjs.ir
+# npm registry for node builds, e.g.: https://registry.npmjs.ir
 PARASTOO_NPM_REGISTRY=${PARASTOO_NPM_REGISTRY}
 ENV
 chmod 600 .env
-ok "پیکربندی در .env ذخیره شد."
+ok "Configuration saved to .env."
 
-# ---------- ۴) پیکربندی ترافیک ----------
-say "ساخت پیکربندی ترافیک..."
+# ---------- 4) Traefik configuration ----------
+say "Building Traefik configuration..."
 mkdir -p config/dynamic backups
 
 REDIRECT_BLOCK=""
@@ -285,58 +300,58 @@ awk -v block="$REDIRECT_BLOCK" -v email="$ACME_EMAIL" '
   { print }
 ' deploy/templates/traefik.yml.tmpl > config/traefik.yml
 
-[ "$TLS_ENABLED" = "true" ] && ok "ریدایرکت HTTP به HTTPS فعال شد."
+[ "$TLS_ENABLED" = "true" ] && ok "HTTP -> HTTPS redirect enabled."
 chmod +x postgres-init/*.sh
 
-# ---------- ۵) بالا آوردن استک ----------
-say "ساخت و اجرای استک کامل (بار اول ممکن است چند دقیقه طول بکشد)..."
+# ---------- 5) bring up the stack ----------
+say "Building and starting the full stack (first run may take a few minutes)..."
 if ! docker compose up -d --build; then
   echo ""
-  die "استک بالا نیامد. اگر خطا مربوط به pull ایمیج است:
-  ۱) بستهٔ آفلاین بسازید: bash scripts/fetch-images.sh (روی سرور خارج) → پوشه offline-images/ را همین‌جا بگذارید → دوباره install.sh
-  ۲) یا آینهٔ سالم: PARASTOO_REGISTRY_MIRRORS=\"https://docker.arvancloud.ir\" sudo -E bash install.sh
-  راهنمای کامل: docs/SANCTIONS.md"
+  die "Stack failed to start. If the error is about image pulls:
+  1) build the offline bundle: bash scripts/fetch-images.sh (on an unsanctioned machine) -> put the offline-images/ folder here -> run install.sh again
+  2) or set a healthy mirror: PARASTOO_REGISTRY_MIRRORS=\"https://docker.arvancloud.ir\" sudo -E bash install.sh
+  Full guide: docs/SANCTIONS.md"
 fi
 
-# ---------- ۶) انتظار برای سلامت هسته ----------
-say "انتظار برای راه‌اندازی کامل..."
+# ---------- 6) wait for core health ----------
+say "Waiting for the stack to become healthy..."
 ATTEMPTS=60
 for i in $(seq 1 $ATTEMPTS); do
   if docker compose exec -T core curl -fsS http://localhost:8000/healthz >/dev/null 2>&1; then
-    ok "هسته پرستو بالا آمد."
+    ok "Parastoo core is up."
     break
   fi
-  [ "$i" = "$ATTEMPTS" ] && { docker compose logs --tail 30 core; die "هسته پرستو آماده نشد. لاگ‌های بالا را ببینید."; }
+  [ "$i" = "$ATTEMPTS" ] && { docker compose logs --tail 30 core; die "Parastoo core did not become ready. See the logs above."; }
   sleep 3
 done
 
-# ---------- ۷) نصب CLI پرستو ----------
+# ---------- 7) install the Parastoo CLI ----------
 cp -f bin/parastoo /usr/local/bin/parastoo
 chmod +x /usr/local/bin/parastoo
 echo "$INSTALL_DIR" > /etc/parastoo-install-path
-ok "دستور parastoo نصب شد (status/logs/update/backup)."
+ok "parastoo CLI installed (status/logs/update/backup)."
 
 SCHEME="http"; [ "$TLS_ENABLED" = "true" ] && SCHEME="https"
 
 echo ""
 echo -e "${GREEN}============================================================${NC}"
-echo -e "${GREEN}  پرستو نصب شد!${NC}"
+echo -e "${GREEN}  Parastoo is installed!${NC}"
 echo -e "${GREEN}============================================================${NC}"
 echo ""
-echo "  راه‌اندازی سه‌گامی (همه‌اش از مرورگر):"
-echo "    ۱) آدرس پنل را باز کنید:"
+echo "  Three steps to finish (all in your browser):"
+echo "    1) Open the panel URL:"
 echo ""
 echo -e "       ${BLUE}${SCHEME}://${PANEL_DOMAIN}${NC}"
 echo ""
-echo -e "    ۲) توکن نصب یک‌بارمصرف (همین‌جا کپی کنید):"
+echo -e "    2) Enter the one-time setup token (copy it now):"
 echo ""
 echo -e "       ${BLUE}${PARASTOO_SETUP_TOKEN}${NC}"
 echo ""
-echo "    ۳) حساب مدیر را بسازید و دامنه/HTTPS را در همان ویزارد تنظیم کنید."
+echo "    3) Create the admin account and set your domain/HTTPS in the wizard."
 echo ""
-echo "  اطلاعات سیستمی (در .env هم هست):"
-echo "         رمز مدیر گیت: ${GITEA_ADMIN_PASSWORD}"
+echo "  System credentials (also stored in .env):"
+echo "         Gitea admin password: ${GITEA_ADMIN_PASSWORD}"
 echo ""
-echo "  دستورهای مدیریتی:  parastoo status | logs | update | backup | restart"
-echo "  تحریم‌ها و بستهٔ آفلاین:  docs/SANCTIONS.md"
+echo "  Management commands:  parastoo status | logs | update | backup | restart"
+echo "  Sanctions & offline bundle:  docs/SANCTIONS.md"
 echo ""
