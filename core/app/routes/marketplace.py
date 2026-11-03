@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.orm import Session
 
-from .. import dockerops, domains
+from .. import dockerops, domains, stacks
 from ..config import settings
 from ..deps import ctx, csrf_guard, redirect, render
 from ..db import get_db
@@ -64,13 +64,20 @@ def marketplace_use(
         project.installs += 1
 
     subdomain = f"{s}.{domains.apps()}"
+    # پورت داخلی از استک پروژه می‌آید (static=80، node/python=3000)؛
+    # اگر فروشنده موقع انتشار پورت سفارشی داده باشد، همان استفاده می‌شود
+    src_site = (db.query(Site)
+                .filter(Site.project_id == project.id)
+                .order_by(Site.id.desc())
+                .first())
+    internal_port = src_site.internal_port if src_site else stacks.default_port(project.stack)
     site = Site(
         project_id=project.id,
         owner_id=user.id,
         slug=s,
         subdomain=subdomain,
         container_name=f"parastoo-site-{s}",
-        internal_port=3000,
+        internal_port=internal_port,
         tier=tier,
         status="running",
         image=project.latest_image,

@@ -77,6 +77,15 @@ def ctx(request: Request, user: User | None, **extra: Any) -> dict:
 
 
 def render(name: str, context: dict, status_code: int = 200):
+    """رندر قالب با امضای جدید Starlette (request آرگومان اول — از 0.29 به بعد).
+
+    امضای قدیمی TemplateResponse(name=...) در Starlette 1.x حذف شده است؛
+    شکل جدید در همهٔ نسخه‌های ≥0.29 کار می‌کند و فال‌بک برای contextهای
+    بدون request نگه داشته شده است.
+    """
+    request = context.get("request")
+    if request is not None:
+        return templates.TemplateResponse(request, name, context, status_code=status_code)
     return templates.TemplateResponse(name=name, context=context, status_code=status_code)
 
 

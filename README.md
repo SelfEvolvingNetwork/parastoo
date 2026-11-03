@@ -1,4 +1,6 @@
-# پرستو (Parastoo) v0.2.1
+# پرستو (Parastoo) v0.2.2
+
+[![CI](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml/badge.svg)](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml)
 
 پلتفرم خودمیزبانِ «ساخت، انتشار و فروش» وب‌اپلیکیشن‌ها — روی یک سرور اوبونتو، با یک دستور.
 
@@ -27,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/b
 
 `bootstrap.sh` بسته را از گیت‌هاب می‌گیرد (ترتیب تلاش: **ریلیز zip ← تاربال مخزن ← git clone**)، در `/opt/parastoo` می‌ریزد و `install.sh` را اجرا می‌کند — داکر، عبور از تحریم، توکن نصب و کل استک، همه خودکار.
 
-- **نسخهٔ پایدار به‌جای main:**  `PARASTOO_REF=v0.2.1 curl -fsSL https://raw.githubusercontent.com/... | sudo bash`
+- **نسخهٔ پایدار به‌جای main:**  `PARASTOO_REF=v0.2.2 curl -fsSL https://raw.githubusercontent.com/... | sudo bash`
 - **اگر در ایران گیت‌هاب کند یا مسدود بود:**  `curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash`  — یا دستی: `git clone https://github.com/SelfEvolvingNetwork/parastoo.git && cd parastoo && sudo bash setup.sh`
 - **اجرای مجدد = آپدیت امن:** همان دستور را دوباره بزنید؛ کد به‌روز می‌شود ولی `.env`، پیکربندی ترافیک، بستهٔ آفلاین، پشتیبان‌ها و داده‌ها (ولیوم‌های داکر) دست‌نخورده می‌مانند.
 
@@ -37,11 +39,11 @@ curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/b
 
 ```bash
 sudo bash setup.sh                                  # فایل zip کنار setup.sh باشد
-sudo bash setup.sh parastoo-v0.2.1.zip              # یا مسیر/نام فایل
-sudo bash setup.sh https://HOST/parastoo-v0.2.1.zip # یا دانلود مستقیم (zip یا tar.gz)
+sudo bash setup.sh parastoo-v0.2.2.zip              # یا مسیر/نام فایل
+sudo bash setup.sh https://HOST/parastoo-v0.2.2.zip # یا دانلود مستقیم (zip یا tar.gz)
 ```
 
-`setup.sh` خودش وابستگی‌ها (curl/unzip)، دانلود، استخراج و کپی در `/opt/parastoo` را انجام می‌دهد و بعد `install.sh` را اجرا می‌کند. حالت کلاسیک: `curl -fsSL https://HOST/setup.sh | bash -s -- https://HOST/parastoo-v0.2.1.zip` — و اگر خودتان پکیج را از قبل باز کرده‌اید، داخل همان پوشه: `sudo bash setup.sh` (معادل `sudo bash install.sh`).
+`setup.sh` خودش وابستگی‌ها (curl/unzip)، دانلود، استخراج و کپی در `/opt/parastoo` را انجام می‌دهد و بعد `install.sh` را اجرا می‌کند. حالت کلاسیک: `curl -fsSL https://HOST/setup.sh | bash -s -- https://HOST/parastoo-v0.2.2.zip` — و اگر خودتان پکیج را از قبل باز کرده‌اید، داخل همان پوشه: `sudo bash setup.sh` (معادل `sudo bash install.sh`).
 
 ### install.sh چه می‌کند (هیچ سوالی نمی‌پرسد)
 1. داکر را نصب می‌کند (اگر نباشد)
@@ -104,6 +106,17 @@ sudo bash uninstall.sh   # حذف کامل
 ```
 
 (برای سرورهای تحریمی: اگر بستهٔ آفلاین را با fetch-images.sh بارگذاری کرده‌اید، این دستورها به هیچ pull اینترنتی نیاز ندارند.)
+
+## توسعه و تست
+
+```bash
+pip install -r core/requirements.txt pyyaml
+python tests/smoke_test.py        # جریان‌های اصلی پنل (TestClient، بدون داکر)
+python tests/smoke_wizard.py      # ویزارد نصب/دامنه/ترافیک
+PARASTOO_SMOKE_OFFLINE=1 python tests/smoke_sanctions.py   # ضدتحریم (بدون شبکه؛ بدون این متغیر، آینه‌ها زنده تست می‌شوند)
+```
+
+همین سه تست در CI (GitHub Actions، فایل `.github/workflows/ci.yml`) روی هر push و PR اجرا می‌شوند — از جمله نصبِ `core/requirements.txt` با نسخه‌های پین‌شده تا هر جابه‌جایی وابستگی‌ها قبل از انتشار شکار شود. تاریخ تغییرها: [CHANGELOG.md](CHANGELOG.md). لایسنس: [MIT](LICENSE).
 
 ## شارژ کیف پول (MVP)
 
