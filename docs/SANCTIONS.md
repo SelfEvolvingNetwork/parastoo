@@ -117,16 +117,16 @@ sudo bash install.sh
 
 ## ۵) لایهٔ ۴ — آینهٔ PyPI/npm برای بیلدها (خودکار)
 
-بیلد هسته و بیلدهای کاربران به PyPI (و بیلدهای نود به npm) نیاز دارند؛ روی بعضی ISPهای ایران `pypi.org` و `files.pythonhosted.org` با خطای DNS مواجه می‌شوند. install.sh مثل آینه‌های داکر رفتار می‌کند:
+بیلد هسته و بیلدهای کاربران به PyPI (و بیلدهای نود به npm) نیاز دارند؛ نکتهٔ مهم واقعی: ایران این دو میزبان را **مستقل از هم** بلاک می‌کند — `pypi.org` (ایندکس) ممکن است باز باشد ولی `files.pythonhosted.org` (محل واقعی دانلود فایل‌ها) DNS-بلاک باشد؛ در یک نصب واقعی دقیقاً همین اتفاق افتاد و بیلد با `Temporary failure in name resolution` روی `files.pythonhosted.org` شکست خورد. install.sh مثل آینه‌های داکر رفتار می‌کند:
 
-1. پروب `pypi.org/simple/` و `registry.npmjs.org/-/ping` **از داخل همین سرور**. اگر باز بودند، کاری نمی‌کند.
+1. پروب **هر دو میزبان PyPI** (`pypi.org/simple/` و `files.pythonhosted.org/`) و `registry.npmjs.org/-/ping` از داخل همین سرور — و وقتی داکر در دسترس است، پروب داخل یک کانتینر alpine هم اجرا می‌شود چون DNS بیلد همان DNS دیمون است نه هاست. هر پاسخ HTTP (حتی 404) یعنیreachable؛ فقط DNS-fail/reset مسدود حساب می‌شود. اگر همه باز بودند، کاری نمی‌کند.
 2. اگر مسدود بودند، آینه‌های کاندید را به ترتیب تست می‌کند و اولین زنده را در `.env` می‌نویسد:
    - pip (ایرانی، به ترتیب): `package-mirror.liara.ir/repository/pypi/simple` ← `mirror.abrha.net/repository/pypi/simple` (پارس‌پک) ← `mirror-pypi.runflare.com/simple` ← `mirror.kargadan.ir/repository/pypi-group/simple` ← `mirrors.arvancloud.ir/pypi/simple`
    - pip (پشتیبان بین‌المللی): `pypi.tuna.tsinghua.edu.cn/simple` ← `mirrors.aliyun.com/pypi/simple`
    - npm: `registry.npmjs.ir` ← `registry.npmmirror.com`
    - پروب با `curl -L` انجام می‌شود (ریدایرکت‌های آینه‌ها دنبال می‌شوند) و آدرس همیشه با اسلش انتهایی تست می‌شود.
 3. همان مقدار به build-arg هسته (`PIP_INDEX_URL`) هم می‌رسد — پس بیلد هسته همان لحظه از آینه نصب می‌کند.
-4. اولویت: env صریح ← مقدار موجود `.env` ← تشخیص خودکار ← خالی (پیش‌فرض رسمی).
+4. اولویت: env صریح ← مقدار موجود `.env` (مجدداً بررسی می‌شود؛ اگر مرده باشد با تشخیص تازه جایگزین می‌شود) ← تشخیص خودکار ← خالی (پیش‌فرض رسمی).
 
 بررسی/تغییر دستی:
 
@@ -145,7 +145,7 @@ parastoo update
 |---|---|---|
 | `get.docker.com` در نصب fail شد | طبیعی در ایران | کاری نکنید؛ خودش از مخازن اوبونتو ادامه می‌دهد |
 | `toomanyrequests` / timeout موقع pull | Hub مسدود یا آینهٔ مرده | لایهٔ ۲ (آینه) یا لایهٔ ۳ (آفلاین) |
-| بیلد هسته خطای pip می‌دهد (`name resolution` / timeout) | pypi.org روی ISP شما بلاک است | در v0.2.3 خودکار حل می‌شود (لایهٔ ۴)؛ دستی: `PARASTOO_PIP_INDEX_URL` در .env + `parastoo update` |
+| بیلد هسته خطای pip می‌دهد (`name resolution` / timeout) | pypi.org یا files.pythonhosted.org روی ISP شما بلاک است (ممکن است فقط یکی باشد!) | لایهٔ ۴ خودکار؛ دستی: `PARASTOO_PIP_INDEX_URL="https://package-mirror.liara.ir/repository/pypi/simple" sudo -E bash install.sh` (env صریح بر .env مقدم است) |
 | بیلد نود خطای npm می‌دهد | registry مسدود | لایهٔ ۴ خودکار؛ دستی: `PARASTOO_NPM_REGISTRY` در .env + `parastoo update` |
 | `docker info` آینه‌ها را نشان نمی‌دهد | JSON خراب یا ری‌استارت نشده | `sudo systemctl restart docker` و اعتبار JSON |
 | ویزارد دامنه گواهی نگرفت | نادر است؛ LE از ایران باز است | لاگ: `parastoo logs traefik` |

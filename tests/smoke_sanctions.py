@@ -91,6 +91,12 @@ check("لایهٔ ۴: آینه‌های کاندید pip/npm",
       "mirrors.arvancloud.ir/pypi" in inst and "registry.npmjs.ir" in inst)
 check("لایهٔ ۴: تشخیص خودکار در .env می‌نشیند (اولویت env ← .env ← خودکار)",
       "${DETECTED_PIP_MIRROR:-}" in inst and "${DETECTED_NPM_MIRROR:-}" in inst)
+check("لایهٔ ۴: پروب هر دو میزبان PyPI (ایندکس + files.pythonhosted.org)",
+      "files.pythonhosted.org" in inst and "files_ok" in inst)
+check("لایهٔ ۴: پروب درون‌کانتینری (DNS بیلد = DNS دیمون، نه هاست)",
+      "docker_probe_ok" in inst and "alpine:3.20 sh -c" in inst)
+check("لایهٔ ۴: env صریح بر .env قدیمی مقدم است (گارد پیش از source)",
+      "_EXPLICIT_PIP" in inst and "_EXPLICIT_NPM" in inst)
 
 # ---------- ۳ب) mirrors.txt و check-mirrors.sh ----------
 print("— آینه‌ها (deploy/mirrors.txt + check-mirrors.sh) —")

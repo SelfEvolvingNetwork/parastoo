@@ -70,6 +70,19 @@ if ! docker compose version >/dev/null 2>&1; then
   die "docker compose plugin not found. Install docker-compose-v2 (docs/SANCTIONS.md)."
 fi
 
+# buildx: newer compose emits a Bake warning without it; best-effort install
+# (this also covers the case where Docker was installed before Parastoo)
+if ! docker buildx version >/dev/null 2>&1; then
+  say "docker buildx is missing; trying the Ubuntu/official package (best effort)..."
+  apt-get update -qq >/dev/null 2>&1 || true
+  if DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker-buildx >/dev/null 2>&1 \
+     || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker-buildx-plugin >/dev/null 2>&1; then
+    ok "docker-buildx installed."
+  else
+    warn "docker-buildx not installable from the repos; continuing without it."
+  fi
+fi
+
 # ---------- 1b) offline image bundle (optional — the most reliable route) ----------
 shopt -s nullglob
 OFFLINE_TARS=(offline-images/*.tar offline-images/*.tar.gz parastoo-images*.tar.gz)
@@ -126,7 +139,7 @@ else
     ALIVE="$(bash scripts/check-mirrors.sh || true)"
     if [ -n "$ALIVE" ]; then
       apply_mirrors "$ALIVE" \
-        && ok "$(echo "$ALIVE" | wc -l) live mirror(s) written to /etc/docker/daemon.json (fastest first)." \
+        && ok "$(echo "$ALIVE" | wc -l) live mirror(s) active in /etc/docker/daemon.json (fastest first)." \
         || warn "Failed to write mirrors — docs/SANCTIONS.md"
     else
       warn "No live mirror found; update the list: deploy/mirrors.txt or use PARASTOO_REGISTRY_MIRRORS"
@@ -142,43 +155,73 @@ else
 fi
 
 # ---------- 1d) layer 4 — PyPI/npm mirrors (core build and user builds) ----------
-# Some Iranian ISPs DNS-block pypi.org and files.pythonhosted.org;
-# like Docker mirrors, these are probed from this very server and the
-# live one is written into .env. Iranian mirrors first (low latency),
-# international mirrors last as fallback.
-pypi_ok() { [ "$(timeout 12 curl -fsS -o /dev/null -w '%{http_code}' --max-time 8 https://pypi.org/simple/ 2>/dev/null)" = "200" ]; }
-npm_ok()  { [ "$(timeout 12 curl -fsS -o /dev/null -w '%{http_code}' --max-time 8 https://registry.npmjs.org/-/ping 2>/dev/null)" = "200" ]; }
+# Iran blocks the PyPI index (pypi.org) and the download host
+# (files.pythonhosted.org) INDEPENDENTLY: a real install failed with
+# "Temporary failure in name resolution" on files.pythonhosted.org while
+# pypi.org answered fine — so both hosts are probed. When docker is usable,
+# the probe also runs inside an alpine container, because the build uses
+# the daemon's DNS which can differ from the host's. Any HTTP response
+# counts as reachable (the download host answers 404 on /); only DNS
+# failure / connection reset counts as blocked.
+host_http_ok() {  # any HTTP status = alive; 000 = DNS failure / reset / timeout
+  local code
+  code="$(timeout 12 curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$1" 2>/dev/null || true)"
+  [ -n "$code" ] && [ "$code" != "000" ]
+}
+docker_probe_ok() {  # same reachability check inside a throwaway container (build-faithful DNS)
+  docker run --rm alpine:3.20 sh -c "wget -S -T 8 -O /dev/null '$1' 2>&1 | grep -q 'HTTP/'" >/dev/null 2>&1
+}
+reachable() {  # host probe; plus the container probe when alpine:3.20 is available
+  host_http_ok "$1" || return 1
+  if docker info >/dev/null 2>&1 && docker image inspect alpine:3.20 >/dev/null 2>&1; then
+    docker_probe_ok "$1"
+  else
+    return 0  # no container probe possible; trust the host
+  fi
+}
+pypi_ok()  { reachable "https://pypi.org/simple/"; }
+files_ok() { reachable "https://files.pythonhosted.org/"; }
+npm_ok()   { reachable "https://registry.npmjs.org/-/ping"; }
 
 DETECTED_PIP_MIRROR=""; DETECTED_NPM_MIRROR=""
-if [ -z "${PARASTOO_PIP_INDEX_URL:-}" ] && ! pypi_ok; then
-  say "PyPI is not reachable (DNS/sanctions); probing Python mirrors from this server..."
-  for m in \
-    https://package-mirror.liara.ir/repository/pypi/simple \
-    https://mirror.abrha.net/repository/pypi/simple \
-    https://mirror-pypi.runflare.com/simple \
-    https://mirror.kargadan.ir/repository/pypi-group/simple \
-    https://mirrors.arvancloud.ir/pypi/simple \
-    https://pypi.tuna.tsinghua.edu.cn/simple \
-    https://mirrors.aliyun.com/pypi/simple; do
-    # -L follows redirects; trailing slash matters for some mirrors
-    if [ "$(timeout 12 curl -fsSL -o /dev/null -w '%{http_code}' --max-time 8 "${m%/}/" 2>/dev/null)" = "200" ]; then
-      DETECTED_PIP_MIRROR="$m"; ok "Live pip mirror: $m (will be written to .env)"; break
-    fi
-  done
-  [ -n "$DETECTED_PIP_MIRROR" ] || warn "No live pip mirror found; the core build may fail — docs/SANCTIONS.md, layer 4"
-elif [ -z "${PARASTOO_PIP_INDEX_URL:-}" ]; then
-  ok "PyPI is reachable (no mirror needed)."
+if [ -z "${PARASTOO_PIP_INDEX_URL:-}" ]; then
+  if pypi_ok && files_ok; then
+    ok "PyPI fully reachable (index + download host). No mirror needed."
+  else
+    host_http_ok "https://pypi.org/simple/" \
+      || warn "pypi.org (index) not reachable from this server."
+    host_http_ok "https://files.pythonhosted.org/" \
+      || warn "files.pythonhosted.org (package downloads) not reachable — the usual Iran blocker; pypi.org alone is NOT enough."
+    say "Probing Python package mirrors from this server..."
+    for m in \
+      https://package-mirror.liara.ir/repository/pypi/simple \
+      https://mirror.abrha.net/repository/pypi/simple \
+      https://mirror-pypi.runflare.com/simple \
+      https://mirror.kargadan.ir/repository/pypi-group/simple \
+      https://mirrors.arvancloud.ir/pypi/simple \
+      https://pypi.tuna.tsinghua.edu.cn/simple \
+      https://mirrors.aliyun.com/pypi/simple; do
+      # -L follows redirects; trailing slash matters for some mirrors; 200 strictly required
+      if [ "$(timeout 12 curl -fsSL -o /dev/null -w '%{http_code}' --max-time 8 "${m%/}/" 2>/dev/null)" = "200" ]; then
+        DETECTED_PIP_MIRROR="$m"; ok "Live pip mirror: $m (will be written to .env)"; break
+      fi
+    done
+    [ -n "$DETECTED_PIP_MIRROR" ] || warn "No live pip mirror found; the core build may fail — docs/SANCTIONS.md, layer 4"
+  fi
 fi
-if [ -z "${PARASTOO_NPM_REGISTRY:-}" ] && ! npm_ok; then
-  say "Official npm is not reachable; probing npm mirrors from this server..."
-  for m in https://registry.npmjs.ir https://registry.npmmirror.com; do
-    if [ "$(timeout 12 curl -fsSL -o /dev/null -w '%{http_code}' --max-time 8 "$m/-/ping" 2>/dev/null)" = "200" ]; then
-      DETECTED_NPM_MIRROR="$m"; ok "Live npm mirror: $m (will be written to .env)"; break
-    fi
-  done
-  [ -n "$DETECTED_NPM_MIRROR" ] || warn "No live npm mirror found; node builds may fail."
-elif [ -z "${PARASTOO_NPM_REGISTRY:-}" ]; then
-  ok "Official npm is reachable (no mirror needed)."
+if [ -z "${PARASTOO_NPM_REGISTRY:-}" ]; then
+  if npm_ok; then
+    ok "Official npm is reachable. No mirror needed."
+  else
+    warn "registry.npmjs.org not reachable from this server."
+    say "Probing npm mirrors from this server..."
+    for m in https://registry.npmjs.ir https://registry.npmmirror.com; do
+      if [ "$(timeout 12 curl -fsSL -o /dev/null -w '%{http_code}' --max-time 8 "$m/-/ping" 2>/dev/null)" = "200" ]; then
+        DETECTED_NPM_MIRROR="$m"; ok "Live npm mirror: $m (will be written to .env)"; break
+      fi
+    done
+    [ -n "$DETECTED_NPM_MIRROR" ] || warn "No live npm mirror found; node builds may fail."
+  fi
 fi
 
 # ---------- 2) base domain — zero questions ----------
@@ -224,9 +267,16 @@ gen() { openssl rand -hex 24; }
 # one-time setup token: printed only here; the web wizard consumes it
 SETUP_TOKEN="$(openssl rand -hex 6 | sed -E 's/(.{4})(.{4})(.{4})/\1-\2-\3/')"
 
+# explicit env beats the previous .env for the two mirror vars —
+# captured BEFORE .env is sourced (sourcing would overwrite them)
+_EXPLICIT_PIP="${PARASTOO_PIP_INDEX_URL:-}"
+_EXPLICIT_NPM="${PARASTOO_NPM_REGISTRY:-}"
+
 if [ -f .env ]; then
   warn ".env already exists; keeping previous secrets."
   set -a; . ./.env; set +a
+  if [ -n "$_EXPLICIT_PIP" ]; then PARASTOO_PIP_INDEX_URL="$_EXPLICIT_PIP"; fi
+  if [ -n "$_EXPLICIT_NPM" ]; then PARASTOO_NPM_REGISTRY="$_EXPLICIT_NPM"; fi
 fi
 
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(gen)}"
@@ -241,7 +291,20 @@ PARASTOO_DEBT_LIMIT="${PARASTOO_DEBT_LIMIT:-0}"
 PARASTOO_COMMISSION="${PARASTOO_COMMISSION:-10}"
 PARASTOO_SETUP_TOKEN="${PARASTOO_SETUP_TOKEN:-$SETUP_TOKEN}"
 PARASTOO_PUBLIC_IP="${PARASTOO_PUBLIC_IP:-$PUBLIC_IP}"
-# sanctions: pip/npm mirrors — priority: explicit env <- existing .env <- auto-detect <- empty
+# sanctions: pip/npm mirrors — priority: explicit env <- existing .env (rechecked;
+# replaced by the fresh detection if it stopped answering) <- auto-detect <- empty
+if [ -z "$_EXPLICIT_PIP" ] && [ -n "$DETECTED_PIP_MIRROR" ] && [ -n "${PARASTOO_PIP_INDEX_URL:-}" ] \
+   && [ "$PARASTOO_PIP_INDEX_URL" != "$DETECTED_PIP_MIRROR" ] \
+   && [ "$(timeout 12 curl -fsSL -o /dev/null -w '%{http_code}' --max-time 8 "${PARASTOO_PIP_INDEX_URL%/}/" 2>/dev/null)" != "200" ]; then
+  warn "pip mirror from the old .env is not answering; switching to the live one found now."
+  PARASTOO_PIP_INDEX_URL="$DETECTED_PIP_MIRROR"
+fi
+if [ -z "$_EXPLICIT_NPM" ] && [ -n "$DETECTED_NPM_MIRROR" ] && [ -n "${PARASTOO_NPM_REGISTRY:-}" ] \
+   && [ "$PARASTOO_NPM_REGISTRY" != "$DETECTED_NPM_MIRROR" ] \
+   && [ "$(timeout 12 curl -fsSL -o /dev/null -w '%{http_code}' --max-time 8 "$PARASTOO_NPM_REGISTRY/-/ping" 2>/dev/null)" != "200" ]; then
+  warn "npm registry from the old .env is not answering; switching to the live one found now."
+  PARASTOO_NPM_REGISTRY="$DETECTED_NPM_MIRROR"
+fi
 PARASTOO_PIP_INDEX_URL="${PARASTOO_PIP_INDEX_URL:-${DETECTED_PIP_MIRROR:-}}"
 PARASTOO_NPM_REGISTRY="${PARASTOO_NPM_REGISTRY:-${DETECTED_NPM_MIRROR:-}}"
 [ -n "$PARASTOO_PIP_INDEX_URL" ] && ok "pip mirror active: $PARASTOO_PIP_INDEX_URL"
@@ -310,6 +373,8 @@ if ! docker compose up -d --build; then
   die "Stack failed to start. If the error is about image pulls:
   1) build the offline bundle: bash scripts/fetch-images.sh (on an unsanctioned machine) -> put the offline-images/ folder here -> run install.sh again
   2) or set a healthy mirror: PARASTOO_REGISTRY_MIRRORS=\"https://docker.arvancloud.ir\" sudo -E bash install.sh
+  3) if the error mentions pypi.org / files.pythonhosted.org: set a pip mirror and re-run:
+     PARASTOO_PIP_INDEX_URL=\"https://package-mirror.liara.ir/repository/pypi/simple\" sudo -E bash install.sh
   Full guide: docs/SANCTIONS.md"
 fi
 
