@@ -6,7 +6,9 @@
 #
 #  این اسکریپت بسته را از گیت‌هاب می‌گیرد (به ترتیب تلاش:
 #    ۱) ریلیز zip   ۲) تاربال مخزن (codeload)   ۳) git clone
-#  ) و اجرای setup.sh را به آن می‌سپارد (کپی در /opt/parastoo + install.sh).
+#  )، خودش بسته را باز می‌کند و پوشهٔ بازشده را به setup.sh می‌دهد —
+#  setup.sh آن را در /opt/parastoo نصب و install.sh را اجرا می‌کند
+#  (در حالت curl | bash هیچ فایلی روی دیسک نیست؛ همه‌چیز از همین اسکریپت رد می‌شود).
 #
 #  متغیرهای اختیاری (قبل از دستور بگذارید):
 #    PARASTOO_REF=v0.2.1        شاخه یا تگ (پیش‌فرض main) — نسخهٔ پایدار را بدهید
@@ -81,7 +83,7 @@ got_clone() {
   command -v git >/dev/null 2>&1 || {
     apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git >/dev/null 2>&1 || return 1
   }
-  git clone --depth 1 --branch "$REF" "${PROXY}https://github.com/${ORG}/${REPO}.git" "$WORK/src" 2>/dev/null
+  git clone --depth 1 --branch "$REF" "${PROXY}https://github.com/${ORG}/${REPO}.git" "$WORK/repo" 2>/dev/null
 }
 
 MODE=""
@@ -99,9 +101,28 @@ else
   ۳) بستهٔ zip را از صفحهٔ ریلیزها بگیرید و کنار سرور بگذارید:  sudo bash setup.sh parastoo-v0.2.1.zip"
 fi
 
-# ---------- ۵) تحویل به setup.sh ----------
-case "$MODE" in
-  zip) exec bash setup.sh "$WORK/pkg.zip" ;;
-  tar) exec bash setup.sh "$WORK/pkg.tar.gz" ;;
-  git) cd "$WORK/src" && exec bash setup.sh ;;
-esac
+# ---------- ۵) باز کردن بسته و تحویل «پوشه» به setup.sh ----------
+# نکتهٔ مهم: در حالت curl | bash هیچ setup.shی در پوشهٔ کاری نیست؛
+# بسته را همین‌جا باز می‌کنیم و مسیر پوشهٔ بازشده را به setup.sh داخل
+# همان پوشه می‌دهیم (setup.sh آن را در /opt/parastoo نصب می‌کند).
+if [ "$MODE" = "git" ]; then
+  SRC_DIR="$WORK/repo"
+else
+  say "باز کردن بسته..."
+  EXTRACT_DIR="$WORK/src"
+  mkdir -p "$EXTRACT_DIR"
+  case "$MODE" in
+    zip) if command -v unzip >/dev/null 2>&1; then unzip -q "$WORK/pkg.zip" -d "$EXTRACT_DIR"
+         else python3 -m zipfile -e "$WORK/pkg.zip" "$EXTRACT_DIR"; fi ;;
+    tar) tar -xzf "$WORK/pkg.tar.gz" -C "$EXTRACT_DIR" ;;
+  esac
+  if [ -f "$EXTRACT_DIR/install.sh" ]; then
+    SRC_DIR="$EXTRACT_DIR"
+  else
+    SRC_DIR="$(find "$EXTRACT_DIR" -maxdepth 2 -name install.sh -printf '%h\n' 2>/dev/null | head -n1 || true)"
+  fi
+fi
+[ -n "${SRC_DIR:-}" ] && [ -f "$SRC_DIR/setup.sh" ] && [ -f "$SRC_DIR/install.sh" ] \
+  || die "بستهٔ معتبر نیست (setup.sh/install.sh پیدا نشد)."
+ok "بستهٔ سالم؛ نصب‌کننده از ${SRC_DIR} اجرا می‌شود..."
+exec bash "$SRC_DIR/setup.sh" "$SRC_DIR"

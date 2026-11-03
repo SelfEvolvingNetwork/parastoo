@@ -13,6 +13,9 @@
 #    ۳) دانلود مستقیم از لینک (zip یا tar.gz):
 #         sudo bash setup.sh https://example.com/parastoo-v0.2.1.zip
 #
+#    ۳ب) پوشهٔ پکیج از قبل بازشده (bootstrap.sh هم همین‌طور صدا می‌زند):
+#         sudo bash setup.sh /مسیر/پوشهٔ/پرستو
+#
 #    ★ راه پیشنهادی — بوت‌استرپ خودکار از گیت‌هاب (bootstrap.sh):
 #         curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash
 #
@@ -68,10 +71,12 @@ ZIP_PATH=""
 if [ -n "$SRC" ]; then
   if is_url "$SRC"; then
     MODE="url"
+  elif [ -d "$SRC" ] && [ -f "$SRC/install.sh" ]; then
+    SRC_DIR="$(readlink -f "$SRC")"; MODE="dir"      # پوشهٔ پکیج بازشده
   elif [ -f "$SRC" ]; then
     ZIP_PATH="$(readlink -f "$SRC")"; MODE="zip"
   else
-    die "فایل پیدا نشد: $SRC"
+    die "فایل یا پوشه پیدا نشد: $SRC"
   fi
 elif [ -n "$DIRECT_DIR" ]; then
   MODE="direct"
@@ -93,65 +98,74 @@ if [ "${MODE:-}" = "none" ]; then
 استفاده:
   sudo bash setup.sh <نام فایل zip>
   sudo bash setup.sh https://example.com/parastoo-v0.2.1.zip
+  sudo bash setup.sh /مسیر/پوشهٔ/پکیج/بازشده
 یا این اسکریپت را کنار فایل zip بگذارید و فقط:  sudo bash setup.sh"
 fi
 
 # ---------- ۳) وابستگی‌ها: curl / unzip (با فال‌بک python3) ----------
-say "بررسی وابستگی‌ها..."
-if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
-  apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null
+if [ "${MODE:-}" != "dir" ]; then
+  say "بررسی وابستگی‌ها..."
+  if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null
+  fi
+  if ! command -v unzip >/dev/null 2>&1; then
+    apt-get install -y -qq unzip >/dev/null 2>&1 || true
+  fi
+  EXTRACTOR="unzip"
+  command -v unzip >/dev/null 2>&1 || EXTRACTOR="python3"   # اوبونتو همیشه python3 دارد
 fi
-if ! command -v unzip >/dev/null 2>&1; then
-  apt-get install -y -qq unzip >/dev/null 2>&1 || true
-fi
-EXTRACTOR="unzip"
-command -v unzip >/dev/null 2>&1 || EXTRACTOR="python3"   # اوبونتو همیشه python3 دارد
 
 WORK="$(mktemp -d /tmp/parastoo-setup.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 
-# ---------- ۴) دریافت بسته ----------
-# پسوند حفظ می‌شود تا تاربال گیت‌هاب هم پشتیبانی شود (pkg.zip یا pkg.tar.gz)
-case "${MODE}:${SRC:-}" in
-  url:*.tar.gz|url:*.tgz) PKG="$WORK/pkg.tar.gz" ;;
-  url:*)                  PKG="$WORK/pkg.zip" ;;
-  *)                      PKG="$WORK/pkg.tar.gz"; case "$ZIP_PATH" in *.tar.gz|*.tgz) ;; *) PKG="$WORK/pkg.zip" ;; esac ;;
-esac
-
-if [ "$MODE" = "url" ]; then
-  say "دانلود بسته از: $SRC"
-  if command -v curl >/dev/null 2>&1; then
-    curl -fL --retry 2 --max-time 900 -o "$PKG" "$SRC" \
-      || die "دانلود ناموفق بود. لینک را چک کنید یا فایل را دستی روی سرور بگذارید."
-  else
-    wget -q -O "$PKG" "$SRC" || die "دانلود ناموفق بود."
-  fi
-  ZIP_PATH="$PKG"
+# ---------- ۴) دریافت بسته (حالت پوشه رد می‌شود) ----------
+if [ "${MODE:-}" = "dir" ]; then
+  WORK_SRC="$SRC_DIR"
+  ok "پوشهٔ پکیج: $WORK_SRC"
 else
-  say "بسته: $ZIP_PATH"
-  cp -f "$ZIP_PATH" "$PKG"
-fi
+  # پسوند حفظ می‌شود تا تاربال گیت‌هاب هم پشتیبانی شود (pkg.zip یا pkg.tar.gz)
+  case "${MODE}:${SRC:-}" in
+    url:*.tar.gz|url:*.tgz) PKG="$WORK/pkg.tar.gz" ;;
+    url:*)                  PKG="$WORK/pkg.zip" ;;
+    *)                      PKG="$WORK/pkg.tar.gz"; case "$ZIP_PATH" in *.tar.gz|*.tgz) ;; *) PKG="$WORK/pkg.zip" ;; esac ;;
+  esac
 
-# ---------- ۵) استخراج و نرمال‌سازی ساختار ----------
-say "استخراج بسته..."
-case "$ZIP_PATH" in
-  *.tar.gz|*.tgz)
-    tar -xzf "$ZIP_PATH" -C "$WORK/src"        # تاربال گیت‌هاب (codeload)
-    ;;
-  *)
-    if [ "$EXTRACTOR" = "unzip" ]; then
-      unzip -q "$WORK/pkg.zip" -d "$WORK/src"
+  if [ "$MODE" = "url" ]; then
+    say "دانلود بسته از: $SRC"
+    if command -v curl >/dev/null 2>&1; then
+      curl -fL --retry 2 --max-time 900 -o "$PKG" "$SRC" \
+        || die "دانلود ناموفق بود. لینک را چک کنید یا فایل را دستی روی سرور بگذارید."
     else
-      python3 -m zipfile -e "$WORK/pkg.zip" "$WORK/src"
+      wget -q -O "$PKG" "$SRC" || die "دانلود ناموفق بود."
     fi
-    ;;
-esac
-# zip ممکن است ریشه parastoo/ داشته باشد یا مستقیم فایل‌ها را داشته باشد
-if [ ! -f "$WORK/src/docker-compose.yml" ]; then
-  inner="$(find "$WORK/src" -maxdepth 2 -name docker-compose.yml -printf '%h\n' 2>/dev/null | head -n1 || true)"
-  [ -n "$inner" ] && WORK_SRC="$inner" || die "بستهٔ معتبر نیست (docker-compose.yml پیدا نشد)."
-else
-  WORK_SRC="$WORK/src"
+    ZIP_PATH="$PKG"
+  else
+    say "بسته: $ZIP_PATH"
+    cp -f "$ZIP_PATH" "$PKG"
+  fi
+
+  # ---------- ۵) استخراج و نرمال‌سازی ساختار ----------
+  say "استخراج بسته..."
+  mkdir -p "$WORK/src"        # tar برای -C به پوشهٔ موجود نیاز دارد
+  case "$ZIP_PATH" in
+    *.tar.gz|*.tgz)
+      tar -xzf "$ZIP_PATH" -C "$WORK/src"        # تاربال گیت‌هاب (codeload)
+      ;;
+    *)
+      if [ "$EXTRACTOR" = "unzip" ]; then
+        unzip -q "$ZIP_PATH" -d "$WORK/src"
+      else
+        python3 -m zipfile -e "$ZIP_PATH" "$WORK/src"
+      fi
+      ;;
+  esac
+  # بسته ممکن است ریشه parastoo/ داشته باشد یا مستقیم فایل‌ها را داشته باشد
+  if [ ! -f "$WORK/src/docker-compose.yml" ]; then
+    inner="$(find "$WORK/src" -maxdepth 2 -name docker-compose.yml -printf '%h\n' 2>/dev/null | head -n1 || true)"
+    [ -n "$inner" ] && WORK_SRC="$inner" || die "بستهٔ معتبر نیست (docker-compose.yml پیدا نشد)."
+  else
+    WORK_SRC="$WORK/src"
+  fi
 fi
 [ -f "$WORK_SRC/install.sh" ] || die "بستهٔ معتبر نیست (install.sh پیدا نشد)."
 ok "بستهٔ سالم: $(grep -m1 -o 'v0\.[0-9.]*' "$WORK_SRC/README.md" 2>/dev/null || echo 'پرستو')"
