@@ -183,5 +183,23 @@ check("پورت مارکت‌پلیس از استک/سایت فروشنده (ن�
       "default_port(project.stack)" in mk_src and "internal_port=3000" not in mk_src)
 
 print()
+print("— مقاوم‌سازی نصب‌کننده (v0.2.6) —")
+inst = (ROOT / "install.sh").read_text()
+check("تلهٔ وقفهٔ نصب (INT/TERM/HUP) تعریف شده",
+      "trap on_interrupt INT TERM HUP" in inst)
+check("راهنمای تکمیل دستی بعد از وقفه (compose up)",
+      "interrupted before it finished" in inst and "docker compose up -d --build" in inst)
+check("پیام صریح پیش از پروب بی‌صدای PyPI/npm",
+      "silent and can take up to a minute" in inst)
+bs = (ROOT / "bootstrap.sh").read_text()
+_ver = ""
+for _line in (ROOT / "core/app/config.py").read_text().splitlines():
+    if _line.strip().startswith("VERSION:"):
+        _ver = _line.split('"')[1]
+        break
+check("نام zip پیش‌فرض بوت‌استرپ هم‌نسخهٔ جاری است",
+      _ver != "" and f"parastoo-v{_ver}.zip" in bs)
+
+print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

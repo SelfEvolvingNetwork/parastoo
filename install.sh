@@ -29,6 +29,19 @@ cd "$INSTALL_DIR"
 [ "$(id -u)" -eq 0 ] || die "This script must run with sudo."
 [ -f docker-compose.yml ] || die "install.sh must run from the Parastoo package root."
 
+# ---------- 0) if interrupted (Ctrl+C / SSH drop), say exactly how to finish ----------
+# Real-world failure this fixes: the only silent phase of the installer is the
+# PyPI/npm reachability probe (up to ~1 min, no output). Quitting there means
+# `docker compose up` never ran -> images are cached but zero containers exist.
+on_interrupt() {
+  echo "" >&2
+  warn "Installation was interrupted before it finished."
+  echo -e "   Finish the stack manually:  ${BLUE}cd $INSTALL_DIR && sudo docker compose up -d --build${NC}" >&2
+  echo    "   (re-running the same install command is also safe — nothing is lost)" >&2
+  exit 130
+}
+trap on_interrupt INT TERM HUP
+
 # ---------- 1) prerequisites ----------
 say "Checking prerequisites..."
 if ! command -v curl >/dev/null 2>&1; then
@@ -183,6 +196,7 @@ pypi_ok()  { reachable "https://pypi.org/simple/"; }
 files_ok() { reachable "https://files.pythonhosted.org/"; }
 npm_ok()   { reachable "https://registry.npmjs.org/-/ping"; }
 
+say "Checking PyPI/npm reachability (this step is silent and can take up to a minute — please wait)..."
 DETECTED_PIP_MIRROR=""; DETECTED_NPM_MIRROR=""
 if [ -z "${PARASTOO_PIP_INDEX_URL:-}" ]; then
   if pypi_ok && files_ok; then
