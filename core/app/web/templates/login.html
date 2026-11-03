@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}ورود{% endblock %}
+{% block content %}
+<div class="auth-card card">
+  <h1>ورود به پرستو</h1>
+  <form method="post" action="/login">
+    <label>ایمیل
+      <input type="email" name="email" required placeholder="you@example.com">
+    </label>
+    <label>رمز عبور
+      <input type="password" name="password" required>
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">ورود</button>
+  </form>
+  <p class="muted">حساب ندارید؟ <a href="/register">ثبت‌نام کنید</a></p>
+</div>
+{% endblock %}

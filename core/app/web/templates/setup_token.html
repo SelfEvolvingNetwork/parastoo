@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}توکن نصب{% endblock %}
+{% block content %}
+<div class="auth-card card">
+  <h1>گام ۱ از ۳ — توکن نصب</h1>
+  <p class="muted">برای شروع راه‌اندازی، توکن یک‌بارمصرف نصب را وارد کنید. این توکن فقط در خروجی دستور نصب (ترمینال سرور) چاپ شده است و به همین دلیل فقط کسی که روی سرور دسترسی دارد می‌تواند ادامه دهد.</p>
+  <form method="post" action="/setup/token">
+    <label>توکن نصب
+      <input name="token" dir="ltr" required placeholder="xxxx-xxxx-xxxx" autofocus>
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">تأیید و ادامه</button>
+  </form>
+  <p class="muted small">توکن را پیدا نمی‌کنید؟ در سرور دستور <span class="mono">sudo grep SETUP .env</span> را در پوشه پرستو بزنید.</p>
+</div>
+{% endblock %}

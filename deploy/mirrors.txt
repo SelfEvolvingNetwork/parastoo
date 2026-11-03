@@ -1,0 +1,14 @@
+# آینه‌های Docker Hub — لیست کاندیدها (منبع واحد حقیقت)
+# install.sh این‌ها را روی خود سرور تست می‌کند (scripts/check-mirrors.sh) و
+# فقط زنده‌ها را به ترتیب سرعت در /etc/docker/daemon.json می‌نویسد.
+# اگر آینهٔ خودتان دارید، همین‌جا اضافه کنید (هر خط یک آدرس) یا با env:
+#   PARASTOO_REGISTRY_MIRRORS="https://..." sudo -E bash install.sh
+# وضعیت تست در آبان ۱۴۰۵ (از خارج ایران؛ 401 در /v2/ = سالم):
+#   ✔ docker.arvancloud.ir  ✔ docker.novin.cloud  ✔ registry.docker.ir
+#   ✔ docker.m.daocloud.io (خارج، سریع)  ✔ docker.1ms.run (خارج)
+#   ✘ mirror-docker.runflare.com  ✘ docker.iranserver.com (در دسترس نبودند)
+https://docker.arvancloud.ir
+https://docker.novin.cloud
+https://registry.docker.ir
+https://docker.m.daocloud.io
+https://docker.1ms.run

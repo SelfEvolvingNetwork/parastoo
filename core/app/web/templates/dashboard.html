@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}داشبورد{% endblock %}
+{% block content %}
+<h1>داشبورد</h1>
+
+<div class="grid grid-4">
+  <div class="stat">
+    <div class="stat-num">{{ projects|length }}</div>
+    <div class="stat-label">پروژه</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num">{{ sites|selectattr("status","equalto","running")|list|length }}</div>
+    <div class="stat-label">سایت در حال اجرا</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num">{{ money(user.balance) }}</div>
+    <div class="stat-label">موجودی ({{ settings.CURRENCY }})</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num">{{ builds|length }}</div>
+    <div class="stat-label">بیلدهای اخیر</div>
+  </div>
+</div>
+
+<div class="two-col">
+  <section class="card">
+    <div class="card-head">
+      <h2>پروژه‌های من</h2>
+      <a href="/projects/new" class="btn btn-primary btn-sm">+ پروژه جدید</a>
+    </div>
+    {% if projects %}
+    <table>
+      <thead><tr><th>نام</th><th>فناوری</th><th>وضعیت مخزن</th><th>مارکت</th></tr></thead>
+      <tbody>
+      {% for p in projects %}
+        <tr>
+          <td><a href="/projects/{{ p.slug }}"><b>{{ p.name }}</b></a><div class="muted small">{{ p.slug }}</div></td>
+          <td>{{ stack_label(p.stack) }}</td>
+          <td><span class="badge badge-{{ 'ok' if p.repo_status == 'ready' else ('err' if p.repo_status == 'error' else 'wait') }}">{{ {'ready':'آماده','pending':'در حال ساخت','error':'خطا'}[p.repo_status] }}</span></td>
+          <td>{% if p.is_public %}<span class="badge badge-info">در مارکت — {{ money(p.price) }} {{ settings.CURRENCY }}</span>{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">هنوز پروژه‌ای ندارید. اولین پروژه خود را بسازید.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>سایت‌های من</h2><a href="/sites" class="btn btn-ghost btn-sm">همه</a></div>
+    {% if sites %}
+    <table>
+      <thead><tr><th>شناسه</th><th>آدرس</th><th>وضعیت</th></tr></thead>
+      <tbody>
+      {% for s in sites %}
+        <tr>
+          <td><b>{{ s.slug }}</b></td>
+          <td><a href="http{{ 's' if domains.tls() else '' }}://{{ s.subdomain }}" target="_blank" rel="noopener">{{ s.subdomain }}</a></td>
+          <td><span class="badge badge-{{ {'running':'ok','stopped':'wait','paused':'warn','error':'err'}[s.status] }}">{{ {'running':'روشن','stopped':'خاموش','paused':'متوقف (بدهی)','error':'خطا'}[s.status] }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">سایتی منتشر نکرده‌اید.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>بیلدهای اخیر</h2></div>
+  {% if builds %}
+  <table>
+    <thead><tr><th>#</th><th>پروژه</th><th>کامیت</th><th>وضعیت</th><th>زمان</th></tr></thead>
+    <tbody>
+    {% for b in builds %}
+      <tr>
+        <td>{{ b.id }}</td>
+        <td><a href="/projects/{{ b.project.slug }}">{{ b.project.name }}</a></td>
+        <td class="mono">{{ b.commit_sha[:7] or '—' }}</td>
+        <td><span class="badge badge-{{ {'success':'ok','failed':'err','running':'info','queued':'wait'}[b.status] }}">{{ {'success':'موفق','failed':'ناموفق','running':'در حال بیلد','queued':'در صف'}[b.status] }}</span></td>
+        <td>{{ dt(b.created_at) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">بیلدی ثبت نشده. بعد از اولین push شما اینجا نمایش داده می‌شود.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# parastoo — ابزار خط فرمان مدیریت پرستو
+set -euo pipefail
+
+DIR_FILE="/etc/parastoo-install-path"
+if [ -f "$DIR_FILE" ]; then
+  APP_DIR="$(cat "$DIR_FILE")"
+else
+  APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
+
+usage() {
+  cat <<'EOF'
+پرستو — دستورهای مدیریتی:
+
+  parastoo status     وضعیت سرویس‌ها
+  parastoo logs [سرویس]   نمایش لاگ (core | gitea | traefik | postgres)
+  parastoo restart    ری‌استارت کامل استک
+  parastoo update     به‌روزرسانی پرستو (بازسازی هسته)
+  parastoo backup     پشتیبان‌گیری دیتابیس و مخزن‌ها در پوشه backups
+  parastoo version    نسخه پرستو
+  parastoo help       راهنما
+EOF
+}
+
+cd "$APP_DIR"
+
+case "${1:-help}" in
+  status)
+    docker compose ps
+    echo ""
+    docker compose exec -T core curl -fsS http://localhost:8000/healthz 2>/dev/null && echo "" || echo "هسته پرستو پاسخ نمی‌دهد"
+    ;;
+  logs)
+    docker compose logs -f --tail 100 "${2:-core}"
+    ;;
+  restart)
+    docker compose restart
+    ;;
+  update)
+    echo "بازسازی و به‌روزرسانی هسته پرستو..."
+    docker compose build core
+    docker compose up -d
+    echo "انجام شد."
+    ;;
+  backup)
+    TS="$(date +%Y%m%d-%H%M%S)"
+    mkdir -p backups
+    echo "پشتیبان دیتابیس..."
+    docker compose exec -T postgres pg_dump -U parastoo parastoo | gzip > "backups/db-${TS}.sql.gz"
+    echo "پشتیبان مخزن‌های گیت..."
+    # alpine:3.20 پین‌شده است تا در سرورهای تحریمی pull از latest (Docker Hub) لازم نشود — deploy/images.txt
+    docker run --rm -v parastoo_gitea_data:/data -v "$APP_DIR/backups":/backup alpine:3.20 \
+      tar czf "/backup/gitea-${TS}.tar.gz" /data
+    echo "پشتیبان کامل شد: backups/db-${TS}.sql.gz و backups/gitea-${TS}.tar.gz"
+    ;;
+  version)
+    docker compose exec -T core curl -fsS http://localhost:8000/healthz 2>/dev/null || echo "پرستو در حال اجرا نیست"
+    ;;
+  help|--help|-h|*)
+    usage
+    ;;
+esac

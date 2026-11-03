@@ -1,0 +1,14 @@
+# فایل‌های زمان اجرا (تولیدشده توسط install.sh)
+.env
+config/
+backups/
+offline-images/
+*.db
+
+# پایتون
+__pycache__/
+*.pyc
+
+# بسته‌بندی و لاگ
+*.zip
+*.log

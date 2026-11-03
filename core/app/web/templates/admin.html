@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}مدیریت{% endblock %}
+{% block content %}
+<h1>پنل مدیریت پرستو</h1>
+
+<div class="grid grid-4">
+  <div class="stat"><div class="stat-num">{{ stats.users }}</div><div class="stat-label">کاربر</div></div>
+  <div class="stat"><div class="stat-num">{{ stats.projects }}</div><div class="stat-label">پروژه</div></div>
+  <div class="stat"><div class="stat-num">{{ stats.sites_running }}/{{ stats.sites_total }}</div><div class="stat-label">سایت روشن / کل</div></div>
+  <div class="stat"><div class="stat-num">{{ stats.builds_total }} <span class="small muted">({{ stats.builds_failed }} ناموفق)</span></div><div class="stat-label">بیلد</div></div>
+</div>
+
+<section class="card">
+  <h2>وضعیت سیستم</h2>
+  <table class="w50">
+    <tr><td>داکر</td><td><span class="badge badge-{{ 'ok' if system.docker else 'err' }}">{{ 'متصل' if system.docker else 'قطع' }}</span></td></tr>
+    <tr><td>گیت داخلی (Gitea)</td><td><span class="badge badge-{{ 'ok' if system.gitea else 'err' }}">{{ 'متصل' if system.gitea else 'قطع' }}</span></td></tr>
+    <tr><td>دامنه پنل</td><td class="mono small">{{ domains.panel() }}</td></tr>
+    <tr><td>دامنه گیت</td><td class="mono small">{{ domains.git() }}</td></tr>
+    <tr><td>دامنه سایت‌ها</td><td class="mono small">*.{{ domains.apps() }}</td></tr>
+    <tr><td>HTTPS</td><td>{{ 'فعال (Let&apos;s Encrypt)' if domains.tls() else 'غیرفعال (HTTP)' }} — <a href="/setup/domain">تنظیم دامنه</a></td></tr>
+  </table>
+</section>
+
+<section class="card">
+  <h2>کاربران</h2>
+  <table>
+    <thead><tr><th>#</th><th>ایمیل</th><th>گیت</th><th>موجودی</th><th>وضعیت</th><th>شارژ کیف پول</th><th></th></tr></thead>
+    <tbody>
+    {% for u in users %}
+      <tr>
+        <td>{{ u.id }}</td>
+        <td><b>{{ u.email }}</b><div class="muted small">{{ u.name }}{% if u.is_admin %} — مدیر{% endif %}</div></td>
+        <td class="mono small">{{ u.gitea_username or '—' }}</td>
+        <td>{{ money(u.balance) }}</td>
+        <td><span class="badge badge-{{ 'ok' if u.is_active else 'err' }}">{{ 'فعال' if u.is_active else 'غیرفعال' }}</span></td>
+        <td>
+          <form method="post" action="/admin/users/{{ u.id }}/credit" class="row gap-sm">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <input type="number" name="amount" placeholder="مبلغ" class="w100" required>
+            <input type="text" name="note" placeholder="توضیح" class="w150">
+            <button class="btn btn-ghost btn-sm">ثبت</button>
+          </form>
+        </td>
+        <td>
+          {% if u.id != user.id %}
+          <form method="post" action="/admin/users/{{ u.id }}/toggle">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="btn btn-ghost btn-sm">{{ 'غیرفعال' if u.is_active else 'فعال' }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2>همه سایت‌ها</h2>
+  {% if sites %}
+  <table>
+    <thead><tr><th>شناسه</th><th>مالک</th><th>پلن</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+    <tbody>
+    {% for s in sites %}
+      <tr>
+        <td><b>{{ s.slug }}</b><div class="muted small">{{ s.subdomain }}</div></td>
+        <td>{{ s.owner.email }}</td>
+        <td>{{ tier_label(s.tier) }}</td>
+        <td><span class="badge badge-{{ {'running':'ok','stopped':'wait','paused':'warn','error':'err'}[s.status] }}">{{ {'running':'روشن','stopped':'خاموش','paused':'متوقف','error':'خطا'}[s.status] }}</span></td>
+        <td class="actions">
+          <form method="post" action="/admin/sites/{{ s.id }}/action"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="{{ 'stop' if s.status == 'running' else 'start' }}"><button class="btn btn-ghost btn-sm">{{ 'خاموش' if s.status == 'running' else 'روشن' }}</button></form>
+          <form method="post" action="/admin/sites/{{ s.id }}/action" onsubmit="return confirm('حذف شود؟')"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="delete"><button class="btn btn-danger btn-sm">حذف</button></form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">سایتی وجود ندارد.</p>
+  {% endif %}
+</section>
+{% endblock %}

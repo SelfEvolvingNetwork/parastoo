@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}کیف پول{% endblock %}
+{% block content %}
+<h1>کیف پول</h1>
+
+<div class="grid grid-3">
+  <div class="stat">
+    <div class="stat-num">{{ money(user.balance) }}</div>
+    <div class="stat-label">موجودی ({{ settings.CURRENCY }})</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num">{{ money(hourly) }}</div>
+    <div class="stat-label">هزینه ساعتی سایت‌های روشن</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num">{{ money(hourly * 24 * 30) }}</div>
+    <div class="stat-label">برآورد ماهانه</div>
+  </div>
+</div>
+
+<section class="card">
+  <h2>شارژ کیف پول</h2>
+  <p class="muted">در نسخه فعلی، شارژ به‌صورت دستی توسط مدیر سیستم انجام می‌شود. برای شارژ با مدیر پرستو تماس بگیرید یا ایمیل بزنید. (درگاه پرداخت در نسخه بعد اضافه می‌شود.)</p>
+</section>
+
+<section class="card">
+  <h2>تراکنش‌های اخیر</h2>
+  {% if txs %}
+  <table>
+    <thead><tr><th>زمان</th><th>نوع</th><th>مبلغ ({{ settings.CURRENCY }})</th><th>توضیح</th></tr></thead>
+    <tbody>
+    {% for t in txs %}
+      <tr>
+        <td>{{ dt(t.created_at) }}</td>
+        <td>{{ {'deposit':'شارژ','charge':'هزینه منابع','purchase':'خرید ایمیج','sale':'فروش ایمیج','admin_credit':'اصلاح مدیر'}[t.kind] }}</td>
+        <td class="{{ 'pos' if t.amount > 0 else 'neg' }}">{{ '+' if t.amount > 0 else '' }}{{ money(t.amount) }}</td>
+        <td class="muted small">{{ t.note }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">تراکنشی ثبت نشده است.</p>
+  {% endif %}
+</section>
+{% endblock %}
