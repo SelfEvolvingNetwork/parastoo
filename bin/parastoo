@@ -18,6 +18,7 @@ Parastoo — management commands:
   parastoo restart    restart the whole stack
   parastoo update     update Parastoo (rebuild the core)
   parastoo backup     back up the database and git repos into backups/
+  parastoo doctor     full diagnostic report (secrets redacted) — share it when asking for help
   parastoo version    Parastoo version
   parastoo help       this help
 EOF
@@ -53,6 +54,9 @@ case "${1:-help}" in
     docker run --rm -v parastoo_gitea_data:/data -v "$APP_DIR/backups":/backup alpine:3.20 \
       tar czf "/backup/gitea-${TS}.tar.gz" /data
     echo "Backup complete: backups/db-${TS}.sql.gz and backups/gitea-${TS}.tar.gz"
+    ;;
+  doctor)
+    bash "$APP_DIR/scripts/doctor.sh"
     ;;
   version)
     docker compose exec -T core curl -fsS http://localhost:8000/healthz 2>/dev/null || echo "Parastoo is not running"

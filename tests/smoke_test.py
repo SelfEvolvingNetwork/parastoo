@@ -201,5 +201,21 @@ check("نام zip پیش‌فرض بوت‌استرپ هم‌نسخهٔ جاری
       _ver != "" and f"parastoo-v{_ver}.zip" in bs)
 
 print()
+print("— گزارش عیب‌یابی doctor (v0.2.7) —")
+doc = (ROOT / "scripts/doctor.sh").read_text()
+check("doctor.sh همهٔ رمزها را مخفی می‌کند (PASSWORD|SECRET|TOKEN)",
+      "PASSWORD|SECRET|TOKEN" in doc)
+check("doctor.sh وضعیت کانتینرها و سلامت هسته را جمع می‌کند",
+      "compose ps" in doc and "healthz" in doc)
+check("doctor.sh دسترس‌پذیری Docker Hub/PyPI/npm/GitHub را می‌آزماید",
+      doc.count("probe \"") >= 5)
+check("doctor.sh گزارش را در backups ذخیره می‌کند",
+      "doctor-report-" in doc)
+check("نصب‌کننده فازها را ثبت می‌کند (.install-state)",
+      ".install-state" in inst and 'mark "1) prerequisites"' in inst and 'mark "done"' in inst)
+check("مسیر doctor در die() و تلهٔ وقفه و CLI هست",
+      inst.count("scripts/doctor.sh") >= 2 and "doctor)" in (ROOT / "bin/parastoo").read_text())
+
+print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

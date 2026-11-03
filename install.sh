@@ -21,7 +21,7 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC
 say()   { echo -e "${BLUE}==>${NC} $*"; }
 ok()    { echo -e "${GREEN} [ok]${NC} $*"; }
 warn()  { echo -e "${YELLOW} [warn]${NC} $*"; }
-die()   { echo -e "${RED} error:${NC} $*" >&2; exit 1; }
+die()   { echo -e "${RED} error:${NC} $*" >&2; echo -e "        diagnostic report to share: ${BLUE}bash ${INSTALL_DIR:-/opt/parastoo}/scripts/doctor.sh${NC}" >&2; exit 1; }
 
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$INSTALL_DIR"
@@ -36,13 +36,21 @@ cd "$INSTALL_DIR"
 on_interrupt() {
   echo "" >&2
   warn "Installation was interrupted before it finished."
+  [ -f "$INSTALL_DIR/.install-state" ] \
+    && echo -e "   Last completed phase: ${BLUE}$(cat "$INSTALL_DIR/.install-state" 2>/dev/null)${NC}" >&2
   echo -e "   Finish the stack manually:  ${BLUE}cd $INSTALL_DIR && sudo docker compose up -d --build${NC}" >&2
   echo    "   (re-running the same install command is also safe — nothing is lost)" >&2
+  echo -e "   Diagnostic report to share: ${BLUE}bash $INSTALL_DIR/scripts/doctor.sh${NC}" >&2
   exit 130
 }
 trap on_interrupt INT TERM HUP
 
+# progress marker: the last phase written here is what `parastoo doctor`
+# reports — so an interrupted install can be diagnosed without access to the server
+mark() { echo "$(date '+%F %T')  $*" > "$INSTALL_DIR/.install-state" 2>/dev/null || true; }
+
 # ---------- 1) prerequisites ----------
+mark "1) prerequisites"
 say "Checking prerequisites..."
 if ! command -v curl >/dev/null 2>&1; then
   say "Installing curl..."
@@ -62,6 +70,7 @@ install_docker_from_ubuntu() {
 }
 
 if ! command -v docker >/dev/null 2>&1; then
+  mark "1a) installing docker"
   say "Docker not found; installing automatically..."
   # route 1: official script (best on non-sanctioned servers — also installs the compose plugin)
   if timeout 90 curl -fsSL --max-time 60 https://get.docker.com -o /tmp/get-docker.sh 2>/dev/null \
@@ -131,6 +140,7 @@ apply_mirrors() {
   return 1
 }
 
+mark "1c) registry mirrors"
 if [ -n "${PARASTOO_REGISTRY_MIRRORS:-}" ]; then
   say "Configuring mirrors from env (PARASTOO_REGISTRY_MIRRORS)..."
   apply_mirrors "$PARASTOO_REGISTRY_MIRRORS" \
@@ -196,6 +206,7 @@ pypi_ok()  { reachable "https://pypi.org/simple/"; }
 files_ok() { reachable "https://files.pythonhosted.org/"; }
 npm_ok()   { reachable "https://registry.npmjs.org/-/ping"; }
 
+mark "1d) PyPI/npm probes"
 say "Checking PyPI/npm reachability (this step is silent and can take up to a minute — please wait)..."
 DETECTED_PIP_MIRROR=""; DETECTED_NPM_MIRROR=""
 if [ -z "${PARASTOO_PIP_INDEX_URL:-}" ]; then
@@ -243,6 +254,7 @@ fi
 # nothing; the real domain and HTTPS are set later from the web panel
 # (domain wizard) using the one-time setup token.
 BASE_DOMAIN="${PARASTOO_BASE_DOMAIN:-}"
+mark "2) base domain"
 say "Detecting server public IP..."
 PUBLIC_IP="$(curl -fs4 --max-time 10 https://api.ipify.org 2>/dev/null \
           || curl -fs4 --max-time 10 https://ifconfig.me 2>/dev/null \
@@ -276,6 +288,7 @@ if [ "$TLS_ENABLED" = "true" ]; then TRAEFIK_ENTRYPOINTS="web,websecure"; TRAEFI
 GITEA_ROOT_URL_SCHEME="http"; [ "$TLS_ENABLED" = "true" ] && GITEA_ROOT_URL_SCHEME="https"
 
 # ---------- 3) secrets and .env ----------
+mark "3) secrets + .env"
 say "Generating secure secrets + setup token..."
 gen() { openssl rand -hex 24; }
 # one-time setup token: printed only here; the web wizard consumes it
@@ -360,6 +373,7 @@ chmod 600 .env
 ok "Configuration saved to .env."
 
 # ---------- 4) Traefik configuration ----------
+mark "4) traefik config"
 say "Building Traefik configuration..."
 mkdir -p config/dynamic backups
 
@@ -381,6 +395,7 @@ awk -v block="$REDIRECT_BLOCK" -v email="$ACME_EMAIL" '
 chmod +x postgres-init/*.sh
 
 # ---------- 5) bring up the stack ----------
+mark "5) docker compose up"
 say "Building and starting the full stack (first run may take a few minutes)..."
 if ! docker compose up -d --build; then
   echo ""
@@ -393,6 +408,7 @@ if ! docker compose up -d --build; then
 fi
 
 # ---------- 6) wait for core health ----------
+mark "6) health wait"
 say "Waiting for the stack to become healthy..."
 ATTEMPTS=60
 for i in $(seq 1 $ATTEMPTS); do
@@ -411,6 +427,7 @@ echo "$INSTALL_DIR" > /etc/parastoo-install-path
 ok "parastoo CLI installed (status/logs/update/backup)."
 
 SCHEME="http"; [ "$TLS_ENABLED" = "true" ] && SCHEME="https"
+mark "done"
 
 echo ""
 echo -e "${GREEN}============================================================${NC}"
