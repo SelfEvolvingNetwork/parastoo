@@ -9,13 +9,13 @@
 | نصب رسمی داکر | `get.docker.com` ، `download.docker.com` | **مسدود (403)** |
 | pull ایمیج از Docker Hub | `registry-1.docker.io` | **مسدود (timeout/403)** |
 | مخازن اوبونتو | `archive.ubuntu.com` و آینه‌های داخلی | باز — فقط کند |
-| PyPI (نصب پکیج پایتون) | `pypi.org` | باز — گاهی کند |
-| npm | `registry.npmjs.org` | باز — گاهی کند |
+| PyPI (نصب پکیج پایتون) | `pypi.org` ، `files.pythonhosted.org` | **روی بعضی ISPها DNS-بلاک** — لایهٔ ۴ خودکار |
+| npm | `registry.npmjs.org` | روی بعضی ISPها مسدود — لایهٔ ۴ خودکار |
 | Let's Encrypt (گواهی HTTPS) | `acme-v02.api.letsencrypt.org` | باز |
 | GitHub | `github.com` | باز (فقط کند/ناپایدار گاهی) |
 | `nip.io` (دامنهٔ موقت) | DNS | باز |
 
-نتیجهٔ عملی: چیزی که واقعاً می‌شکند **نصب داکر** و **پول ایمیج‌ها** است — نه کد پرستو، نه HTTPS، نه پایتون/نود.
+نتیجهٔ عملی: چه چیزی می‌شکند؟ **نصب داکر، پول ایمیج‌ها و pip بیلدها** — نه کد پرستو، نه HTTPS، نه پایتون/نود.
 
 ### گرفتن خود پرستو از گیت‌هاب (ایران)
 
@@ -32,7 +32,7 @@ curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/SelfEvolvingNe
 git clone https://github.com/SelfEvolvingNetwork/parastoo.git && cd parastoo && sudo bash setup.sh
 
 # مسیر ۴) کاملاً دستی: zip را از صفحهٔ ریلیزها در مرورگر بگیرید، به سرور ببرید:
-sudo bash setup.sh parastoo-v0.2.2.zip
+sudo bash setup.sh parastoo-v0.2.3.zip
 ```
 
 
@@ -115,16 +115,27 @@ sudo bash install.sh
 
 اسکریپت پوشهٔ `offline-images/` را خودش پیدا می‌کند، همهٔ ایمیج‌ها را با `docker load` بارگذاری می‌کند و دیگر **هیچ pull از اینترنت نمی‌زند**. بیلد هسته هم آفلاین انجام می‌شود چون ایمیج پایهٔ `python:3.12-slim` داخل بسته است.
 
-## ۵) بیلدهای کاربران — آینهٔ pip/npm
+## ۵) لایهٔ ۴ — آینهٔ PyPI/npm برای بیلدها (خودکار)
 
-سایت‌های کاربران هم موقع بیلد به پکیج‌منیجر نیاز دارند (PyPI و npm از ایران معمولاً بازند، ولی اگر کند بود یا خواستید ترافیک داخلی بماند)، در `.env`:
+بیلد هسته و بیلدهای کاربران به PyPI (و بیلدهای نود به npm) نیاز دارند؛ روی بعضی ISPهای ایران `pypi.org` و `files.pythonhosted.org` با خطای DNS مواجه می‌شوند. install.sh مثل آینه‌های داکر رفتار می‌کند:
 
-```env
-PARASTOO_PIP_INDEX_URL=https://pypi.org/simple     # یا آینهٔ داخلی
-PARASTOO_NPM_REGISTRY=https://registry.npmjs.org   # یا آینهٔ داخلی
+1. پروب `pypi.org/simple/` و `registry.npmjs.org/-/ping` **از داخل همین سرور**. اگر باز بودند، کاری نمی‌کند.
+2. اگر مسدود بودند، آینه‌های کاندید را به ترتیب تست می‌کند و اولین زنده را در `.env` می‌نویسد:
+   - pip: `mirrors.arvancloud.ir/pypi/simple` ← `pypi.tuna.tsinghua.edu.cn` ← `mirrors.aliyun.com/pypi/simple`
+   - npm: `registry.npmjs.ir` ← `registry.npmmirror.com`
+3. همان مقدار به build-arg هسته (`PIP_INDEX_URL`) هم می‌رسد — پس بیلد هسته همان لحظه از آینه نصب می‌کند.
+4. اولویت: env صریح ← مقدار موجود `.env` ← تشخیص خودکار ← خالی (پیش‌فرض رسمی).
+
+بررسی/تغییر دستی:
+
+```bash
+rg "PARASTOO_PIP_INDEX_URL|PARASTOO_NPM_REGISTRY" /opt/parastoo/.env
+# تغییر دستی:
+sudo sed -i 's|^PARASTOO_PIP_INDEX_URL=.*|PARASTOO_PIP_INDEX_URL=https://mirrors.arvancloud.ir/pypi/simple|' /opt/parastoo/.env
+parastoo update
 ```
 
-و بعد `parastoo update`. این مقادیر فقط روی **قالب‌های تولیدی پرستو** (پایتون/نود) اثر می‌گذارند؛ داکرفایل خودِ کاربر دست‌نخورده می‌ماند — اگر کسی در داکرفایلش از رجیستری دیگری (مثل `ghcr.io`) استفاده کند، آینهٔ Hub شاملش نمی‌شود و باید آن ایمیج را با `docker load` آفلاین بدهید.
+این مقادیر فقط روی **قالب‌های تولیدی پرستو** (پایتون/نود) اثر می‌گذارند؛ داکرفایل خودِ کاربر دست‌نخورده می‌ماند — اگر کسی در داکرفایلش از رجیستری دیگری (مثل `ghcr.io`) استفاده کند، آینهٔ Hub شاملش نمی‌شود و باید آن ایمیج را با `docker load` آفلاین بدهید.
 
 ## ۶) عیب‌یابی سریع
 
@@ -132,15 +143,15 @@ PARASTOO_NPM_REGISTRY=https://registry.npmjs.org   # یا آینهٔ داخلی
 |---|---|---|
 | `get.docker.com` در نصب fail شد | طبیعی در ایران | کاری نکنید؛ خودش از مخازن اوبونتو ادامه می‌دهد |
 | `toomanyrequests` / timeout موقع pull | Hub مسدود یا آینهٔ مرده | لایهٔ ۲ (آینه) یا لایهٔ ۳ (آفلاین) |
-| بیلد هسته خطای pip می‌دهد | pypi کند | `PARASTOO_PIP_INDEX_URL` در .env + `parastoo update` |
-| بیلد نود خطای npm می‌دهد | registry کند | `PARASTOO_NPM_REGISTRY` در .env + `parastoo update` |
+| بیلد هسته خطای pip می‌دهد (`name resolution` / timeout) | pypi.org روی ISP شما بلاک است | در v0.2.3 خودکار حل می‌شود (لایهٔ ۴)؛ دستی: `PARASTOO_PIP_INDEX_URL` در .env + `parastoo update` |
+| بیلد نود خطای npm می‌دهد | registry مسدود | لایهٔ ۴ خودکار؛ دستی: `PARASTOO_NPM_REGISTRY` در .env + `parastoo update` |
 | `docker info` آینه‌ها را نشان نمی‌دهد | JSON خراب یا ری‌استارت نشده | `sudo systemctl restart docker` و اعتبار JSON |
 | ویزارد دامنه گواهی نگرفت | نادر است؛ LE از ایران باز است | لاگ: `parastoo logs traefik` |
 
 ## ۷) چک‌لیست نصب در ایران (خلاصه)
 
 ```bash
-unzip parastoo-v0.2.2.zip && cd parastoo
+unzip parastoo-v0.2.3.zip && cd parastoo
 sudo bash install.sh          # خودش مسیر تحریم را تشخیص می‌دهد و دور می‌زند
 # → آدرس پنل + توکن نصب چاپ می‌شود؛ بقیه در مرورگر
 ```

@@ -11,10 +11,10 @@
 #  (در حالت curl | bash هیچ فایلی روی دیسک نیست؛ همه‌چیز از همین اسکریپت رد می‌شود).
 #
 #  متغیرهای اختیاری (قبل از دستور بگذارید):
-#    PARASTOO_REF=v0.2.2        شاخه یا تگ (پیش‌فرض main) — نسخهٔ پایدار را بدهید
+#    PARASTOO_REF=v0.2.3        شاخه یا تگ (پیش‌فرض main) — نسخهٔ پایدار را بدهید
 #    PARASTOO_GH_PROXY=URL      پیشوند پروکسی گیت‌هاب برای ایران، مثلاً:
 #                               https://gh-proxy.com/
-#    PARASTOO_ZIP_NAME=...      نام فایل zip ریلیز (پیش‌فرض: parastoo-v0.2.2.zip)
+#    PARASTOO_ZIP_NAME=...      نام فایل zip ریلیز (پیش‌فرض: parastoo-v0.2.3.zip)
 #    بقیهٔ PARASTOO_* (BASE_DOMAIN و ...) مستقیم به install.sh می‌رسند.
 #
 #  اگر خودِ مخزن را کلون کرده‌اید، فقط داخل همان پوشه:
@@ -26,7 +26,7 @@ ORG="${PARASTOO_GH_ORG:-SelfEvolvingNetwork}"
 REPO="${PARASTOO_GH_REPO:-parastoo}"
 REF="${PARASTOO_REF:-main}"
 PROXY="${PARASTOO_GH_PROXY:-}"
-ZIP_NAME="${PARASTOO_ZIP_NAME:-parastoo-v0.2.2.zip}"
+ZIP_NAME="${PARASTOO_ZIP_NAME:-parastoo-v0.2.3.zip}"
 RAW_URL="${PROXY}https://raw.githubusercontent.com/${ORG}/${REPO}/${REF}/bootstrap.sh"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -98,7 +98,7 @@ else
 راه‌های جایگزین:
   ۱) پروکسی (ایران):  curl -fsSL ${PROXY}https://gh-proxy.com/https://raw.githubusercontent.com/${ORG}/${REPO}/${REF}/bootstrap.sh | sudo bash
   ۲) دستی:  git clone https://github.com/${ORG}/${REPO}.git && cd ${REPO} && sudo bash setup.sh
-  ۳) بستهٔ zip را از صفحهٔ ریلیزها بگیرید و کنار سرور بگذارید:  sudo bash setup.sh parastoo-v0.2.2.zip"
+  ۳) بستهٔ zip را از صفحهٔ ریلیزها بگیرید و کنار سرور بگذارید:  sudo bash setup.sh parastoo-v0.2.3.zip"
 fi
 
 # ---------- ۵) باز کردن بسته و تحویل «پوشه» به setup.sh ----------

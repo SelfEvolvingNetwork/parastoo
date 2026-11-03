@@ -37,7 +37,8 @@ install_docker_from_ubuntu() {
   # مخازن خود اوبونتو (ir.archive.ubuntu.com و آینه‌های داخلی) تحریم نیستند
   say "نصب داکر از مخازن اوبونتو..."
   apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io docker-compose-v2 >/dev/null 2>&1 \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io docker-compose-v2 docker-buildx >/dev/null 2>&1 \
+    || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io docker-compose-v2 >/dev/null 2>&1 \
     || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io docker-compose >/dev/null 2>&1 || return 1
   systemctl enable --now docker >/dev/null 2>&1 || true
   return 0
@@ -136,6 +137,36 @@ else
   fi
 fi
 
+# ---------- ۱د) لایهٔ ۴ — آینهٔ PyPI/npm (برای بیلد هسته و بیلدهای کاربران) ----------
+# بعضی ISPهای ایران pypi.org و files.pythonhosted.org را DNS-بلاک می‌کنند؛
+# مثل آینه‌های داکر، از داخل همین سرور تست و آینهٔ زنده در .env ثبت می‌شود.
+pypi_ok() { [ "$(timeout 12 curl -fsS -o /dev/null -w '%{http_code}' --max-time 8 https://pypi.org/simple/ 2>/dev/null)" = "200" ]; }
+npm_ok()  { [ "$(timeout 12 curl -fsS -o /dev/null -w '%{http_code}' --max-time 8 https://registry.npmjs.org/-/ping 2>/dev/null)" = "200" ]; }
+
+DETECTED_PIP_MIRROR=""; DETECTED_NPM_MIRROR=""
+if [ -z "${PARASTOO_PIP_INDEX_URL:-}" ] && ! pypi_ok; then
+  say "PyPI در دسترس نیست (DNS/تحریم)؛ تست آینه‌های پایتون از داخل سرور..."
+  for m in https://mirrors.arvancloud.ir/pypi/simple https://pypi.tuna.tsinghua.edu.cn/simple https://mirrors.aliyun.com/pypi/simple; do
+    if [ "$(timeout 12 curl -fsS -o /dev/null -w '%{http_code}' --max-time 8 "${m%/}/" 2>/dev/null)" = "200" ]; then
+      DETECTED_PIP_MIRROR="$m"; ok "آینهٔ pip زنده: $m (در .env ثبت می‌شود)"; break
+    fi
+  done
+  [ -n "$DETECTED_PIP_MIRROR" ] || warn "هیچ آینهٔ pip زنده‌ای پیدا نشد؛ بیلد هسته ممکن است شکست بخورد — docs/SANCTIONS.md لایهٔ ۴"
+elif [ -z "${PARASTOO_PIP_INDEX_URL:-}" ]; then
+  ok "PyPI در دسترس است (بدون آینه)."
+fi
+if [ -z "${PARASTOO_NPM_REGISTRY:-}" ] && ! npm_ok; then
+  say "npm رسمی در دسترس نیست؛ تست آینه‌های npm از داخل سرور..."
+  for m in https://registry.npmjs.ir https://registry.npmmirror.com; do
+    if [ "$(timeout 12 curl -fsS -o /dev/null -w '%{http_code}' --max-time 8 "$m/-/ping" 2>/dev/null)" = "200" ]; then
+      DETECTED_NPM_MIRROR="$m"; ok "آینهٔ npm زنده: $m (در .env ثبت می‌شود)"; break
+    fi
+  done
+  [ -n "$DETECTED_NPM_MIRROR" ] || warn "هیچ آینهٔ npm زنده‌ای پیدا نشد؛ بیلدهای node ممکن است شکست بخورد."
+elif [ -z "${PARASTOO_NPM_REGISTRY:-}" ]; then
+  ok "npm رسمی در دسترس است (بدون آینه)."
+fi
+
 # ---------- ۲) دامنه پایه — بدون هیچ سوالی ----------
 # نصب همیشه با دامنه موقت (nip.io) شروع می‌شود تا صفر سوال بپرسد؛
 # دامنه واقعی و HTTPS بعداً از پنل وب (ویزارد دامنه) با توکن نصب تنظیم می‌شود.
@@ -195,9 +226,11 @@ PARASTOO_DEBT_LIMIT="${PARASTOO_DEBT_LIMIT:-0}"
 PARASTOO_COMMISSION="${PARASTOO_COMMISSION:-10}"
 PARASTOO_SETUP_TOKEN="${PARASTOO_SETUP_TOKEN:-$SETUP_TOKEN}"
 PARASTOO_PUBLIC_IP="${PARASTOO_PUBLIC_IP:-$PUBLIC_IP}"
-# تحریم‌ها: آینه pip/npm برای بیلدهای کاربران (خالی = پیش‌فرض رسمی)
-PARASTOO_PIP_INDEX_URL="${PARASTOO_PIP_INDEX_URL:-}"
-PARASTOO_NPM_REGISTRY="${PARASTOO_NPM_REGISTRY:-}"
+# تحریم‌ها: آینه pip/npm — اولویت: env صریح ← مقدار موجود .env ← تشخیص خودکار لایهٔ ۴ ← خالی
+PARASTOO_PIP_INDEX_URL="${PARASTOO_PIP_INDEX_URL:-${DETECTED_PIP_MIRROR:-}}"
+PARASTOO_NPM_REGISTRY="${PARASTOO_NPM_REGISTRY:-${DETECTED_NPM_MIRROR:-}}"
+[ -n "$PARASTOO_PIP_INDEX_URL" ] && ok "آینهٔ pip فعال: $PARASTOO_PIP_INDEX_URL"
+[ -n "$PARASTOO_NPM_REGISTRY" ] && ok "آینهٔ npm فعال: $PARASTOO_NPM_REGISTRY"
 
 cat > .env <<ENV
 # ===== پرستو (ساخته‌شده توسط install.sh) =====

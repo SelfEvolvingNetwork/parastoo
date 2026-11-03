@@ -85,6 +85,12 @@ check("تأیید نهایی با pull واقعی alpine:3.20", "timeout 90 dock
 check("فال‌بک تشخیص IP (۴ سرویس)", inst.count("curl -fs4 --max-time 10") >= 3)
 check("متغیرهای pip/npm آینه در .env",
       "PARASTOO_PIP_INDEX_URL" in inst and "PARASTOO_NPM_REGISTRY" in inst)
+check("لایهٔ ۴: پروب خودکار PyPI و npm از خود سرور",
+      "pypi_ok" in inst and "npm_ok" in inst)
+check("لایهٔ ۴: آینه‌های کاندید pip/npm",
+      "mirrors.arvancloud.ir/pypi" in inst and "registry.npmjs.ir" in inst)
+check("لایهٔ ۴: تشخیص خودکار در .env می‌نشیند (اولویت env ← .env ← خودکار)",
+      "${DETECTED_PIP_MIRROR:-}" in inst and "${DETECTED_NPM_MIRROR:-}" in inst)
 
 # ---------- ۳ب) mirrors.txt و check-mirrors.sh ----------
 print("— آینه‌ها (deploy/mirrors.txt + check-mirrors.sh) —")

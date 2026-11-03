@@ -8,10 +8,10 @@
 #         sudo bash setup.sh
 #
 #    ۲) مسیر یا نام فایل zip:
-#         sudo bash setup.sh parastoo-v0.2.2.zip
+#         sudo bash setup.sh parastoo-v0.2.3.zip
 #
 #    ۳) دانلود مستقیم از لینک (zip یا tar.gz):
-#         sudo bash setup.sh https://example.com/parastoo-v0.2.2.zip
+#         sudo bash setup.sh https://example.com/parastoo-v0.2.3.zip
 #
 #    ۳ب) پوشهٔ پکیج از قبل بازشده (bootstrap.sh هم همین‌طور صدا می‌زند):
 #         sudo bash setup.sh /مسیر/پوشهٔ/پرستو
@@ -20,7 +20,7 @@
 #         curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash
 #
 #    ۴) حالت کلاسیک curl | bash (اسکریپت را جایی هاست کنید):
-#         curl -fsSL https://example.com/setup.sh | bash -s -- https://example.com/parastoo-v0.2.2.zip
+#         curl -fsSL https://example.com/setup.sh | bash -s -- https://example.com/parastoo-v0.2.3.zip
 #
 #    ۵) اگر خودتان پکیج را از قبل باز کرده‌اید، همین‌جا اجرایش کنید —
 #       مستقیم install.sh همان پوشه را نصب می‌کند:
@@ -97,7 +97,7 @@ if [ "${MODE:-}" = "none" ]; then
   die "هیچ منبعی پیدا نشد.
 استفاده:
   sudo bash setup.sh <نام فایل zip>
-  sudo bash setup.sh https://example.com/parastoo-v0.2.2.zip
+  sudo bash setup.sh https://example.com/parastoo-v0.2.3.zip
   sudo bash setup.sh /مسیر/پوشهٔ/پکیج/بازشده
 یا این اسکریپت را کنار فایل zip بگذارید و فقط:  sudo bash setup.sh"
 fi
