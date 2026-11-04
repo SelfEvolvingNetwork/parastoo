@@ -171,7 +171,12 @@ else
   fi
 fi
 [ -f "$WORK_SRC/install.sh" ] || die "Invalid package (install.sh not found)."
-ok "Package verified: $(grep -m1 -o 'v[0-9][0-9.]*' "$WORK_SRC/README.md" 2>/dev/null || echo 'Parastoo')"
+# real version comes from the code (config.py), NOT from README prose — the
+# README mentions older version numbers in incident notes and made the
+# verification line report e.g. v0.2.18 for a v0.2.19 package (field, 2026-11-04).
+PKG_VER="$(sed -n 's/.*VERSION: str = "\([0-9.]*\)".*/\1/p' "$WORK_SRC/core/app/config.py" 2>/dev/null | head -n1)"
+[ -n "$PKG_VER" ] || PKG_VER="$(grep -m1 -o 'v[0-9][0-9.]*' "$WORK_SRC/README.md" 2>/dev/null || true)"
+ok "Package verified: ${PKG_VER:-Parastoo}"
 
 # ---------- 6) install into /opt/parastoo (or safe update) ----------
 if [ -f "$INSTALL_ROOT/.env" ]; then
