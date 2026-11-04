@@ -1,7 +1,8 @@
 """وابستگی‌های مشترک: کاربر جاری، محافظ CSRF، ساخت context قالب‌ها."""
 from typing import Any
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from .db import get_db
@@ -12,7 +13,10 @@ from .tpl import FLASHES, templates
 COOKIE_NAME = "parastoo_session"
 
 
-def get_current_user(request: Request, db: Session = Depends(get_db)) -> User | None:
+def resolve_user(request: Request, db: Session) -> User | None:
+    """کاربرِ پشت کوکی نشست — بدون Depends، برای هر جایی که نشست لازم است
+    (error page، گارد dev، وابستگی get_current_user). تا v0.2.24 همین منطق
+    در سه جا کپی شده بود."""
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         return None
@@ -23,6 +27,10 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User | 
     if user is None or not user.is_active:
         return None
     return user
+
+
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User | None:
+    return resolve_user(request, db)
 
 
 def require_login(user: User | None = Depends(get_current_user)) -> User:
@@ -90,14 +98,13 @@ def render(name: str, context: dict, status_code: int = 200):
 
 
 def redirect(url: str, m: str | None = None):
-    from fastapi.responses import RedirectResponse
     if m:
         sep = "&" if "?" in url else "?"
         return RedirectResponse(f"{url}{sep}m={m}", status_code=303)
     return RedirectResponse(url, status_code=303)
 
 
-def set_session(response, uid: int) -> None:
+def set_session(response: Response, uid: int) -> None:
     from .security import make_session
     response.set_cookie(
         COOKIE_NAME, make_session(uid),
@@ -105,5 +112,5 @@ def set_session(response, uid: int) -> None:
     )
 
 
-def clear_session(response) -> None:
+def clear_session(response: Response) -> None:
     response.delete_cookie(COOKIE_NAME)

@@ -1,27 +1,20 @@
-"""پروژه‌ها: ساخت، جزئیات، بیلد دستی، مارکت‌پلیس، انتشار سایت."""
-import re
+"""پروژه‌ها — لایهٔ نازک HTTP: اعتبارسنجی فرم → سرویس → ریدایرکت/رندر.
 
+منطق ساخت/حذف/بیلد در services/projects.py و انتشار سایت در
+services/sites.py است.
+"""
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.orm import Session
 
-from .. import dockerops, domains, gitea, stacks
-from ..config import settings
-from ..deps import ctx, csrf_guard, redirect, render
+from .. import domains
 from ..db import get_db
-from ..models import Build, Project, Site, User
-from ..security import gen_secret, slugify
-from ..tpl import FLASHES
+from ..deps import ctx, csrf_guard, redirect, render
+from ..models import Build, Project, Site
+from ..services import projects as projects_svc
+from ..services import sites as sites_svc
+from ..stacks import default_port
 
 router = APIRouter()
-
-SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,39}$")
-
-
-def _get_project(db: Session, user, slug: str) -> Project | None:
-    p = db.query(Project).filter(Project.slug == slug).first()
-    if p is None or (p.owner_id != user.id and not user.is_admin):
-        return None
-    return p
 
 
 @router.get("/projects")
@@ -48,45 +41,17 @@ def project_create(
     user=Depends(csrf_guard),
     db: Session = Depends(get_db),
 ):
-    name = name.strip()
-    project_slug = slugify(slug)
-    if not name or not SLUG_RE.match(project_slug) or stack not in settings.STACKS:
-        return redirect("/projects/new?m=slug_invalid")
-    if project_slug in settings.RESERVED_SLUGS:
-        return redirect("/projects/new?m=slug_reserved")
-    if db.query(Project).filter(Project.slug == project_slug).first():
-        return redirect("/projects/new?m=slug_taken")
-
-    project = Project(
-        owner_id=user.id,
-        name=name,
-        slug=project_slug,
-        stack=stack,
-        start_cmd=start_cmd.strip() or None,
-        description=description.strip(),
-        webhook_secret=gen_secret(16),
-        repo_status="pending",
-    )
-    db.add(project)
-    db.commit()
-    db.refresh(project)
-
-    flash = "project_created"
-    # تلاش فوری برای ساخت مخزن؛ اگر گیتا آماده نیست ورکر بعداً انجام می‌دهد
-    try:
-        gitea.provision_project_repo(project, user)
-        project.repo_status = "ready"
-        db.commit()
-    except Exception:
-        db.rollback()
-        flash = "git_pending"
-    return redirect(f"/projects/{project_slug}?m={flash}")
+    project, flash = projects_svc.create_project(
+        db, user, name, slug, stack, start_cmd, description)
+    if project is None:
+        return redirect(f"/projects/new?m={flash}")
+    return redirect(f"/projects/{project.slug}?m={flash}")
 
 
 @router.get("/projects/{slug}")
 def project_detail(request: Request, slug: str,
                    user=Depends(csrf_guard), db: Session = Depends(get_db)):
-    project = _get_project(db, user, slug)
+    project = projects_svc.project_for(db, user, slug)
     if project is None:
         return redirect("/projects?m=not_found")
     builds = (db.query(Build)
@@ -103,20 +68,18 @@ def project_detail(request: Request, slug: str,
     return render("project_detail.html", ctx(
         request, user, p=project, builds=builds, sites=sites,
         git_ready=git_ready, clone_url=clone_url,
-        default_port=stacks.default_port(project.stack),
+        default_port=default_port(project.stack),
     ))
 
 
 @router.post("/projects/{slug}/rebuild")
 def project_rebuild(request: Request, slug: str,
                     user=Depends(csrf_guard), db: Session = Depends(get_db)):
-    project = _get_project(db, user, slug)
+    project = projects_svc.project_for(db, user, slug)
     if project is None:
         return redirect("/projects?m=not_found")
-    job = Build(project_id=project.id, commit_sha=project.latest_sha or "", status="queued")
-    db.add(job)
-    db.commit()
-    return redirect(f"/projects/{slug}?m=build_queued")
+    flash = projects_svc.queue_build(db, project)
+    return redirect(f"/projects/{slug}?m={flash}")
 
 
 @router.post("/projects/{slug}/delete")
@@ -125,43 +88,15 @@ def project_delete(
     confirm: str = Form(""),
     user=Depends(csrf_guard), db: Session = Depends(get_db),
 ):
-    """حذف کامل پروژه: سایت‌های خود مالک + بیلدها + مخزن گیت (best-effort).
-
-    قواعد حفاظتی:
-    - تأیید با تایپ شناسهٔ پروژه (confirm باید دقیقاً برابر slug باشد)؛
-    - اگر سایتی از این پروژه متعلق به کاربر دیگری باشد (خریدار مارکت‌پلیس)،
-      حذف مسدود می‌شود تا سایت زندهٔ دیگران نشکند — مالک باید صبر کند تا
-      خریداران سایتشان را حذف کنند.
-    """
-    project = _get_project(db, user, slug)
+    """حذف پروژه: تأیید با تایپ دقیق شناسه؛ آبشار پاکسازی در سرویس."""
+    project = projects_svc.project_for(db, user, slug)
     if project is None:
         return redirect("/projects?m=not_found")
     if confirm.strip() != project.slug:
         return redirect(f"/projects/{slug}?m=confirm_mismatch")
-
-    referencing = db.query(Site).filter(Site.project_id == project.id).all()
-    foreign = [s for s in referencing if s.owner_id != user.id]
-    if foreign:
-        return redirect(f"/projects/{slug}?m=project_in_use")
-
-    # ۱) سایت‌های خود مالک را از داکر و دیتابیس پاک کن (best-effort در داکر)
-    for s in referencing:
-        try:
-            dockerops.remove_site(s.slug)
-        except Exception:
-            pass
-        db.delete(s)
-
-    # ۲) بیلدها و پروژه
-    db.query(Build).filter(Build.project_id == project.id).delete()
-
-    # ۳) مخزن گیت (best-effort — نبود گیتا مانع حذف پروژه نمی‌شود)
-    owner = db.get(User, project.owner_id)
-    if owner:
-        gitea.delete_project_repo(project, owner)
-
-    db.delete(project)
-    db.commit()
+    err = projects_svc.delete_project(db, project, user)
+    if err:
+        return redirect(f"/projects/{slug}?m={err}")
     return redirect("/projects?m=project_deleted")
 
 
@@ -172,7 +107,7 @@ def project_marketplace(
     price: str = Form("0"),
     user=Depends(csrf_guard), db: Session = Depends(get_db),
 ):
-    project = _get_project(db, user, slug)
+    project = projects_svc.project_for(db, user, slug)
     if project is None:
         return redirect("/projects?m=not_found")
     project.is_public = bool(is_public)
@@ -192,48 +127,10 @@ def project_publish(
     port: str = Form(""),
     user=Depends(csrf_guard), db: Session = Depends(get_db),
 ):
-    project = _get_project(db, user, slug)
+    project = projects_svc.project_for(db, user, slug)
     if project is None:
         return redirect("/projects?m=not_found")
-    if not project.latest_image:
-        return redirect(f"/projects/{slug}?m=image_missing")
-
-    s = slugify(site_slug)
-    if not SLUG_RE.match(s) or s in settings.RESERVED_SLUGS:
-        return redirect(f"/projects/{slug}?m=slug_invalid")
-    if db.query(Site).filter(Site.slug == s).first():
-        return redirect(f"/projects/{slug}?m=slug_taken")
-    if tier not in settings.TIERS:
-        tier = "nano"
-
-    internal_port = stacks.default_port(project.stack)
-    if port.strip().isdigit():
-        internal_port = max(1, min(65535, int(port)))
-
-    subdomain = f"{s}.{domains.apps()}"
-    site = Site(
-        project_id=project.id,
-        owner_id=user.id,
-        slug=s,
-        subdomain=subdomain,
-        container_name=f"parastoo-site-{s}",
-        internal_port=internal_port,
-        tier=tier,
-        status="running",
-        image=project.latest_image,
-    )
-    db.add(site)
-    db.commit()
-    db.refresh(site)
-
-    # اجرای کانتینر؛ خرابی داکر باعث از دست رفتن رکورد نمی‌شود
-    try:
-        dockerops.run_site(
-            image=site.image, slug=site.slug, subdomain=site.subdomain,
-            port=site.internal_port, tier=site.tier,
-        )
-    except Exception:
-        site.status = "error"
-        db.commit()
-        return redirect(f"/projects/{slug}?m=publish_failed")
+    _, flash = sites_svc.publish_from_project(db, user, project, site_slug, tier, port)
+    if flash:
+        return redirect(f"/projects/{slug}?m={flash}")
     return redirect(f"/projects/{slug}?m=published")

@@ -3,19 +3,20 @@
 1) bootstrap_loop : اتصال اولیه به گیتا (ساخت ادمین گیتا + توکن سیستمی) و
    ساخت مخزن برای پروژه‌های در انتظار — با تلاش مجدد خودکار.
 2) build_worker   : صف بیلد (وب‌هوک push → کلون → بیلد → push به رجیستری → دیپلوی خودکار).
-3) billing_loop   : کسر هزینه ساعتی منابع از کیف پول و توقف سایت‌های بدحساب.
+3) billing_loop   : کسر هزینه ساعتی منابع از کیف پول و توقف سایت‌های بدحساب
+   (منطق کسر از v0.3.0 در services/billing.py است؛ اینجا فقط زمان‌بندی و نشست).
 """
 import subprocess
 import threading
 import time
 import traceback
-from datetime import timedelta
 from pathlib import Path
 
 from . import dockerops, gitea, stacks
 from .config import settings
 from .db import SessionLocal, db_now
-from .models import Build, Project, Setting, Site, User, WalletTx
+from .models import Build, Project, Setting, Site, User
+from .services import billing
 
 BUILD_ROOT = Path(settings.DATA_DIR) / "builds"
 LOG_TAIL = 60_000  # حداکثر کاراکترهای نگه‌داری‌شده در لاگ بیلد
@@ -199,41 +200,12 @@ def _run_build(db, job: Build) -> None:
 # ---------------------------------------------------------------- billing
 
 def billing_once() -> None:
-    """هر ساعت، به ازای هر سایت در حال اجرا، هزینه پلن منابع کسر می‌شود."""
+    """یک دور صورتحساب با نشست تازه — منطق کسر/توقف در services/billing.py."""
     db = SessionLocal()
     try:
-        now = db_now()
-        sites = (db.query(Site)
-                 .filter(Site.status == "running")
-                 .all())
-        for site in sites:
-            tier = settings.TIERS.get(site.tier, settings.TIERS["nano"])
-            if site.last_charged_at:
-                elapsed = (now - site.last_charged_at).total_seconds()
-                if elapsed < 3600:
-                    continue
-            user = site.owner
-            amount = tier["price"]
-            # اگر این سایت خودِ پروژه را نشر می‌دهد و کاربر موجودی ندارد → توقف
-            user.balance -= amount
-            db.add(WalletTx(user_id=user.id, amount=-amount, kind="charge",
-                            note=f"هزینه منابع سایت {site.slug} ({tier['label']})"))
-            site.last_charged_at = now
-            if user.balance < settings.DEBT_LIMIT:
-                _pause_site(db, site, user)
-        db.commit()
+        billing.charge_running_sites(db)
     finally:
         db.close()
-
-
-def _pause_site(db, site: Site, user: User) -> None:
-    try:
-        dockerops.stop_site(site.slug)
-        site.status = "paused"
-        print(f"[billing] site {site.slug} paused (balance {user.balance})")
-    except Exception as e:
-        print(f"[billing] stop {site.slug} failed: {e}")
-        site.status = "error"
 
 
 # ---------------------------------------------------------------- helpers

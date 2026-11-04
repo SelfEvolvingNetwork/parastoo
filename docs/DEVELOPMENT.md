@@ -9,6 +9,7 @@
 3. **Idempotent باشید.** هر عملیات گیت/داکر باید در اجرای مجدد خطا ندهد (خطای «از قبل وجود دارد» = موفق).
 4. **خودترمیمی.** اگر گیتا در لحظه در دسترس نبود، رکورد در حالت `pending` می‌ماند و ورکر bootstrap بعداً می‌سازد. هرگز عملیات گیت را شرط ورود کاربر نکنید.
 5. **همه پیکربندی از env** (`core/app/config.py`) — بدون فایل کانفیگ جدید.
+6. **لایه‌بندی (از v0.3.0):** مسیر HTTP → اعتبارسنجی (validation.py) → سرویس (services/) → زیرساخت (dockerops/gitea/traefik_ops). منطق کسب‌وکار هرگز داخل routes/ نوشته نمی‌شود؛ هر قاعده فقط یک جا (مثلاً قیمت پلن فقط services/billing.py).
 
 ## نقشه فایل‌ها
 
@@ -26,30 +27,40 @@ scripts/github_publish.sh   انتشار ریلیز: push main + ساخت ریل
 core/app/
   config.py     تنظیمات (دامنه‌ها، پلن‌ها/قیمت، کمیسیون، لیست فناوری‌ها، توکن نصب، DEPLOYED_COMMIT/AT، DEV_MODE/DEV_TOKEN)
   db.py         engine/session (SQLAlchemy همگام)
-  models.py     User, Project, Build, Site, WalletTx, Setting
+  models.py     User, Project, Build, Site, WalletTx, Setting (created_at با default ستونی db_now)
+  validation.py قواعد اعتبارسنجی مشترک: SLUG_RE/EMAIL_RE/DOMAIN_RE + project_slug_error/site_slug_error
   security.py   scrypt، کوکی امضاشده (itsdangerous)، CSRF، slugify، گیت ویزارد نصب
   domains.py    دامنه‌های فعال (لایه پویا روی env — از جدول Setting با پیشوند domain_)
   traefik_ops.py  رندر پیکربندی استاتیک/داینامیک ترافیک + check_dns + apply_domain
   tpl.py        Jinja2 + فلش‌پیام‌های فارسی + فیلترهای قالب
-  deps.py       get_current_user / csrf_guard / render / redirect
+  devlog.py     رینگ‌بافر لاگ در حافظه (منبع /api/dev/logs و بخش خطاهای گزارش؛ main.py هم لاگ ۵۰۰ را اینجا می‌ریزد)
+  deps.py       resolve_user/get_current_user / csrf_guard / render / redirect / set_session
   gitea.py      کلاینت Gitea API + provision کاربر/مخزن + توکن سیستمی
   dockerops.py  بیلد/push/pull/اجرا/توقف کانتینر سایت + لیبل‌های ترافیک (پویا از domains)
   stacks.py     داکرفایل قالبی برای static/node/python/docker
-  workers.py    سه ترد: bootstrap_loop، build_worker، billing_loop
-  main.py       FastAPI app + healthz + /api/version (عمومی) + dashboard + صفحات خطا (خطای ۵۰۰ لاگ می‌شود)
+  workers.py    سه ترد: bootstrap_loop، build_worker، billing_loop (صورتحساب را به services/billing محول می‌کند)
+  services/     منطق کسب‌وکار — بدون HTTP؛ مسیرها فقط ورودی/خروجی وب‌اند:
+    billing.py    قیمت‌گذاری تک‌منبع: tier/price_hourly/hourly_cost/monthly_cost + charge_running_sites (کسر ساعتی + توقف بدحساب)
+    projects.py   چرخهٔ پروژه: project_for (مالکیت/IDOR) + create_project + queue_build + delete_project (آبشار با حفاظت خریدار)
+    sites.py      چرخهٔ سایت: site_for + publish_from_project/create_and_run (نقطهٔ مشترک انتشار و مارکت) + start/stop/delete + live_statuses
+    market.py     فعال‌سازی مارکت: activate_project (پرداخت کیف پول + کمیسیون + WalletTx + ساخت سایت خریدار)
+  main.py       کارخانهٔ create_app() + app — فقط مونتاژ: میان‌افزار هدر امنیتی، استاتیک، روترها، هندلرهای خطا (۵۰۰ لاگ می‌شود)
   routes/
     setup.py        ویزارد سه‌گامی: توکن نصب ← مدیر ← دامنه/HTTPS (صفحه دامنه بعداً هم باز است)
-    account.py      ثبت‌نام/ورود/خروج (+ provision حساب گیت)
-    projects.py     ساخت/جزئیات/بیلد مجدد/مارکت/انتشار سایت
-    sites.py        روشن/خاموش/حذف سایت
-    marketplace.py  لیست + فعال‌سازی ایمیج (پرداخت از کیف پول)
+    auth.py         ثبت‌نام/ورود/خروج + ضد brute-force (حافظهٔ درون‌پردازشی)
+    account.py      حساب کاربری: صفحه /account + تغییر رمز
+    dashboard.py    / (خانه) و /dashboard
+    health.py       healthz + /api/version (عمومی و سبک)
+    projects.py     ساخت/جزئیات/بیلد مجدد/مارکت/انتشار سایت (نازک)
+    sites.py        روشن/خاموش/حذف سایت (نازک)
+    marketplace.py  لیست + فعال‌سازی ایمیج (نازک؛ منطق در services/market.py)
     wallet.py       موجودی و تراکنش‌ها
     admin.py        آمار + شارژ دستی + مدیریت کاربران/سایت‌ها
     dev.py          حالت توسعه‌دهنده: /dev + /api/dev/report|logs|updates (خاموش = 404)
     hooks.py        وب‌هوک gitea (امضای HMAC → صف بیلد)
+    __init__.py     ROUTERS — ترتیب ثبت همهٔ روترها در اپ
   web/templates/    قالب‌های فارسی RTL (base + 12 صفحه)
   web/static/style.css
-```
 
 ## جریان‌های کلیدی
 
@@ -71,7 +82,7 @@ core/app/
 
 **آپدیت خودکار (v0.2.12):** نصب اولیه دستی است؛ بعد از آن تایمر systemd (`parastoo-autoupdate.timer`، هر ۶۰ ثانیه) `scripts/auto-update.sh` را صدا می‌زند. اسکریپت با `git ls-remote` شاخهٔ `PARASTOO_UPDATE_CHANNEL` را با کامیتِ فایل `.parastoo-deploy` مقایسه می‌کند؛ اگر جلو رفته باشد: دانلود تاربال (کدلود ← فالبک آرشیو، با پشتیبانی `PARASTOO_GH_PROXY`)، بکاپ کد در `backups/code-*.tar.gz`، جایگزینی امنِ فقط پوشه‌های کد (`.env`/`config/`/`backups/`/`logs/`/`.parastoo-deploy` دست نمی‌خورند)، نوشتن `PARASTOO_DEPLOYED_COMMIT/AT` در `.env` و `docker compose up -d --build`. نتیجه در `logs/updates.jsonl` ثبت و توسط `/api/dev/updates` خوانده می‌شود. کنترل: `parastoo autoupdate status|on|off|run`. حداقل فاصلهٔ بررسی با `PARASTOO_AUTO_UPDATE_INTERVAL` (پیش‌فرض ۱۲۰، حداقل ۶۰). سیکل توسعه: push به main ← تا ۲ دقیقه استقرار ← `curl /api/version` تأیید.
 
-**حالت توسعه‌دهنده (v0.2.12):** `PARASTOO_DEV_MODE=true` در `.env` → صفحه `/dev` (ادمین) و `GET /api/dev/report|logs|updates` (ادمین یا هدر `X-Dev-Token` برابر `PARASTOO_DEV_TOKEN`). گزارش شامل نسخه/کامیت، سلامت، کانتینرها، آمار، بیلدهای ناموفق با انتهای لاگ، رینگ‌بافر لاگ (در routes/dev.py، آخرین ۱۰۰۰ رکورد) و تاریخچهٔ آپدیت (سوار از `./logs:/app/host-logs:ro`). وقتی خاموش است همهٔ مسیرها 404 می‌دهند (نه 403). خطاهای ۵۰۰ در main.py لاگ می‌شوند و در همان رینگ‌بافر می‌افتند.
+**حالت توسعه‌دهنده (v0.2.12):** `PARASTOO_DEV_MODE=true` در `.env` → صفحه `/dev` (ادمین) و `GET /api/dev/report|logs|updates` (ادمین یا هدر `X-Dev-Token` برابر `PARASTOO_DEV_TOKEN`). گزارش شامل نسخه/کامیت، سلامت، کانتینرها، آمار، بیلدهای ناموفق با انتهای لاگ، رینگ‌بافر لاگ (در devlog.py، آخرین ۱۰۰۰ رکورد) و تاریخچهٔ آپدیت (سوار از `./logs:/app/host-logs:ro`). وقتی خاموش است همهٔ مسیرها 404 می‌دهند (نه 403). خطاهای ۵۰۰ در main.py لاگ می‌شوند و در همان رینگ‌بافر می‌افتند.
 
 ## چگونه تست کنیم (بدون سرور)
 

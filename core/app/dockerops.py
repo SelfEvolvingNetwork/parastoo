@@ -4,7 +4,6 @@
 رجیستری: رجیستری داخلی گیتا روی 127.0.0.1:3000 (داکر به‌صورت پیش‌فرض localhost را
 به‌عنوان رجیستری ناامن می‌پذیرد، پس بدون هیچ پیکربندی اضافه کار می‌کند).
 """
-import json
 import shutil
 from pathlib import Path
 
@@ -233,7 +232,3 @@ def system_stats() -> dict:
 
 def cleanup_build_dir(path: Path) -> None:
     shutil.rmtree(path, ignore_errors=True)
-
-
-def dump_json(x) -> str:
-    return json.dumps(x, ensure_ascii=False)

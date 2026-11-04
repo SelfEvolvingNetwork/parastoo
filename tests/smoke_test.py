@@ -243,7 +243,9 @@ check("سقف starlette (<0.42) صریح در requirements", "<0.42" in req)
 deps_src = (ROOT / "core/app/deps.py").read_text()
 check("render با امضای جدید TemplateResponse (request اول)",
       "TemplateResponse(request, name" in deps_src)
-mk_src = (ROOT / "core/app/routes/marketplace.py").read_text()
+# از v0.3.0 منطق مارکت در services/market.py است (مسیر routes نازک شده)
+mk_src = ((ROOT / "core/app/services/market.py").read_text()
+          + (ROOT / "core/app/routes/marketplace.py").read_text())
 check("پورت مارکت‌پلیس از استک/سایت فروشنده (نه هاردکد 3000)",
       "default_port(project.stack)" in mk_src and "internal_port=3000" not in mk_src)
 

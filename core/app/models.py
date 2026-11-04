@@ -1,11 +1,15 @@
-"""مدل‌های دیتابیس پرستو."""
+"""مدل‌های دیتابیس پرستو.
+
+created_at در همهٔ مدل‌ها با default ستونی db_now پر می‌شود — تا v0.2.24 هر
+مدل یک __init__ اضافه داشت فقط برای همین کار (boilerplate چهار باره).
+"""
 from datetime import datetime
 
 from sqlalchemy import (Boolean, DateTime, ForeignKey, Integer,
                         String, Text, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .db import Base
+from .db import Base, db_now
 
 
 class User(Base):
@@ -27,11 +31,7 @@ class User(Base):
     gitea_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     gitea_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime)
-
-    def __init__(self, **kw):
-        kw.setdefault("created_at", _now())
-        super().__init__(**kw)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
 
 
 class Project(Base):
@@ -59,15 +59,11 @@ class Project(Base):
     latest_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
     build_count: Mapped[int] = mapped_column(Integer, default=0)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
 
     owner: Mapped["User"] = relationship()
     builds: Mapped[list["Build"]] = relationship(back_populates="project")
     sites: Mapped[list["Site"]] = relationship(back_populates="project")
-
-    def __init__(self, **kw):
-        kw.setdefault("created_at", _now())
-        super().__init__(**kw)
 
 
 class Build(Base):
@@ -79,14 +75,10 @@ class Build(Base):
     commit_sha: Mapped[str] = mapped_column(String(40), default="")
     image_tag: Mapped[str | None] = mapped_column(String(255), nullable=True)
     log: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     project: Mapped["Project"] = relationship(back_populates="builds")
-
-    def __init__(self, **kw):
-        kw.setdefault("created_at", _now())
-        super().__init__(**kw)
 
 
 class Site(Base):
@@ -106,14 +98,10 @@ class Site(Base):
     image: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     last_charged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
 
     project: Mapped["Project"] = relationship(back_populates="sites")
     owner: Mapped["User"] = relationship()
-
-    def __init__(self, **kw):
-        kw.setdefault("created_at", _now())
-        super().__init__(**kw)
 
 
 class WalletTx(Base):
@@ -125,13 +113,9 @@ class WalletTx(Base):
     amount: Mapped[int] = mapped_column(Integer)  # مثبت = واریز، منفی = برداشت
     kind: Mapped[str] = mapped_column(String(30))  # deposit|charge|purchase|sale|admin_credit
     note: Mapped[str] = mapped_column(String(255), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
 
     user: Mapped["User"] = relationship()
-
-    def __init__(self, **kw):
-        kw.setdefault("created_at", _now())
-        super().__init__(**kw)
 
 
 class Setting(Base):
@@ -139,8 +123,3 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="")
-
-
-def _now() -> datetime:
-    from .db import db_now
-    return db_now()

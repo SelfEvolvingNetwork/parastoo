@@ -5,64 +5,36 @@
   404 می‌دهند — نه 403 — تا حتی وجودشان لو نرود.
 - وقتی روشن است: اگر PARASTOO_DEV_TOKEN در .env ست شده باشد، هدر X-Dev-Token
   (یا ?token=) کافی است؛ در غیر این صورت فقط ادمینِ واردشده به پنل.
+
+زیرساخت رینگ‌بافر لاگ از v0.3.0 در devlog.py است (main.py هم برای لاگ خطاهای
+۵۰۰ همان را استفاده می‌کند).
 """
-import logging
+import json
 import shutil
 import time
-from collections import deque
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy import text
 
-from .. import dockerops, gitea
+from .. import devlog, dockerops, gitea
 from ..config import settings
 from ..db import SessionLocal
 from ..models import Build, Project, Site, User
-from ..deps import COOKIE_NAME, ctx, render
-from ..security import read_session
+from ..deps import ctx, render, resolve_user
 
 router = APIRouter()
 
 APP_STARTED = time.time()
-LOG_CAPACITY = 1000
 
-
-class _Ring(logging.Handler):
-    """آخرین N رکورد لاگ این پروسه در حافظه — منبع /api/dev/logs."""
-
-    def __init__(self, capacity: int = LOG_CAPACITY):
-        super().__init__()
-        self.buf: deque[str] = deque(maxlen=capacity)
-        self.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            self.buf.append(self.format(record))
-        except Exception:
-            pass
-
-
-_ring = _Ring()
-for _name in ("", "parastoo", "uvicorn", "uvicorn.error"):
-    _lg = logging.getLogger(_name)
-    if not any(isinstance(h, _Ring) for h in _lg.handlers):
-        _lg.addHandler(_ring)
-logging.getLogger("parastoo").setLevel(logging.INFO)
+devlog.attach()  # idempotent — حتی اگر main هنوز import نشده باشد
 
 
 def _session_user(request: Request) -> User | None:
-    token = request.cookies.get(COOKIE_NAME)
-    if not token:
-        return None
-    uid = read_session(token)
-    if uid is None:
-        return None
     db = SessionLocal()
     try:
-        user = db.get(User, uid)
-        return user if (user is not None and user.is_active) else None
+        return resolve_user(request, db)
     finally:
         db.close()
 
@@ -93,7 +65,6 @@ def _update_history(limit: int = 20) -> list[dict]:
         if path.is_file():
             lines = path.read_text(encoding="utf-8", errors="replace").strip().splitlines()
             for line in lines[-limit:]:
-                import json
                 try:
                     out.append(json.loads(line))
                 except json.JSONDecodeError:
@@ -157,6 +128,7 @@ def _counts_and_failures() -> dict:
 
 def collect_report() -> dict:
     """گزارش کامل وضعیت — همان چیزی که /api/dev/report و صفحهٔ /dev نشان می‌دهند."""
+    import os
     import sys
     report = {
         "app": {
@@ -166,7 +138,7 @@ def collect_report() -> dict:
             "dev_mode": settings.DEV_MODE,
             "python": sys.version.split()[0],
             "uptime_s": int(time.time() - APP_STARTED),
-            "pid": __import__("os").getpid(),
+            "pid": os.getpid(),
         },
         "flags": {
             "base_domain": settings.BASE_DOMAIN,
@@ -187,7 +159,7 @@ def collect_report() -> dict:
         "containers": _containers(),
         "docker_stats": dockerops.system_stats() if dockerops.available() else None,
         "updates": _update_history(),
-        "errors": list(_ring.buf)[-150:],
+        "errors": devlog.recent_errors(),
     }
     report["usage"] = _counts_and_failures()
     return report
@@ -204,8 +176,8 @@ def dev_report(request: Request):
 @router.get("/api/dev/logs")
 def dev_logs(request: Request, tail: int = 200):
     _dev_guard(request)
-    tail = max(1, min(tail, LOG_CAPACITY))
-    return PlainTextResponse("\n".join(list(_ring.buf)[-tail:]) or "(no logs yet)")
+    tail = max(1, min(tail, devlog.LOG_CAPACITY))
+    return PlainTextResponse("\n".join(devlog.tail(tail)) or "(no logs yet)")
 
 
 @router.get("/api/dev/updates")

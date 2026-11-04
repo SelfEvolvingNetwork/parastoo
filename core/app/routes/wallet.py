@@ -2,10 +2,10 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from ..config import settings
-from ..deps import ctx, csrf_guard, redirect, render
 from ..db import get_db
+from ..deps import ctx, csrf_guard, redirect, render
 from ..models import Site, WalletTx
+from ..services import billing as billing_svc
 
 router = APIRouter()
 
@@ -20,7 +20,7 @@ def wallet(request: Request, user=Depends(csrf_guard), db: Session = Depends(get
     running = (db.query(Site)
                .filter(Site.owner_id == user.id, Site.status == "running")
                .all())
-    hourly = sum(settings.TIERS.get(s.tier, settings.TIERS["nano"])["price"] for s in running)
+    hourly = billing_svc.hourly_cost(running)
     return render("wallet.html", ctx(request, user, txs=txs, hourly=hourly))
 
 

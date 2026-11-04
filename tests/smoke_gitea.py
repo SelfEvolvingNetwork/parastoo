@@ -110,6 +110,19 @@ class Handler(BaseHTTPRequestHandler):
                 HITS.append(f"token {uname}")
             return self._json(201, {"id": 1, "name": payload.get("name", ""), "sha1": sha1})
 
+        if path.startswith("/api/v1/admin/users/") and path.endswith("/repos"):
+            # مسیر واقعی ساخت مخزن در نام‌اسپیس کاربر دیگر با توکن ادمین
+            # (اصلاح v0.2.21 — POST /repos/{owner}/{repo} در گیتا وجود ندارد و 405 می‌گیرد)
+            owner = path.split("/api/v1/admin/users/")[1].rsplit("/repos", 1)[0]
+            if user is None or (scopes is not None and "write:admin" not in scopes and "full" not in scopes):
+                with LOCK:
+                    HITS.append(f"DENY repo(admin) {owner}/{payload.get('name')}")
+                return self._json(403, {"message": "no scope"})
+            with LOCK:
+                REPOS.setdefault(f"{owner}/{payload.get('name')}", {"hooks": []})
+                HITS.append(f"repo {owner}/{payload.get('name')}")
+            return self._json(201, {"full_name": f"{owner}/{payload.get('name')}"})
+
         if path.startswith("/api/v1/admin/users"):
             if user is None or (scopes is not None and "write:admin" not in scopes and "full" not in scopes):
                 with LOCK:

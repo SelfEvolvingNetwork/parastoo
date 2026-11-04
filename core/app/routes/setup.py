@@ -5,8 +5,6 @@
 مدیر، /setup برای همیشه بسته می‌شود و صفحه دامنه به‌عنوان بخش ادمین می‌ماند
 (برای تغییر دامنه بعدی هم همان‌جا قابل استفاده است).
 """
-import re
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -18,13 +16,11 @@ from ..deps import (admin_guard, ctx, get_current_user, redirect, render,
 from ..db import get_db
 from ..models import User
 from ..security import (check_setup_token, hash_password, make_gate, read_gate)
+from ..validation import valid_domain
 
 router = APIRouter()
 
 GATE_COOKIE = "parastoo_gate"
-# دامنه پایه: حداقل دو برچسب، همه لاتین کوچک/عدد/خط‌تیره (مثل example.com یا 1-2-3-4.nip.io)
-DOMAIN_RE = re.compile(
-    r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 
 
 def _admin_exists(db: Session) -> bool:
@@ -136,7 +132,7 @@ def domain_check(
     user=Depends(admin_guard),
 ):
     domain = domain.strip().lower().rstrip(".")
-    if not DOMAIN_RE.match(domain):
+    if not valid_domain(domain):
         return JSONResponse({"ok": False, "error": "invalid_domain"})
     records = traefik_ops.check_dns(domain, domains.server_ip())
     return JSONResponse({"ok": all(r["ok"] for r in records), "records": records})
@@ -152,7 +148,7 @@ def domain_apply(
     db: Session = Depends(get_db),
 ):
     base_domain = base_domain.strip().lower().rstrip(".")
-    if not DOMAIN_RE.match(base_domain):
+    if not valid_domain(base_domain):
         return redirect("/setup/domain?m=domain_invalid")
     want_tls = tls == "on"
     if want_tls:
