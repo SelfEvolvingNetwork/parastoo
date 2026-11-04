@@ -72,6 +72,9 @@ services:
       - "127.0.0.1:3000:3000"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/healthz || exit 1"]
+      # start_period: بعد از ری‌استارت دیمون داکر/میزبان، اولین پروب‌های gitea
+      # (انعکاس لاگ‌ها، اتصال DB) ممکن است کند باشد؛ خطای آن‌ها نباید unhealthy حساب شود
+      start_period: 60s
       interval: 15s
       timeout: 5s
       retries: 12

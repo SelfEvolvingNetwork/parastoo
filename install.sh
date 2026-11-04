@@ -457,11 +457,45 @@ awk -v block="$REDIRECT_BLOCK" -v email="$ACME_EMAIL" '
 [ "$TLS_ENABLED" = "true" ] && ok "HTTP -> HTTPS redirect enabled."
 chmod +x postgres-init/*.sh
 
+# ---------- 4b) CLI + auto-update timer — BEFORE the stack (v0.2.14) ----------
+# چرا اینجا؟ تا اگر بالا آوردن استک به هر دلیلی شکست خورد، تایمر آپدیت خودکار
+# همچنان مسلح باشد: هر push بعدی به گیت‌هاب خودش استک را تعمیر/استقرار می‌کند
+# (auto-update.sh خودش docker compose up -d --build را اجرا می‌کند). بدون این،
+# هر باگ استقرار به یک چرخهٔ «دستی اجرا کن، دستی بفرست» تبدیل می‌شد.
+mark "4b) CLI + auto-update timer"
+cp -f bin/parastoo /usr/local/bin/parastoo
+chmod +x /usr/local/bin/parastoo
+echo "$INSTALL_DIR" > /etc/parastoo-install-path
+ok "parastoo CLI installed (status/logs/update/autoupdate/backup)."
+if [ "${PARASTOO_AUTO_UPDATE:-true}" = "true" ] && command -v systemctl >/dev/null 2>&1; then
+  say "Installing the auto-update timer (checks GitHub every ${PARASTOO_AUTO_UPDATE_INTERVAL}s)..."
+  mkdir -p /etc/systemd/system
+  for _u in parastoo-autoupdate.service parastoo-autoupdate.timer; do
+    sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" "deploy/systemd/$_u" > "/etc/systemd/system/$_u" 2>/dev/null || true
+  done
+  systemctl daemon-reload 2>/dev/null || true
+  if systemctl enable --now parastoo-autoupdate.timer 2>/dev/null; then
+    ok "Auto-update enabled: every push to '${PARASTOO_UPDATE_CHANNEL:-main}' on GitHub deploys automatically."
+  else
+    warn "Could not enable the timer; check: systemctl status parastoo-autoupdate.timer"
+  fi
+elif [ "${PARASTOO_AUTO_UPDATE:-true}" = "true" ]; then
+  warn "systemd not available; add to cron instead:"
+  warn "  * * * * * root bash $INSTALL_DIR/scripts/auto-update.sh"
+else
+  warn "Auto-update disabled (PARASTOO_AUTO_UPDATE=false in .env) — update manually: sudo parastoo update"
+fi
+
 # ---------- 5) bring up the stack ----------
 mark "5) docker compose up"
 say "Building and starting the full stack (first run may take a few minutes)..."
 if ! docker compose up -d --build; then
   echo ""
+  warn "The auto-update timer is already armed — pushing the fix to GitHub deploys it automatically."
+  say "Diagnose the failing container:"
+  say "  cd $INSTALL_DIR && sudo docker compose ps"
+  say "  sudo docker logs parastoo-<name> --tail 60   # e.g. parastoo-gitea"
+  say "  sudo bash $INSTALL_DIR/scripts/doctor.sh"
   die "Stack failed to start. If the error is about image pulls:
   1) build the offline bundle: bash scripts/fetch-images.sh (on an unsanctioned machine) -> put the offline-images/ folder here -> run install.sh again
   2) or set a healthy mirror: PARASTOO_REGISTRY_MIRRORS=\"https://docker.arvancloud.ir\" sudo -E bash install.sh
@@ -505,33 +539,6 @@ else
     say "Fix:  cd $INSTALL_DIR"
     say "      sed -i 's|image: traefik:.*|image: traefik:v3.6.6|' docker-compose.yml && sudo docker compose up -d traefik"
   fi
-fi
-
-# ---------- 7) install the Parastoo CLI ----------
-cp -f bin/parastoo /usr/local/bin/parastoo
-chmod +x /usr/local/bin/parastoo
-echo "$INSTALL_DIR" > /etc/parastoo-install-path
-ok "parastoo CLI installed (status/logs/update/autoupdate/backup)."
-
-# ---------- 7b) auto-update timer — نصب اولیه دستی، آپدیت‌های بعدی خودکار ----------
-mark "7b) auto-update timer"
-if [ "$PARASTOO_AUTO_UPDATE" = "true" ] && command -v systemctl >/dev/null 2>&1; then
-  say "Installing the auto-update timer (checks GitHub every ${PARASTOO_AUTO_UPDATE_INTERVAL}s)..."
-  mkdir -p /etc/systemd/system
-  for _u in parastoo-autoupdate.service parastoo-autoupdate.timer; do
-    sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" "deploy/systemd/$_u" > "/etc/systemd/system/$_u" 2>/dev/null || true
-  done
-  systemctl daemon-reload 2>/dev/null || true
-  if systemctl enable --now parastoo-autoupdate.timer 2>/dev/null; then
-    ok "Auto-update enabled: every push to '${PARASTOO_UPDATE_CHANNEL}' on GitHub deploys automatically."
-  else
-    warn "Could not enable the timer; check: systemctl status parastoo-autoupdate.timer"
-  fi
-elif [ "$PARASTOO_AUTO_UPDATE" = "true" ]; then
-  warn "systemd not available; add to cron instead:"
-  warn "  * * * * * root bash $INSTALL_DIR/scripts/auto-update.sh"
-else
-  warn "Auto-update disabled (PARASTOO_AUTO_UPDATE=false in .env) — update manually: sudo parastoo update"
 fi
 
 SCHEME="http"; [ "$TLS_ENABLED" = "true" ] && SCHEME="https"
