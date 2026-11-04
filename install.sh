@@ -57,6 +57,17 @@ if ! command -v curl >/dev/null 2>&1; then
   apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null
 fi
 
+# git is a runtime dependency of the auto-updater (git ls-remote); without it
+# auto-update silently never deploys (v0.2.13)
+if ! command -v git >/dev/null 2>&1; then
+  say "Installing git (needed by the auto-updater)..."
+  if apt-get update -qq >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git >/dev/null 2>&1; then
+    ok "git installed."
+  else
+    warn "git could not be installed; auto-update needs it (git ls-remote) — install git manually."
+  fi
+fi
+
 # ---------- 1a) Docker install — with sanctions fallback ----------
 install_docker_from_ubuntu() {
   # Ubuntu's own repos (ir.archive.ubuntu.com and local mirrors) are not sanctioned
@@ -336,9 +347,13 @@ PARASTOO_GH_PROXY="${PARASTOO_GH_PROXY:-}"
 PARASTOO_DEV_MODE="${PARASTOO_DEV_MODE:-false}"
 PARASTOO_DEV_TOKEN="${PARASTOO_DEV_TOKEN:-}"
 # --- آخرین استقرار (بعداً auto-update.sh به‌روزرسانی‌اش می‌کند) ---
+# v0.2.13 fix: مقدار پیش‌فرضِ همیشه‌حاضر — bootstrap از تاربال (بدون .git) نصب
+# می‌کند و با set -u نبودِ این متغیر، heredoc نوشتن .env را می‌کشت.
+# منبع مقدار: env-pass از bootstrap.sh (کامیت دقیق رفرنس) <- گیت محلی <- خالی
 _NOW_TS="$(date '+%F %T')"
 PARASTOO_DEPLOYED_AT="${PARASTOO_DEPLOYED_AT:-$_NOW_TS}"
-if [ -z "${PARASTOO_DEPLOYED_COMMIT:-}" ] && command -v git >/dev/null 2>&1 && [ -d .git ]; then
+PARASTOO_DEPLOYED_COMMIT="${PARASTOO_DEPLOYED_COMMIT:-}"
+if [ -z "$PARASTOO_DEPLOYED_COMMIT" ] && command -v git >/dev/null 2>&1 && [ -d .git ]; then
   PARASTOO_DEPLOYED_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
 fi
 
