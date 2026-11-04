@@ -54,6 +54,21 @@ class GiteaClient:
         )
         if r.status_code == 201:
             return r.json()["sha1"]
+        # درفت نام اسکوپ بین نسخه‌های گیتا: اول جمع→مفرد نرمال‌سازی، بعد حداقلی
+        if r.status_code == 400 and "scope" in r.text.lower():
+            for alt in (
+                [s.replace("write:packages", "write:package")
+                   .replace("read:packages", "read:package") for s in scopes],
+                ["write:repository"],
+            ):
+                if alt == scopes:
+                    continue
+                r = self.client.post(
+                    f"/api/v1/users/{username}/tokens",
+                    json={"name": name, "scopes": alt},
+                )
+                if r.status_code == 201:
+                    return r.json()["sha1"]
         # توکن تکراری: حذف و ساخت مجدد
         if r.status_code in (422, 500):
             self._delete_token_by_name(username, name)
@@ -99,8 +114,11 @@ class GiteaClient:
 
 # ---------- توابع سطح بالای مورد استفادهٔ پرستو ----------
 
-USER_TOKEN_SCOPES = ["write:repository", "write:packages"]
-SYSTEM_TOKEN_SCOPES = ["write:repository", "write:packages", "write:user",
+# گیتا 1.23+: نام اسکوپ پکیج مفرد است (write:package) — جمعِ آن (write:packages)
+# با 400 «invalid access token scope» رد می‌شد و کل زنجیرهٔ توکن→مخزن→بیلد مرده
+# می‌ماند (حادثهٔ 2026-11-04: هیچ حساب گیت/مخزنی ساخته نمی‌شد).
+USER_TOKEN_SCOPES = ["write:repository", "write:package"]
+SYSTEM_TOKEN_SCOPES = ["write:repository", "write:package", "write:user",
                        "write:organization", "write:admin", "read:user"]
 
 

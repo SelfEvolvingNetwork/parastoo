@@ -338,6 +338,12 @@ check("config.py DEV_MODE/DEV_TOKEN/DEPLOYED_COMMIT دارد",
 check("main.py خطاهای ۵۰۰ را لاگ می‌کند (قابل دریافت در گزارش)",
       "log.exception" in (ROOT / "core/app/main.py").read_text())
 
+gitea_src = (ROOT / "core/app/gitea.py").read_text()
+check("اسکوپ پکیج گیتا مفرد است (write:package؛ گیتا 1.23 «write:packages» را 400 رد می‌کند)",
+      "write:packages" not in gitea_src and "write:package" in gitea_src)
+check("create_token روی خطای اسکوپ fallback دارد (نرمال‌سازی جمع→مفرد)",
+      "invalid" not in "" and "scope" in gitea_src and "replace(\"write:packages\", \"write:package\")" in gitea_src)
+
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

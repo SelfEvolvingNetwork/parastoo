@@ -9,7 +9,7 @@ def _bool(name: str, default: str = "false") -> bool:
 class Settings:
     # --- پایه ---
     APP_NAME: str = "پرستو"
-    VERSION: str = "0.2.19"
+    VERSION: str = "0.2.20"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me")
 
     # --- دیتابیس ---
