@@ -38,7 +38,7 @@ on_interrupt() {
   warn "Installation was interrupted before it finished."
   [ -f "$INSTALL_DIR/.install-state" ] \
     && echo -e "   Last completed phase: ${BLUE}$(cat "$INSTALL_DIR/.install-state" 2>/dev/null)${NC}" >&2
-  echo -e "   Finish the stack manually:  ${BLUE}cd $INSTALL_DIR && sudo docker compose up -d --build${NC}" >&2
+  echo -e "   Finish the stack manually:  ${BLUE}cd $INSTALL_DIR && sudo bash scripts/db-reconcile.sh && sudo docker compose up -d --build${NC}" >&2
   echo    "   (re-running the same install command is also safe — nothing is lost)" >&2
   echo -e "   Diagnostic report to share: ${BLUE}bash $INSTALL_DIR/scripts/doctor.sh${NC}" >&2
   exit 130
@@ -320,7 +320,14 @@ _EXPLICIT_NPM="${PARASTOO_NPM_REGISTRY:-}"
 
 if [ -f .env ]; then
   warn ".env already exists; keeping previous secrets."
-  set -a; . ./.env; set +a
+  # v0.2.15: a legacy .env can hold unquoted values with spaces (real crash:
+  # PARASTOO_DEPLOYED_AT=2026-11-04 10:13:46 -> "./.env: line 40: 10:13:46:
+  # command not found" -> set -e killed the whole installer mid-update).
+  # Source tolerantly: keep what parses, never abort. The heredoc below
+  # rewrites the file with quoted values, so this only matters once.
+  set +e
+  set -a; . ./.env 2>/dev/null; set +a
+  set -e
   if [ -n "$_EXPLICIT_PIP" ]; then PARASTOO_PIP_INDEX_URL="$_EXPLICIT_PIP"; fi
   if [ -n "$_EXPLICIT_NPM" ]; then PARASTOO_NPM_REGISTRY="$_EXPLICIT_NPM"; fi
 fi
@@ -415,8 +422,10 @@ PARASTOO_DEV_MODE=${PARASTOO_DEV_MODE}
 PARASTOO_DEV_TOKEN=${PARASTOO_DEV_TOKEN}
 
 # --- آخرین استقرار (توسط auto-update.sh نگه‌داری می‌شود؛ /api/version نشان می‌دهد) ---
-PARASTOO_DEPLOYED_COMMIT=${PARASTOO_DEPLOYED_COMMIT}
-PARASTOO_DEPLOYED_AT=${PARASTOO_DEPLOYED_AT}
+# v0.2.15: مقدارِ با فاصله (زمان) باید کوتیشن داشته باشد وگرنه source کردن .env
+# در اجرای بعدی نصب‌ر را می‌کشد («10:13:46: command not found»)
+PARASTOO_DEPLOYED_COMMIT="${PARASTOO_DEPLOYED_COMMIT}"
+PARASTOO_DEPLOYED_AT="${PARASTOO_DEPLOYED_AT}"
 
 # --- sanctions (optional; docs/SANCTIONS.md) ---
 # pip mirror for Python builds, e.g.: https://package-mirror.liara.ir/repository/pypi/simple
@@ -484,6 +493,17 @@ elif [ "${PARASTOO_AUTO_UPDATE:-true}" = "true" ]; then
   warn "  * * * * * root bash $INSTALL_DIR/scripts/auto-update.sh"
 else
   warn "Auto-update disabled (PARASTOO_AUTO_UPDATE=false in .env) — update manually: sudo parastoo update"
+fi
+
+# ---------- 4c) db credential reconcile (v0.2.15) ----------
+# self-heal: the postgres volume keeps the FIRST install's passwords (init
+# scripts run only on an empty volume). If .env ever drifts from the volume
+# (installer crash mid-.env + regenerated secrets), gitea/core die with
+# "password authentication failed" and the stack never starts. .env is the
+# source of truth -> align the database to it before any `compose up`.
+mark "4c) db credential reconcile"
+if ! bash scripts/db-reconcile.sh; then
+  warn "db reconcile did not complete (continuing; compose up reports the real error if any)."
 fi
 
 # ---------- 5) bring up the stack ----------

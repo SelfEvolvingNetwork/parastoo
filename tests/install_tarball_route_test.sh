@@ -51,6 +51,7 @@ case "$1 $2" in
   "buildx version") exit 1 ;;    # -> best-effort install path, warn, continue
   "pull"*) exit 1 ;;             # -> test-pull warn, continue
   "info") exit 1 ;;              # -> skip in-container probes
+  "inspect"*) echo healthy; exit 0 ;;  # -> db-reconcile health wait passes fast
   *) exit 0 ;;                   # compose up / exec health check succeed
 esac
 EOF
@@ -94,13 +95,23 @@ fi
 # ---------- assertions on the artifacts ----------
 if [ -f "$PKG/.env" ]; then
   pass ".env was written"
-  if grep -q '^PARASTOO_DEPLOYED_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa$' "$PKG/.env"; then
-    pass ".env carries the bootstrap-provided commit (env-pass route)"
-  elif grep -q '^PARASTOO_DEPLOYED_COMMIT=$' "$PKG/.env"; then
+  # v0.2.15: DEPLOYED_* values are quoted now (a space inside an unquoted value
+  # killed the next installer run while sourcing .env)
+  if grep -q '^PARASTOO_DEPLOYED_COMMIT="\?aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\?$' "$PKG/.env"; then
+    pass ".env carries the bootstrap-provided commit, quoted (env-pass route)"
+  elif grep -q '^PARASTOO_DEPLOYED_COMMIT="\?"\?$' "$PKG/.env"; then
     pass ".env carries an empty-but-defined PARASTOO_DEPLOYED_COMMIT (no crash; auto-updater fills it)"
   else
     bad ".env has an unexpected PARASTOO_DEPLOYED_COMMIT line:"
     grep 'PARASTOO_DEPLOYED_COMMIT' "$PKG/.env" | sed 's/^/        /' >&2
+  fi
+  # v0.2.15 regression: sourcing the generated .env must NEVER error —
+  # an unparsable .env used to kill the next installer run mid-update
+  SRC_ERR="$WORK/env-source.err"
+  if bash -c 'set -a; . "$1"; set +a' bash "$PKG/.env" 2>"$SRC_ERR" && [ ! -s "$SRC_ERR" ]; then
+    pass ".env is sourceable by bash with zero errors (no unquoted values with spaces)"
+  else
+    bad ".env is NOT cleanly sourceable:"; sed 's/^/        /' "$SRC_ERR" >&2
   fi
 else
   bad ".env was NOT written (the v0.2.12 production crash point)"
@@ -112,6 +123,12 @@ else
 fi
 if grep -q 'auto-update enabled\|Auto-update enabled' "$LOG"; then
   pass "auto-update timer step reached"
+fi
+# v0.2.15: the reconcile step must run before compose up
+if grep -q 'db credential reconcile' "$LOG" || grep -q 'db-reconcile' "$LOG"; then
+  pass "db credential reconcile step reached before compose up"
+else
+  bad "db credential reconcile step never ran"
 fi
 
 printf '\n'

@@ -56,12 +56,16 @@ record() {
 }
 
 # set_env KEY VALUE — نوشتن idempotent در .env (بدون خرابکردن بقیه خط‌ها)
+# v0.2.15: مقدار همیشه کوتیشن می‌شود (DEPLOYED_AT فاصله دارد؛ خط unquoted در
+# اجرای بعدی، source کردن .env را می‌کشد) و کاراکترهای خاص sed هم escape می‌شوند
 set_env() {
   [ -f .env ] || return 0
+  local esc
+  esc="$(printf '%s' "$2" | sed -e 's/[&|\\]/\\&/g')"
   if grep -qE "^$1=" .env; then
-    sed -i "s|^$1=.*|$1=$2|" .env
+    sed -i "s|^$1=.*|$1=\"$esc\"|" .env
   else
-    printf '\n# --- written by auto-update ---\n%s=%s\n' "$1" "$2" >> .env
+    printf '\n# --- written by auto-update ---\n%s="%s"\n' "$1" "$2" >> .env
   fi
 }
 
@@ -169,7 +173,12 @@ set_env PARASTOO_DEPLOYED_AT "$NOW_H"
 cp -f bin/parastoo /usr/local/bin/parastoo 2>/dev/null || true
 echo "$APP_DIR" 2>/dev/null > /etc/parastoo-install-path || true
 
-# ---------- ۶) بازسازی و بالا آوردن استک ----------
+# ---------- ۶) همگامی رمز دیتابیس + بازسازی و بالا آوردن استک ----------
+# v0.2.15: اگر .env و volume پستگرس از هم جدا افتاده باشند (رمز بازتولید شده)،
+# گیتا با "password authentication failed" unhealthy می‌شود و استک بالا نمی‌آید؛
+# reconcile رمز داخل دیتابیس را با .env همگام می‌کند (best-effort، هرگز fatal نیست)
+log "reconciling database credentials with .env..."
+bash scripts/db-reconcile.sh >>"$LOG" 2>&1 || true
 log "rebuilding the stack (docker compose up -d --build)..."
 if docker compose up -d --build >>"$LOG" 2>&1; then
   sleep 5   # recreate کامل شود؛ پاسخ کانتینرِ قدیمی را «سالم» نگیریم
