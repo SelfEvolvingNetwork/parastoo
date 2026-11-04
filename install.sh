@@ -466,6 +466,17 @@ awk -v block="$REDIRECT_BLOCK" -v email="$ACME_EMAIL" '
 [ "$TLS_ENABLED" = "true" ] && ok "HTTP -> HTTPS redirect enabled."
 chmod +x postgres-init/*.sh
 
+# ---------- 4a) db credential reconcile (v0.2.15) ----------
+# self-heal: the postgres volume keeps the FIRST install's passwords (init
+# scripts run only on an empty volume). If .env ever drifts from the volume
+# (installer crash mid-.env + regenerated secrets), gitea/core die with
+# "password authentication failed" and the stack never starts. .env is the
+# source of truth -> align the database to it before any `compose up`.
+mark "4a) db credential reconcile"
+if ! bash scripts/db-reconcile.sh; then
+  warn "db reconcile did not complete (continuing; compose up reports the real error if any)."
+fi
+
 # ---------- 4b) CLI + auto-update timer — BEFORE the stack (v0.2.14) ----------
 # چرا اینجا؟ تا اگر بالا آوردن استک به هر دلیلی شکست خورد، تایمر آپدیت خودکار
 # همچنان مسلح باشد: هر push بعدی به گیت‌هاب خودش استک را تعمیر/استقرار می‌کند
@@ -493,17 +504,6 @@ elif [ "${PARASTOO_AUTO_UPDATE:-true}" = "true" ]; then
   warn "  * * * * * root bash $INSTALL_DIR/scripts/auto-update.sh"
 else
   warn "Auto-update disabled (PARASTOO_AUTO_UPDATE=false in .env) — update manually: sudo parastoo update"
-fi
-
-# ---------- 4c) db credential reconcile (v0.2.15) ----------
-# self-heal: the postgres volume keeps the FIRST install's passwords (init
-# scripts run only on an empty volume). If .env ever drifts from the volume
-# (installer crash mid-.env + regenerated secrets), gitea/core die with
-# "password authentication failed" and the stack never starts. .env is the
-# source of truth -> align the database to it before any `compose up`.
-mark "4c) db credential reconcile"
-if ! bash scripts/db-reconcile.sh; then
-  warn "db reconcile did not complete (continuing; compose up reports the real error if any)."
 fi
 
 # ---------- 5) bring up the stack ----------
