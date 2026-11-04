@@ -334,10 +334,12 @@ gen() { openssl rand -hex 24; }
 # one-time setup token: printed only here; the web wizard consumes it
 SETUP_TOKEN="$(openssl rand -hex 6 | sed -E 's/(.{4})(.{4})(.{4})/\1-\2-\3/')"
 
-# explicit env beats the previous .env for the two mirror vars —
+# explicit env beats the previous .env for the mirror + domain vars —
 # captured BEFORE .env is sourced (sourcing would overwrite them)
 _EXPLICIT_PIP="${PARASTOO_PIP_INDEX_URL:-}"
 _EXPLICIT_NPM="${PARASTOO_NPM_REGISTRY:-}"
+_EXPLICIT_BASE="${PARASTOO_BASE_DOMAIN:-}"
+_EXPLICIT_PUBLIC_IP="${PARASTOO_PUBLIC_IP:-}"
 
 if [ -f .env ]; then
   warn ".env already exists; keeping previous secrets."
@@ -352,6 +354,34 @@ if [ -f .env ]; then
   if [ -n "$_EXPLICIT_PIP" ]; then PARASTOO_PIP_INDEX_URL="$_EXPLICIT_PIP"; fi
   if [ -n "$_EXPLICIT_NPM" ]; then PARASTOO_NPM_REGISTRY="$_EXPLICIT_NPM"; fi
 fi
+
+# v0.2.19 fix (field incident 2026-11-04): sourcing the OLD .env above would
+# clobber the freshly derived domain identity — a stale PANEL_DOMAIN (written
+# by an install whose egress-IP detection picked a NAT outbound IP) then
+# silently won over the PARASTOO_BASE_DOMAIN the user passed NOW, got
+# rewritten into the new .env, into the Traefik label router and into the
+# final printed panel URL. Explicit env > old .env, and everything downstream
+# of BASE_DOMAIN is re-derived here so no stale value can survive.
+if [ -n "$_EXPLICIT_BASE" ]; then
+  if [ -n "${BASE_DOMAIN:-}" ] && [ "$BASE_DOMAIN" != "$_EXPLICIT_BASE" ]; then
+    warn "Domain re-targeted by this run: ${BASE_DOMAIN} -> ${_EXPLICIT_BASE} (old .env value does not win over an explicit PARASTOO_BASE_DOMAIN)."
+  fi
+  BASE_DOMAIN="$_EXPLICIT_BASE"
+elif [ -z "${BASE_DOMAIN:-}" ]; then
+  BASE_DOMAIN="${PUBLIC_IP:-}.nip.io"
+fi
+if [ -n "$_EXPLICIT_PUBLIC_IP" ]; then PARASTOO_PUBLIC_IP="$_EXPLICIT_PUBLIC_IP"; fi
+PANEL_DOMAIN="panel.${BASE_DOMAIN}"
+GIT_DOMAIN="git.${BASE_DOMAIN}"
+APPS_DOMAIN="apps.${BASE_DOMAIN}"
+case "$BASE_DOMAIN" in
+  *.nip.io) TLS_ENABLED="false" ;;
+  *)        TLS_ENABLED="true" ;;
+esac
+ACME_EMAIL="${PARASTOO_ACME_EMAIL:-admin@${BASE_DOMAIN}}"
+TRAEFIK_ENTRYPOINTS="web"; TRAEFIK_TLS="false"
+if [ "$TLS_ENABLED" = "true" ]; then TRAEFIK_ENTRYPOINTS="web,websecure"; TRAEFIK_TLS="true"; fi
+GITEA_ROOT_URL_SCHEME="http"; [ "$TLS_ENABLED" = "true" ] && GITEA_ROOT_URL_SCHEME="https"
 
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(gen)}"
 GITEA_DB_PASSWORD="${GITEA_DB_PASSWORD:-$(gen)}"

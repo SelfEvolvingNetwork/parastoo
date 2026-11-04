@@ -147,6 +147,32 @@ else
   bad "the guarded default line is missing from install.sh (regression)"
 fi
 
+# ---------- C2) domain precedence: explicit env must beat the OLD .env ----------
+# Field incident 2026-11-04 (v0.2.18 and earlier): install.sh sourced the old
+# .env AFTER deriving the domain identity, so a stale PANEL_DOMAIN inside .env
+# clobbered the PARASTOO_BASE_DOMAIN the user passed NOW and won over the
+# Traefik label + printed URL. Guard: the explicit-intent capture must exist,
+# and the LAST derivation of PANEL_DOMAIN must come AFTER the .env sourcing.
+SRC_LINE="$(grep -n '\. \./\.env' install.sh | head -n1 | cut -d: -f1)"
+DER_LINE="$(grep -n '^PANEL_DOMAIN="panel\.\${BASE_DOMAIN}"$' install.sh | tail -n1 | cut -d: -f1)"
+CAP_LINE="$(grep -n '^_EXPLICIT_BASE="\${PARASTOO_BASE_DOMAIN:-}"$' install.sh | head -n1 | cut -d: -f1)"
+REASS_LINE="$(grep -n '^  BASE_DOMAIN="\$_EXPLICIT_BASE"$' install.sh | head -n1 | cut -d: -f1)"
+if [ -n "$CAP_LINE" ]; then
+  pass "explicit domain intent captured (_EXPLICIT_BASE) at line $CAP_LINE"
+else
+  bad "install.sh does not capture _EXPLICIT_BASE before sourcing .env"
+fi
+if [ -n "$SRC_LINE" ] && [ -n "$DER_LINE" ] && [ "$DER_LINE" -gt "$SRC_LINE" ]; then
+  pass "PANEL_DOMAIN is (re)derived AFTER the old .env is sourced (line $DER_LINE > $SRC_LINE)"
+else
+  bad "PANEL_DOMAIN is derived before/without the .env sourcing — stale .env would win again"
+fi
+if [ -n "$REASS_LINE" ]; then
+  pass "explicit PARASTOO_BASE_DOMAIN is re-asserted after sourcing (line $REASS_LINE)"
+else
+  bad "the BASE_DOMAIN='\$_EXPLICIT_BASE' re-assertion is missing from install.sh"
+fi
+
 # ---------- D) shell syntax of the touched scripts ----------
 for f in install.sh bootstrap.sh setup.sh scripts/auto-update.sh; do
   if bash -n "$f" 2>/dev/null; then pass "bash -n: $f"; else bad "bash -n: $f has syntax errors"; fi
