@@ -251,5 +251,14 @@ check("README روش ریست کارخانه را مستند کرده",
       "parastoo reset" in rme and "تنظیمات کارخانه" in rme)
 
 print()
+print("— بازیابی توکن در ویزارد —")
+stok = (ROOT / "core/app/web/templates/setup_token.html").read_text()
+check("صفحهٔ توکن، دستور کامل بازیابی را نشان می‌دهد (نه راهنمای مبهم)",
+      "grep PARASTOO_SETUP_TOKEN" in stok and "/etc/parastoo-install-path" in stok
+      and "sudo grep SETUP .env" not in stok)
+check("README فقط یک روش نصب دارد (گیت‌هاب) — بدون setup.sh دستی",
+      "sudo bash setup.sh" not in rme and "bootstrap.sh | sudo bash" in rme)
+
+print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

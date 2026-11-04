@@ -48,16 +48,20 @@ fi
 REL_JSON="$TMP/release.json"
 cat > "$REL_JSON" <<EOF
 {"tag_name":"v${VER}","target_commitish":"${BRANCH}","name":"v${VER}",
- "body":"## تغییرات\n\n- **ریست کارخانه**: \`parastoo reset\` — یک فرمان برای پاک‌کردن کامل داده‌ها (کاربران، پروژه‌ها، مخازن گیت، کیف پول، سایت‌ها) و بازگشت به ویزارد \`/setup\`؛ کد، \`.env\` و پشتیبان‌ها می‌مانند.\n- **uninstall.sh کامل شد**: کانتینرهای سایت (\`parastoo-site-*\` — خارج از استک compose) و ایمیج‌های پروژه‌ها اکنون در حذف کامل پاک می‌شوند.\n- مستندات: روش ریست کارخانه در README، نکتهٔ «کانتینرهای سایت خارج از استک compose هستند» در docs/LESSONS.md.\n\nنصب: \`curl -fsSL https://raw.githubusercontent.com/${REPO}/main/bootstrap.sh | sudo bash\`"}
+ "body":"## تغییرات\n\n- **ریست کارخانه**: \`parastoo reset\` — یک فرمان برای پاک‌کردن کامل داده‌ها (کاربران، پروژه‌ها، مخازن گیت، کیف پول، سایت‌ها) و بازگشت به ویزارد \`/setup\`؛ کد، \`.env\` و پشتیبان‌ها می‌مانند.\n- **uninstall.sh کامل شد**: کانتینرهای سایت (\`parastoo-site-*\` — خارج از استک compose) و ایمیج‌های پروژه‌ها اکنون در حذف کامل پاک می‌شوند.\n- **بازیابی توکن نصب**: صفحهٔ \`/setup\` حالا دستور کامل و درستِ یافتن توکن را از هر پوشه‌ای نشان می‌دهد (با پیدا کردن مسیر نصب از \`/etc/parastoo-install-path\`).\n- **یک روش نصب**: مستندات فقط نصب یک‌فرمانی از گیت‌هاب را نشان می‌دهد؛ مسیرهای zip/دستی از راهنما حذف شد.\n- اسکریپت انتشار \`scripts/github_publish.sh\` (push + ریلیز + آپلود asset + تأیید ۴گانه).\n\nنصب: \`curl -fsSL https://raw.githubusercontent.com/${REPO}/main/bootstrap.sh | sudo bash\`"}
 EOF
 code=$(curl -s -o "$TMP/rel_out.json" -w '%{http_code}' "${AUTH[@]}" \
         -d @"$REL_JSON" "$API/repos/$REPO/releases")
 if [ "$code" = "201" ]; then
   echo "[3/5] release v$VER created"
 else
+  # PATCH has no /tags/ route — resolve the release id first
+  REL_ID="$(curl -s "${AUTH[@]}" "$API/repos/$REPO/releases/tags/v${VER}" \
+            | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
+  [ -n "$REL_ID" ] || { echo "ERROR: release v$VER exists but its id was not found"; exit 1; }
   code=$(curl -s -o "$TMP/rel_out.json" -w '%{http_code}' "${AUTH[@]}" \
-          -X PATCH -d @"$REL_JSON" "$API/repos/$REPO/releases/tags/v${VER}")
-  [ "$code" = "200" ] || { echo "ERROR: release create/patch failed (HTTP $code)"; cat "$TMP/rel_out.json"; exit 1; }
+          -X PATCH -d @"$REL_JSON" "$API/repos/$REPO/releases/$REL_ID")
+  [ "$code" = "200" ] || { echo "ERROR: release patch failed (HTTP $code)"; cat "$TMP/rel_out.json"; exit 1; }
   echo "[3/5] release v$VER updated"
 fi
 

@@ -19,20 +19,14 @@
 
 ### گرفتن خود پرستو از گیت‌هاب (ایران)
 
-`github.com` از ایران باز است؛ اگر گاهی کند بود یا `raw.githubusercontent.com` جواب نداد:
+`github.com` از ایران باز است؛ نصب همیشه از گیت‌هاب می‌آید — همان یک‌فرمانِ رسمی:
 
 ```bash
-# مسیر ۱) همان دستور تک‌خطی — bootstrap.sh خودش سه مسیر را امتحان می‌کند
+# مسیر ۱) دستور تک‌خطی — bootstrap.sh خودش سه منبع دانلود را امتحان می‌کند
 curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash
 
-# مسیر ۲) پروکسی گیت‌هاب (فقط برای دانلود؛ اسکریپت را قبل از اجرا می‌توانید ببینید)
+# مسیر ۲) اگر raw گیت‌هاب کند بود: همان دستور از طریق پروکسی دانلود
 curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash
-
-# مسیر ۳) کلون دستی و اجرای محلی
-git clone https://github.com/SelfEvolvingNetwork/parastoo.git && cd parastoo && sudo bash setup.sh
-
-# مسیر ۴) کاملاً دستی: zip را از صفحهٔ ریلیزها در مرورگر بگیرید، به سرور ببرید:
-sudo bash setup.sh parastoo-v0.2.10.zip
 ```
 
 
@@ -113,6 +107,8 @@ scp offline-images/ user@server:/path/to/parastoo/
 sudo bash install.sh
 ```
 
+(پکیج خود پرستو را همان یک‌فرمان گیت‌هابی روی سرور گذاشته است؛ بستهٔ آفلاین فقط ایمیج‌های داکر را جابه‌جا می‌کند.)
+
 اسکریپت پوشهٔ `offline-images/` را خودش پیدا می‌کند، همهٔ ایمیج‌ها را با `docker load` بارگذاری می‌کند و دیگر **هیچ pull از اینترنت نمی‌زند**. بیلد هسته هم آفلاین انجام می‌شود چون ایمیج پایهٔ `python:3.12-slim` داخل بسته است.
 
 ## ۵) لایهٔ ۴ — آینهٔ PyPI/npm برای بیلدها (خودکار)
@@ -153,8 +149,8 @@ parastoo update
 ## ۷) چک‌لیست نصب در ایران (خلاصه)
 
 ```bash
-unzip parastoo-v0.2.10.zip && cd parastoo
-sudo bash install.sh          # خودش مسیر تحریم را تشخیص می‌دهد و دور می‌زند
+curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash
+# خودش مسیر تحریم را تشخیص می‌دهد و دور می‌زند
 # → آدرس پنل + توکن نصب چاپ می‌شود؛ بقیه در مرورگر
 ```
 

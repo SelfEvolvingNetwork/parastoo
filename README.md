@@ -31,20 +31,10 @@ curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/b
 
 - **نسخهٔ پایدار به‌جای main:**  `PARASTOO_REF=v0.2.10 curl -fsSL https://raw.githubusercontent.com/... | sudo bash`
 - **زبان خروجی نصب:** ترمینال هنگام نصب کاملاً انگلیسی است — متن فارسی/RTL در SSH به‌هم می‌ریزد. پنل وب و مستندات همچنان فارسی‌اند.
-- **اگر در ایران گیت‌هاب کند یا مسدود بود:**  `curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash`  — یا دستی: `git clone https://github.com/SelfEvolvingNetwork/parastoo.git && cd parastoo && sudo bash setup.sh`
+- **اگر در ایران گیت‌هاب کند بود:**  `curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash`  (همان دستور، از طریق پروکسی دانلود — این تنها روشِ جایگزینِ همان یک مسیر است)
 - **اجرای مجدد = آپدیت امن:** همان دستور را دوباره بزنید؛ کد به‌روز می‌شود ولی `.env`، پیکربندی ترافیک، بستهٔ آفلاین، پشتیبان‌ها و داده‌ها (ولیوم‌های داکر) دست‌نخورده می‌مانند.
 
-### نصب از فایل zip (بدون گیت‌هاب)
-
-سه حالت، هر کدام یک دستور:
-
-```bash
-sudo bash setup.sh                                  # فایل zip کنار setup.sh باشد
-sudo bash setup.sh parastoo-v0.2.10.zip              # یا مسیر/نام فایل
-sudo bash setup.sh https://HOST/parastoo-v0.2.10.zip # یا دانلود مستقیم (zip یا tar.gz)
-```
-
-`setup.sh` خودش وابستگی‌ها (curl/unzip)، دانلود، استخراج و کپی در `/opt/parastoo` را انجام می‌دهد و بعد `install.sh` را اجرا می‌کند. حالت کلاسیک: `curl -fsSL https://HOST/setup.sh | bash -s -- https://HOST/parastoo-v0.2.10.zip` — و اگر خودتان پکیج را از قبل باز کرده‌اید، داخل همان پوشه: `sudo bash setup.sh` (معادل `sudo bash install.sh`).
+> نصب پرستو فقط از همین یک مسیر است (گیت‌هاب ← bootstrap.sh ← install.sh). نسخهٔ zip ریلیزها فقط منبعِ دانلودِ خودِ bootstrap.sh است، نه روشی جدا برای نصب دستی.
 
 ### install.sh چه می‌کند (هیچ سوالی نمی‌پرسد)
 1. داکر را نصب می‌کند (اگر نباشد)
