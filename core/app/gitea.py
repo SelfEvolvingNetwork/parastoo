@@ -114,6 +114,36 @@ class GiteaClient:
             return
         raise GiteaError(f"delete repo {owner}/{name}: {r.status_code} {r.text[:200]}")
 
+    def repo_info(self, owner: str, repo: str) -> dict | None:
+        r = self.client.get(f"/api/v1/repos/{owner}/{repo}")
+        return r.json() if r.status_code == 200 else None
+
+    def seed_files(self, owner: str, repo: str, files: dict[str, str], message: str) -> None:
+        """کامیت اولیه: چند فایل هم‌زمان در یک کامیت (endpoint تغییر گروهی گیتا 1.20+).
+
+        اگر راه گروهی نشد، فالبک: ساخت تک‌تک فایل‌ها — روی مخزن خالی این هم
+        برنچ پیش‌فرض را مقداردهی می‌کند (همان کاری که web UI گیتا می‌کند).
+        """
+        import base64
+
+        def b64(text: str) -> str:
+            return base64.b64encode(text.encode()).decode()
+
+        r = self.client.post(
+            f"/api/v1/repos/{owner}/{repo}/contents",
+            json={"files": [{"operation": "create", "path": p, "content": b64(c)}
+                            for p, c in sorted(files.items())]},
+        )
+        if r.status_code in (200, 201):
+            return
+        for p, c in sorted(files.items()):
+            rp = self.client.post(
+                f"/api/v1/repos/{owner}/{repo}/contents/{p}",
+                json={"content": b64(c), "message": message},
+            )
+            if rp.status_code not in (200, 201, 409):  # 409 = از قبل هست؛ اوکی
+                raise GiteaError(f"seed file {owner}/{repo}/{p}: {rp.status_code} {rp.text[:200]}")
+
     def create_webhook(self, owner: str, repo: str, url: str, secret: str) -> None:
         r = self.client.post(f"/api/v1/repos/{owner}/{repo}/hooks", json={
             "type": "gitea",
@@ -246,6 +276,26 @@ def provision_project_repo(project, owner) -> None:
     gh.create_repo(owner_name, project.slug, private=True, description=project.name)
     hook_url = f"http://parastoo-core:8000/api/hooks/gitea/{project.id}"
     gh.create_webhook(owner_name, project.slug, hook_url, project.webhook_secret)
+
+
+def seed_project_scaffold(project, owner, files: dict[str, str], message: str) -> bool:
+    """کامیت اولیهٔ اسکفولد استاندارد روی مخزن «خالی» (v0.3.2).
+
+    قواعد ایمنی (از scaffolds.py):
+    - فقط مخزن خالی: اگر محتوا دارد (کاربر زودتر push کرده) هرگز دست نمی‌زنیم.
+    - خطاها به بالا می‌رود تا فراخواننده best-effort تصمیم بگیرد (لاگ، بدون شکستن).
+    برمی‌گرداند: True = کامیت اولیه اعمال شد.
+    """
+    token = system_token()
+    owner_name = owner.gitea_username
+    if not token or not owner_name or not files:
+        return False
+    gh = GiteaClient(token=token)
+    info = gh.repo_info(owner_name, project.slug)
+    if info is None or not info.get("empty", True):
+        return False  # مخزن نیست یا از قبل محتوا دارد — بازنویسی ممنوع
+    gh.seed_files(owner_name, project.slug, files, message)
+    return True
 
 
 def delete_project_repo(project, owner) -> bool:

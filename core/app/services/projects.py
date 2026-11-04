@@ -1,7 +1,7 @@
-"""چرخهٔ حیات پروژه: ساخت، یافتن با چک مالکیت، صف بیلد، حذف آبشاری."""
+"""چرخهٔ حیات پروژه: ساخت، یافتن با چک مالکیت، اسکفولد استاندارد، صف بیلد، حذف آبشاری."""
 from sqlalchemy.orm import Session
 
-from .. import dockerops, gitea
+from .. import dockerops, gitea, scaffolds
 from ..config import settings
 from ..models import Build, Project, Site, User
 from ..security import gen_secret, slugify
@@ -26,6 +26,11 @@ def create_project(db: Session, owner: User, name: str, slug_raw: str,
     """
     name = name.strip()
     slug = slugify(slug_raw)
+    start_cmd = (start_cmd or "").strip()
+    # مدل پایتون از v0.3.2 با FastAPI متولد می‌شود؛ ورکر sync گورنیکون (پیش‌فرض
+    # قدیمی) با ASGI نمی‌سازد — پس دستور اجرای پیش‌فرض، ورکر uvicorn است.
+    if stack == "python" and not start_cmd:
+        start_cmd = scaffolds.DEFAULT_START_CMD["python"]
     err = project_slug_error(slug)
     if err is None and (not name or stack not in settings.STACKS):
         err = "slug_invalid"
@@ -56,7 +61,30 @@ def create_project(db: Session, owner: User, name: str, slug_raw: str,
     except Exception:
         db.rollback()
         flash = "git_pending"
+        return project, flash
+    seed_scaffold(project, owner)  # best-effort — هرگز ساخت پروژه را نمی‌شکند
     return project, flash
+
+
+def seed_scaffold(project: Project, owner: User) -> bool:
+    """کامیت اولیهٔ مدل استاندارد روی مخزن خالی (v0.3.2) — best-effort.
+
+    قواعد در scaffolds.py: فقط مخزن خالی، هرگز بازنویسی محتوای کاربر،
+    شکست فقط لاگ می‌شود (مسیر قدیمی «مخزن خالی» همچنان کار می‌کند).
+    """
+    try:
+        from ..domains import git as git_domain
+        clone_url = f"{git_domain()}/{owner.gitea_username}/{project.slug}.git"
+        files = scaffolds.files_for(project, clone_url=clone_url)
+        if not files:
+            return False
+        seeded = gitea.seed_project_scaffold(project, owner, files, scaffolds.COMMIT_MESSAGE)
+        if seeded:
+            print(f"[parastoo] scaffold seeded: {owner.gitea_username}/{project.slug} ({project.stack})")
+        return seeded
+    except Exception as e:
+        print(f"[parastoo] scaffold seed failed for {project.slug}: {e}")
+        return False
 
 
 def queue_build(db: Session, project: Project) -> str:

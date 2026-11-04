@@ -17,6 +17,7 @@ from .config import settings
 from .db import SessionLocal, db_now
 from .models import Build, Project, Setting, Site, User
 from .services import billing
+from .services import projects as projects_svc
 
 BUILD_ROOT = Path(settings.DATA_DIR) / "builds"
 LOG_TAIL = 60_000  # حداکثر کاراکترهای نگه‌داری‌شده در لاگ بیلد
@@ -86,6 +87,8 @@ def _sync_pending(db) -> None:
             project.repo_status = "ready"
             db.commit()
             print(f"[parastoo] repo ready: {owner.gitea_username}/{project.slug}")
+            # اسکفولد استاندارد (v0.3.2) — best-effort؛ حتی اگر نشد مخزن خالی می‌ماند
+            projects_svc.seed_scaffold(project, owner)
         except Exception as e:
             db.rollback()
             # در حالت pending می‌ماند تا در سیکل بعد دوباره تلاش شود (خودترمیمی)
@@ -154,6 +157,11 @@ def _run_build(db, job: Build) -> None:
             if not dockerfile.exists():
                 raise RuntimeError("برای فناوری «داکرفایل اختصاصی» باید فایل Dockerfile در ریشه مخزن باشد")
         else:
+            # پیش‌بازرسی استک (v0.3.2): پیام فارسی گویا به‌جای خطای مبهم داکر
+            # (حادثهٔ ppp: استک node ولی مخزن بدون package.json → COPY failed)
+            marker_err = stacks.missing_marker(project.stack, build_dir)
+            if marker_err:
+                raise RuntimeError(marker_err)
             content = stacks.dockerfile_for(project.stack, project.start_cmd)
             if not dockerfile.exists() and content:
                 dockerfile.write_text(content)

@@ -86,6 +86,16 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 ok = uname in USERS
             return self._json(200 if ok else 404, {"username": uname} if ok else {"message": "nope"})
+        if path.startswith("/api/v1/repos/") and len(path.strip("/").split("/")) == 5:
+            # GET اطلاعات مخزن — قاعدهٔ «فقط مخزن خالی» اسکفولد (v0.3.2)
+            parts = path.strip("/").split("/")
+            owner, name = parts[3], parts[4]
+            with LOCK:
+                entry = REPOS.get(f"{owner}/{name}")
+            if not entry:
+                return self._json(404, {"message": "no repo"})
+            return self._json(200, {"full_name": f"{owner}/{name}",
+                                    "empty": not entry.get("files")})
         return self._json(404, {})
 
     def do_POST(self):
@@ -108,6 +118,25 @@ class Handler(BaseHTTPRequestHandler):
                     "scopes": payload.get("scopes", [])}
                 HITS.append(f"token {uname}")
             return self._json(201, {"id": 1, "name": payload.get("name", ""), "sha1": sha1})
+
+        if path.startswith("/api/v1/repos/") and "/contents" in path:
+            # کامیت اولیهٔ اسکفولد (v0.3.2) — گروهی (/contents) یا تکی (/contents/{path})
+            rest = path.split("/api/v1/repos/")[1]
+            owner, name = rest.split("/contents")[0].split("/")[:2]
+            if user is None or (scopes is not None and "write:repository" not in scopes and "full" not in scopes):
+                with LOCK:
+                    HITS.append(f"DENY contents {owner}/{name}")
+                return self._json(403, {"message": "no scope"})
+            with LOCK:
+                entry = REPOS.setdefault(f"{owner}/{name}", {"hooks": [], "files": {}})
+                entry.setdefault("files", {})
+                if path.endswith("/contents"):
+                    for f in payload.get("files", []):
+                        entry["files"][f.get("path", "")] = f.get("content", "")
+                else:
+                    entry["files"][path.split("/contents/")[1]] = payload.get("content", "")
+                HITS.append(f"contents {owner}/{name}")
+            return self._json(201, {"commit": {"sha": "s" + "0" * 39}})
 
         if path.startswith("/api/v1/admin/users/") and path.endswith("/repos"):
             # مسیر واقعی ساخت مخزن در نام‌اسپیس کاربر دیگر با توکن ادمین
@@ -246,6 +275,35 @@ with TestClient(app, follow_redirects=False) as c:
     check("مخزن در گیتا ساخته شد", f"{gname}/gitea-shop" in repos)
     check("وب‌هوک بیلد روی مخزن نصب شد",
           bool(repos.get(f"{gname}/gitea-shop", {}).get("hooks")))
+
+    # --- اسکفولد استاندارد (v0.3.2): کامیت اولیه روی مخزن خالی ---
+    seeded = repos.get(f"{gname}/gitea-shop", {}).get("files", {})
+    check("کامیت اولیهٔ اسکفولد روی مخزن خالی اعمال شد", bool(seeded))
+    check("اسکفولد استاتیک شامل README قراردادی و index.html است",
+          "README.md" in seeded and "index.html" in seeded)
+    check("محتوای seed پایه‌۶۴ بوده (وفادار به API واقعی گیتا)",
+          all(isinstance(v, str) and v for v in seeded.values()))
+
+    # پروژهٔ دوم با مدل node — فایل کلید package.json باید seed شود
+    db = SessionLocal()
+    uid = db.query(User).filter(User.email == "ali@test.ir").first().id
+    db.close()
+    r = c.post("/projects/new", data={"name": "نوداپ", "slug": "gitea-node", "stack": "node",
+                                      "csrf": security.csrf_token(uid)}, follow_redirects=False)
+    check("ساخت پروژهٔ node", r.status_code == 303)
+    with LOCK:
+        seeded_node = dict(REPOS).get(f"{gname}/gitea-node", {}).get("files", {})
+    check("اسکفولد node با package.json و server.js seed شد",
+          "package.json" in seeded_node and "server.js" in seeded_node)
+
+    # قاعدهٔ «فقط مخزن خالی»: سیکل بعدی نباید دوباره seed کند
+    with LOCK:
+        n_contents = sum(1 for h in HITS if h.startswith("contents "))
+    workers.bootstrap_once()
+    with LOCK:
+        n_contents2 = sum(1 for h in HITS if h.startswith("contents "))
+    check("seed دقیقاً یک‌بار برای هر مخزن (بازنویسی ممنوع)", n_contents == n_contents2 == 2,
+          f"n={n_contents},{n_contents2}")
 
     # idempotency: سیکل بعدی نباید چیزی را دوباره بسازد یا خراب کند
     n_before = len(HITS)

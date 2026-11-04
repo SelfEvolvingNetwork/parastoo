@@ -77,6 +77,31 @@ def wants_own_dockerfile(stack: str) -> bool:
     return stack == "docker"
 
 
+# پیش‌بازرسی بیلد (v0.3.2): فایل کلید هر استک + پیام فارسی قابل‌اقدام.
+# انگیزه: حادثهٔ ppp (2026-11-04) — استک node با مخزن بدون package.json تا
+# مرحلهٔ COPY از داکر پیش می‌رفت و خطای انگلیسیِ مبهم می‌داد؛ حالا شکست زودتر
+# و با دستورالعمل رخ می‌دهد (هم‌الگوی خطای واضح استک docker در workers.py).
+MARKERS: dict[str, tuple[str, str]] = {
+    "node": ("package.json",
+             "استک پروژه «Node.js» است ولی package.json در ریشهٔ مخزن نیست. "
+             "این فایل را اضافه کنید (اسکریپت start که روی پورت 3000 گوش دهد)، "
+             "یا اگر سایت استاتیک/پایتون است پروژه را با استک درست بسازید."),
+    "python": ("requirements.txt",
+               "استک پروژه «Python» است ولی requirements.txt در ریشهٔ مخزن نیست. "
+               "وابستگی‌ها را در requirements.txt بنویسید "
+               "یا اگر محتوا استاتیک است پروژه را با استک «استاتیک» بسازید."),
+}
+
+
+def missing_marker(stack: str, build_dir) -> str | None:
+    """اگر فایل کلید استک در مخزن نبود، پیام فارسی گویا؛ وگرنه None."""
+    marker = MARKERS.get(stack)
+    if not marker:
+        return None
+    path, message = marker
+    return None if (build_dir / path).exists() else message
+
+
 def dockerfile_for(stack: str, start_cmd: str | None = None) -> str | None:
     """محتوای داکرفایل قالبی؛ برای فناوری docker مقدار None (از فایل کاربر استفاده می‌شود)."""
     if stack == "docker":

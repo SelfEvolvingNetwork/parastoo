@@ -10,6 +10,7 @@
 4. **خودترمیمی.** اگر گیتا در لحظه در دسترس نبود، رکورد در حالت `pending` می‌ماند و ورکر bootstrap بعداً می‌سازد. هرگز عملیات گیت را شرط ورود کاربر نکنید.
 5. **همه پیکربندی از env** (`core/app/config.py`) — بدون فایل کانفیگ جدید.
 6. **لایه‌بندی (از v0.3.0):** مسیر HTTP → اعتبارسنجی (validation.py) → سرویس (services/) → زیرساخت (dockerops/gitea/traefik_ops). منطق کسب‌وکار هرگز داخل routes/ نوشته نمی‌شود؛ هر قاعده فقط یک جا (مثلاً قیمت پلن فقط services/billing.py).
+7. **اسکفولد تک‌منبع (از v0.3.2):** ساختار اولیهٔ همهٔ مدل‌ها فقط در `scaffolds.py` تعریف می‌شود؛ کامیت اولیه فقط روی مخزن «خالی» اعمال و best-effort است — محتوای کاربر هرگز بازنویسی نمی‌شود و شکست اسکفولد هرگز ساخت پروژه را نمی‌شکند.
 
 ## نقشه فایل‌ها
 
@@ -35,13 +36,14 @@ core/app/
   tpl.py        Jinja2 + فلش‌پیام‌های فارسی + فیلترهای قالب
   devlog.py     رینگ‌بافر لاگ در حافظه (منبع /api/dev/logs و بخش خطاهای گزارش؛ main.py هم لاگ ۵۰۰ را اینجا می‌ریزد)
   deps.py       resolve_user/get_current_user / csrf_guard / render / redirect / set_session
-  gitea.py      کلاینت Gitea API + provision کاربر/مخزن + توکن سیستمی
+  gitea.py      کلاینت Gitea API + provision کاربر/مخزن + seed فایل‌ها (کامیت اولیهٔ گروهی) + توکن سیستمی
   dockerops.py  بیلد/push/pull/اجرا/توقف کانتینر سایت + لیبل‌های ترافیک (پویا از domains)
-  stacks.py     داکرفایل قالبی برای static/node/python/docker
+  stacks.py     داکرفایل قالبی برای static/node/python/docker + پیش‌بازرسی فایل کلید استک (missing_marker)
+  scaffolds.py  اسکفولد استاندارد ۴ مدل (static/node/python/docker): فایل‌های آمادهٔ اجرا + README قراردادی — فقط مخزن خالی، best-effort
   workers.py    سه ترد: bootstrap_loop، build_worker، billing_loop (صورتحساب را به services/billing محول می‌کند)
   services/     منطق کسب‌وکار — بدون HTTP؛ مسیرها فقط ورودی/خروجی وب‌اند:
     billing.py    قیمت‌گذاری تک‌منبع: tier/price_hourly/hourly_cost/monthly_cost + charge_running_sites (کسر ساعتی + توقف بدحساب)
-    projects.py   چرخهٔ پروژه: project_for (مالکیت/IDOR) + create_project + queue_build + delete_project (آبشار با حفاظت خریدار)
+    projects.py   چرخهٔ پروژه: project_for (مالکیت/IDOR) + create_project + seed_scaffold (کامیت اولیهٔ استاندارد) + queue_build + delete_project (آبشار با حفاظت خریدار)
     sites.py      چرخهٔ سایت: site_for + publish_from_project/create_and_run (نقطهٔ مشترک انتشار و مارکت) + start/stop/delete + live_statuses
     market.py     فعال‌سازی مارکت: activate_project (پرداخت کیف پول + کمیسیون + WalletTx + ساخت سایت خریدار)
   main.py       کارخانهٔ create_app() + app — فقط مونتاژ: میان‌افزار هدر امنیتی، استاتیک، روترها، هندلرهای خطا (۵۰۰ لاگ می‌شود)
@@ -64,9 +66,9 @@ core/app/
 
 ## جریان‌های کلیدی
 
-**ساخت پروژه:** POST /projects/new → ردیف Project (repo_status=pending) → تلاش فوری gitea.provision_project_repo → اگر گیتا پایین بود، ورکر bootstrap بعداً می‌سازد.
+**ساخت پروژه:** POST /projects/new → ردیف Project (repo_status=pending؛ برای python دستور اجرای پیش‌فرض = ورکر uvicorn) → تلاش فوری gitea.provision_project_repo → اگر گیتا پایین بود، ورکر bootstrap بعداً می‌سازد. بلافاصله بعد از آماده‌شدن مخزن، کامیت اولیهٔ اسکفولد (scaffolds.py — فقط اگر مخزن خالی باشد) اعمال می‌شود؛ کاربر هرگز با مخزن خالی شروع نمی‌کند.
 
-**بیلد:** gitea push → webhook POST /api/hooks/gitea/{id} (امضا) → Build(queued) → build_worker: clone از `http://user:token@gitea:3000/...` → Dockerfile (فایل کاربر یا stacks.py) → docker build → login+push به `127.0.0.1:3000/<user>/<slug>` (رجیستری داخلی گیتا؛ localhost برای دیمون ناامن-مجاز است) → به‌روزرسانی خودکار همه Siteهای آن پروژه.
+**بیلد:** gitea push → webhook POST /api/hooks/gitea/{id} (امضا) → Build(queued) → build_worker: clone از `http://user:token@gitea:3000/...` → پیش‌بازرسی استک (stacks.missing_marker: node بدون package.json / python بدون requirements.txt = شکست با پیام فارسی، نه خطای داکر) → Dockerfile (فایل کاربر یا stacks.py) → docker build → login+push به `127.0.0.1:3000/<user>/<slug>` (رجیستری داخلی گیتا؛ localhost برای دیمون ناامن-مجاز است) → به‌روزرسانی خودکار همه Siteهای آن پروژه.
 
 **انتشار:** POST /projects/{slug}/publish → ردیف Site + dockerops.run_site (mem_limit/nano_cpus + لیبل‌های ترافیک Host(`slug.apps.domain`)) → ترافیک کشف خودکار.
 

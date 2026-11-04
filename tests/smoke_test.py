@@ -417,6 +417,57 @@ check("اسکوپ پکیج گیتا مفرد است (write:package؛ گیتا 1.
       and '"write:packages"' not in gitea_src.replace('replace("write:packages", "write:package")', ""))
 check("create_token روی خطای اسکوپ fallback دارد (نرمال‌سازی جمع→مفرد)",
       "invalid" not in "" and "scope" in gitea_src and "replace(\"write:packages\", \"write:package\")" in gitea_src)
+check("کلاینت گیتا کامیت اولیهٔ گروهی (seed) دارد",
+      "/contents" in gitea_src and "seed_project_scaffold" in gitea_src and "repo_info" in gitea_src)
+
+print("— اسکفولد استاندارد و پیش‌بازرسی بیلد (v0.3.2) —")
+from app import scaffolds, stacks as stacks_mod  # noqa: E402
+from app.services import projects as projects_svc  # noqa: E402
+
+for st_key, must in (("static", ["README.md", "index.html", "css/style.css", "js/script.js"]),
+                     ("node", ["README.md", "package.json", "server.js"]),
+                     ("python", ["README.md", "app.py", "requirements.txt"]),
+                     ("docker", ["README.md", "Dockerfile", "index.html"])):
+    sc_files = scaffolds.SCAFFOLDS.get(st_key, {})
+    check(f"اسکفولد {st_key} کامل است", all(m in sc_files for m in must), f"files={sorted(sc_files)}")
+check("اسکفولد node بدون وابستگی است (بیلد اول همیشه سبز)", "dependencies" not in scaffolds.SCAFFOLDS["node"]["package.json"])
+check("اسکفولد node قرارداد PORT را دارد", "process.env.PORT" in scaffolds.SCAFFOLDS["node"]["server.js"])
+check("اسکفولد پایتون FastAPI است", "FastAPI" in scaffolds.SCAFFOLDS["python"]["app.py"])
+check("README اسکفولد پایتون جای دستور اجرا را دارد", "__START_CMD__" in scaffolds.SCAFFOLDS["python"]["README.md"])
+check("داکرفایل نمونهٔ مدل docker پورت 3000 را رعایت می‌کند", "EXPOSE 3000" in scaffolds.SCAFFOLDS["docker"]["Dockerfile"])
+
+# پیش‌فرض دستور اجرای پایتون = ورکر uvicorn (ASGI) — با پروژهٔ یک‌بارمصرف می‌سازیم و پاک می‌کنیم
+db = SessionLocal()
+_u = db.query(User).filter(User.email == "ali@test.ir").first()
+db.close()
+db = SessionLocal()
+_p, _flash = projects_svc.create_project(db, _u, "ای‌پی‌آی تست", "py-api-check", "python")
+check("پروژهٔ پایتون بدون دستور اجرا ساخته شد (pending بدون گیتا)", _p is not None and _flash == "git_pending")
+check("دستور اجرای پیش‌فرض پایتون = gunicorn با ورکر uvicorn",
+      _p is not None and _p.start_cmd == scaffolds.DEFAULT_START_CMD["python"],
+      f"start_cmd={getattr(_p, 'start_cmd', None)!r}")
+if _p is not None:
+    projects_svc.delete_project(db, _p, _u)  # پاکسازی — بدون اثر باقی‌مانده
+db = SessionLocal()
+check("پروژهٔ یک‌بارمصرف پایتون پاکسازی شد",
+      db.query(Project).filter(Project.slug == "py-api-check").count() == 0)
+db.close()
+
+import tempfile  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+with tempfile.TemporaryDirectory() as _td:
+    _d = _Path(_td)
+    check("پیش‌بازرسی: node بدون package.json پیام گویا می‌دهد", bool(stacks_mod.missing_marker("node", _d)))
+    check("پیش‌بازرسی: python بدون requirements.txt پیام گویا می‌دهد", bool(stacks_mod.missing_marker("python", _d)))
+    check("پیش‌بازرسی: static و docker همیشه سبزند",
+          stacks_mod.missing_marker("static", _d) is None and stacks_mod.missing_marker("docker", _d) is None)
+    (_d / "package.json").write_text("{}\n")
+    check("پیش‌بازرسی: node با package.json سبز است", stacks_mod.missing_marker("node", _d) is None)
+
+workers_src = (ROOT / "core/app/workers.py").read_text()
+check("مسیر pending (ورکر) هم اسکفولد می‌کارد", "seed_scaffold" in workers_src)
+check("بیلد قبل از ساخت قالب، پیش‌بازرسی استک می‌کند", "missing_marker" in workers_src)
 
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
