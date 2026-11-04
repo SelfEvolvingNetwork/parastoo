@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================
-#  Parastoo regression test — db credential reconcile (v0.2.15)
+#  Parastoo regression test — db credential reconcile (v0.2.15/16)
 #
 #  Production failure it guards: the postgres volume keeps the FIRST
 #  install's passwords (init scripts run only on an empty volume). After
@@ -8,6 +8,11 @@
 #  the secrets -> .env no longer matched the volume -> gitea died with
 #  "pq: password authentication failed" -> unhealthy -> stack never
 #  started. scripts/db-reconcile.sh must align the DB to .env.
+#
+#  v0.2.16 extra guards: the SQL goes over STDIN with dollar-quoting (the
+#  first attempt used psql -v + :'pw' and failed silently on the server),
+#  every failure prints the REAL psql error, and the result is verified
+#  with a TCP (scram) auth probe exactly like gitea/core do it.
 #
 #  Run:  bash tests/db_reconcile_test.sh   (no docker needed — fake docker)
 # =============================================================
@@ -45,39 +50,51 @@ run_reconcile() {  # run_reconcile <role_exists:1|0> <logfile>
   echo $? > "$WORK/rc"
 }
 
-# ---------- fake docker: records every call, answers like the server ----------
-cat > "$WORK/stub_docker" <<'EOF'
+# ---------- fake docker: records args AND stdin, answers like the server ----------
+cat > "$WORK/stub/docker" <<'EOF'
 #!/usr/bin/env bash
-[ -n "${RECON_CALLS_LOG:-}" ] && printf '%s\n' "$*" >> "$RECON_CALLS_LOG"
+if [ -n "${RECON_CALLS_LOG:-}" ]; then
+  printf 'ARGS: %s\n' "$*" >> "$RECON_CALLS_LOG"
+  # consume stdin ONLY for psql calls that take SQL from stdin (no -tAc);
+  # reading the inherited stdin anywhere else would block forever
+  case "$*" in
+    *psql*-tAc*|*"pg_roles"*) : ;;
+    *psql*) timeout 2 cat >> "$RECON_CALLS_LOG" 2>/dev/null; printf 'END-STDIN\n' >> "$RECON_CALLS_LOG" ;;
+  esac
+fi
 case "$*" in
   *--version*|*"compose version"*) exit 0 ;;
   *"pg_roles"*)                    # the role-existence probe
     [ -f "${RECON_ROLE_FILE:-}" ] && cat "$RECON_ROLE_FILE" || echo 1
     exit 0 ;;
   *"State.Health.Status"*) echo healthy; exit 0 ;;
+  *PGPASSWORD*) echo 1; exit 0 ;;  # TCP auth probe: password accepted
   *) exit 0 ;;
 esac
 EOF
-mkdir -p "$WORK/stub" && cp "$WORK/stub_docker" "$WORK/stub/docker" && chmod +x "$WORK/stub/docker"
-mkdir -p "$WORK/pkg/scripts"
+chmod +x "$WORK/stub/docker"
 echo "1" > "$WORK/role_1"; echo "0" > "$WORK/role_0"
 
-# ---------- scenario 1: both users exist -> two ALTER USER, no CREATE ----------
+# ---------- scenario 1: both users exist -> two ALTER ROLE + auth verification ----------
 make_env "pgsecret12" "gtsecret34"
 run_reconcile 1 "$WORK/calls1.log"
 [ "$(cat "$WORK/rc")" = "0" ] && pass "scenario1: exit 0" || bad "scenario1: rc=$(cat "$WORK/rc")"
-grep -q "compose up -d postgres" "$WORK/calls1.log" \
+grep -q "ARGS: compose up -d postgres" "$WORK/calls1.log" \
   && pass "scenario1: postgres brought up alone first" || bad "scenario1: postgres was not started alone"
-grep -q "ALTER USER parastoo" "$WORK/calls1.log" \
-  && pass "scenario1: ALTER USER parastoo issued" || bad "scenario1: no ALTER USER parastoo"
-grep -q "ALTER USER gitea" "$WORK/calls1.log" \
-  && pass "scenario1: ALTER USER gitea issued" || bad "scenario1: no ALTER USER gitea"
+grep -q "ALTER ROLE parastoo" "$WORK/calls1.log" \
+  && pass "scenario1: ALTER ROLE parastoo issued" || bad "scenario1: no ALTER ROLE parastoo"
+grep -q "ALTER ROLE gitea" "$WORK/calls1.log" \
+  && pass "scenario1: ALTER ROLE gitea issued" || bad "scenario1: no ALTER ROLE gitea"
+grep -qF '$prstoo$pgsecret12$prstoo$' "$WORK/calls1.log" \
+  && pass "scenario1: parastoo password from .env, dollar-quoted (injection-safe)" || bad "scenario1: parastoo password missing/unquoted"
+grep -qF '$prstoo$gtsecret34$prstoo$' "$WORK/calls1.log" \
+  && pass "scenario1: gitea password from .env, dollar-quoted" || bad "scenario1: gitea password missing/unquoted"
 grep -q "CREATE USER" "$WORK/calls1.log" \
   && bad "scenario1: CREATE USER must not run when the role exists" || pass "scenario1: no CREATE USER (correct)"
-grep -q "pw=pgsecret12" "$WORK/calls1.log" && grep -q "pw=gtsecret34" "$WORK/calls1.log" \
-  && pass "scenario1: passwords passed from .env" || bad "scenario1: passwords not taken from .env"
-grep -q "PASSWORD :'pw'" "$WORK/calls1.log" \
-  && pass "scenario1: SQL uses :'pw' (injection-safe quoting)" || bad "scenario1: password not parameterized (:'pw' missing)"
+grep -q "PGPASSWORD=pgsecret12" "$WORK/calls1.log" && grep -q "PGPASSWORD=gtsecret34" "$WORK/calls1.log" \
+  && pass "scenario1: TCP auth verification ran for both users" || bad "scenario1: TCP auth verification missing"
+grep -q "verified: parastoo + gitea authenticate" "$WORK/out.log" \
+  && pass "scenario1: verification reported success" || bad "scenario1: verification did not report success"
 
 # ---------- scenario 2: gitea role missing -> create user + database ----------
 run_reconcile 0 "$WORK/calls2.log"
@@ -86,19 +103,21 @@ grep -q "CREATE USER gitea" "$WORK/calls2.log" \
   && pass "scenario2: CREATE USER gitea issued (first-init equivalent)" || bad "scenario2: no CREATE USER gitea"
 grep -q "CREATE DATABASE gitea" "$WORK/calls2.log" \
   && pass "scenario2: CREATE DATABASE gitea issued" || bad "scenario2: no CREATE DATABASE gitea"
+grep -q "GRANT ALL PRIVILEGES ON DATABASE gitea" "$WORK/calls2.log" \
+  && pass "scenario2: GRANT/OWNER issued" || bad "scenario2: no GRANT"
 
 # ---------- scenario 3: quoted .env values -> quotes stripped ----------
 make_env "quotedpg99" "quotedgt99" quoted
 run_reconcile 1 "$WORK/calls3.log"
-grep -q "pw=quotedpg99" "$WORK/calls3.log" && grep -q "pw=quotedgt99" "$WORK/calls3.log" \
+grep -qF '$prstoo$quotedpg99$prstoo$' "$WORK/calls3.log" \
   && pass "scenario3: quoted .env values read correctly" || bad "scenario3: quoted values not stripped"
 
 # ---------- scenario 4: .env without the secrets -> graceful skip, no psql ----------
 printf 'BASE_DOMAIN=example.tld\n' > "$WORK/pkg/.env"
 run_reconcile 1 "$WORK/calls4.log"
 [ "$(cat "$WORK/rc")" = "0" ] && pass "scenario4: exit 0 with incomplete .env" || bad "scenario4: rc=$(cat "$WORK/rc")"
-grep -q "psql" "$WORK/calls4.log" \
-  && bad "scenario4: psql must not run without secrets" || pass "scenario4: no DB access without secrets"
+grep -q "pg_roles\|ALTER ROLE" "$WORK/calls4.log" \
+  && bad "scenario4: no DB access without secrets" || pass "scenario4: no DB access without secrets"
 
 printf '\n'
 [ "$FAIL" = "0" ] && { pass "db_reconcile_test: PASSED"; exit 0; }

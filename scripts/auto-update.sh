@@ -179,6 +179,14 @@ echo "$APP_DIR" 2>/dev/null > /etc/parastoo-install-path || true
 # reconcile رمز داخل دیتابیس را با .env همگام می‌کند (best-effort، هرگز fatal نیست)
 log "reconciling database credentials with .env..."
 bash scripts/db-reconcile.sh >>"$LOG" 2>&1 || true
+# کانتینرهای یتیمِ recreate نیمه‌کاره (ری‌استارت دیمون/شکستِ up قبلی) با نام موقت
+# "<12hex>_parastoo-<svc>"، up بعدی را با «name Conflict» می‌بندند — اول پاکشان کن
+STALE="$(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E '^[0-9a-f]{12}_parastoo-' || true)"
+if [ -n "$STALE" ]; then
+  log "removing stale containers from an interrupted recreate: $(echo "$STALE" | tr '\n' ' ')"
+  # shellcheck disable=SC2086
+  docker rm -f $STALE >/dev/null 2>&1 || true
+fi
 log "rebuilding the stack (docker compose up -d --build)..."
 if docker compose up -d --build >>"$LOG" 2>&1; then
   sleep 5   # recreate کامل شود؛ پاسخ کانتینرِ قدیمی را «سالم» نگیریم

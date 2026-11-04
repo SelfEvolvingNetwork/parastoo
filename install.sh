@@ -508,6 +508,16 @@ fi
 
 # ---------- 5) bring up the stack ----------
 mark "5) docker compose up"
+# recreates interrupted by a daemon restart / failed `up` leave temp-named
+# orphans ("<12hex>_parastoo-<svc>") that block the next `up` with a name
+# Conflict (real case: container name "/4b14fefb6982_parastoo-core" is
+# already in use) — remove them first
+STALE="$(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E '^[0-9a-f]{12}_parastoo-' || true)"
+if [ -n "$STALE" ]; then
+  warn "Removing stale containers from an interrupted recreate: $(echo "$STALE" | tr '\n' ' ')"
+  # shellcheck disable=SC2086
+  docker rm -f $STALE >/dev/null 2>&1 || true
+fi
 say "Building and starting the full stack (first run may take a few minutes)..."
 if ! docker compose up -d --build; then
   echo ""
