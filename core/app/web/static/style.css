@@ -58,6 +58,15 @@ h3 { font-size: 1rem; margin: 0 0 .5rem; }
   padding: .15rem .6rem; border-radius: 999px; font-size: .82rem; white-space: nowrap;
 }
 
+/* --- منوی موبایل (بدون جاوااسکریپت) --- */
+.nav-toggle { position: absolute; opacity: 0; pointer-events: none; }
+.nav-burger { display: none; cursor: pointer; color: #c6d2e0; line-height: 1;
+  padding: .45rem .6rem; border: 1px solid #22344a; border-radius: 8px; user-select: none; }
+.nav-burger::before { content: "☰"; font-size: 1.25rem; }
+.nav-burger:hover { color: #fff; background: #1c2a3a; }
+.nav-overlay { display: none; }
+.nav-toggle:focus-visible ~ .nav-burger { outline: 2px solid #bfd7ff; outline-offset: 2px; }
+
 /* --- پیام --- */
 .flash {
   margin: 1rem 0 0;
@@ -77,14 +86,30 @@ h3 { font-size: 1rem; margin: 0 0 .5rem; }
 .grid-3 { grid-template-columns: repeat(3, 1fr); }
 .grid-4 { grid-template-columns: repeat(4, 1fr); }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+/* جلوگیری از سرریز آیتم‌های گرید/فلکس با محتوای پهن (grid blowout) */
+.grid > *, .two-col > *, .card, .stat { min-width: 0; }
 @media (max-width: 900px) {
   .grid-3, .grid-4, .two-col { grid-template-columns: 1fr; }
-  .nav { display: none; }
+  .topbar-inner { gap: .8rem; }
+  .userbox { margin-inline-start: auto; }
+  .nav-burger { display: inline-block; position: relative; z-index: 60; }
+  .uname { display: none; }
+  .nav {
+    display: none; position: absolute; top: 100%; right: 0; left: 0; z-index: 55;
+    flex-direction: column; gap: .1rem; flex-wrap: nowrap;
+    background: #0f1722; border-top: 1px solid #22344a; border-bottom: 1px solid #22344a;
+    padding: .4rem 1rem .8rem; box-shadow: 0 12px 20px rgba(0,0,0,.3);
+  }
+  .nav-toggle:checked ~ .nav { display: flex; animation: navdrop .16s ease; }
+  .nav-toggle:checked ~ .nav-burger::before { content: "×"; }
+  .nav-toggle:checked ~ .nav-overlay { display: block; position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 54; cursor: default; }
+  .nav a { padding: .55rem .4rem; }
 }
+@keyframes navdrop { from { opacity: 0; transform: translateY(-6px); } }
 .hero { text-align: center; padding: 3rem 0 1rem; }
 .hero h1 { font-size: 2rem; margin-bottom: .4rem; }
 .center-card { text-align: center; }
-.row { display: flex; align-items: center; }
+.row { display: flex; align-items: center; flex-wrap: wrap; }
 .gap { gap: .8rem; }
 .gap-sm { gap: .4rem; }
 
@@ -98,9 +123,13 @@ h3 { font-size: 1rem; margin: 0 0 .5rem; }
 
 /* --- جدول --- */
 table { width: 100%; border-collapse: collapse; margin: .5rem 0; }
-th, td { text-align: right; padding: .55rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th, td { text-align: right; padding: .55rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: break-word; }
 th { color: var(--muted); font-weight: 600; font-size: .82rem; }
 tr:last-child td { border-bottom: none; }
+/* جدول‌های پهن در موبایل: اسکرول افقی مستقل به‌جای شکستن صفحه */
+@media (max-width: 700px) {
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
 .w50 { width: 60%; }
 @media (max-width: 700px) { .w50 { width: 100%; } }
 .actions { display: flex; gap: .3rem; flex-wrap: wrap; }
@@ -120,8 +149,15 @@ label.check input { width: auto; }
 .w100 { width: 90px !important; display: inline-block !important; }
 .w150 { width: 140px !important; display: inline-block !important; }
 .input-suffix { display: flex; align-items: center; gap: .4rem; }
+.input-suffix input { flex: 1 1 0; min-width: 0; }
 .input-suffix span { color: var(--muted); font-size: .8rem; white-space: nowrap; }
 .inline-form { max-width: 480px; }
+/* جلوگیری از زوم خودکار iOS هنگام تاچ روی فیلدها (آستانهٔ سافاری: 16px) */
+@media (max-width: 700px) {
+  form input:not([type="checkbox"]), form select { font-size: 16px; }
+  .card { padding: 1rem; }
+  .btn-sm { padding: .4rem .85rem; }
+}
 
 /* --- دکمه --- */
 .btn {

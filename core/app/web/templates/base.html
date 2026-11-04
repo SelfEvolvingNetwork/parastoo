@@ -11,6 +11,7 @@
 <header class="topbar">
   <div class="container topbar-inner">
     <a href="/" class="brand">پرستو <span class="brand-sub">Parastoo</span></a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
     {% if user %}
     <nav class="nav">
       <a href="/dashboard" class="{{ 'active' if path == '/dashboard' }}">داشبورد</a>
@@ -33,7 +34,10 @@
       <a href="/login">ورود</a>
       <a href="/register" class="btn btn-primary btn-sm">ثبت‌نام</a>
     </nav>
+    <div class="userbox"></div>
     {% endif %}
+    <label for="nav-toggle" class="nav-overlay" aria-hidden="true"></label>
+    <label for="nav-toggle" class="nav-burger" aria-label="باز و بسته کردن منو"></label>
   </div>
 </header>
 
