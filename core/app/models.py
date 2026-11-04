@@ -118,6 +118,28 @@ class WalletTx(Base):
     user: Mapped["User"] = relationship()
 
 
+class Payment(Base):
+    """درخواست شارژ آنلاین کیف پول از درگاه پرداخت (فعلاً درگاه آزمایشی).
+
+    Payment فقط «درخواست» است: تا وقتی verify درگاه تأیید نکند هیچ پولی به
+    کیف نمی‌نشیند. token رشتهٔ نشدنی است که در URLهای رفت‌وبرگشت به درگاه
+    می‌آید؛ gateway_ref رسید درگاه هنگام تأیید است.
+    """
+    __tablename__ = "payments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    amount: Mapped[int] = mapped_column(Integer)
+    gateway: Mapped[str] = mapped_column(String(30), default="mock")
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|paid|canceled|failed
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    gateway_ref: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped["User"] = relationship()
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

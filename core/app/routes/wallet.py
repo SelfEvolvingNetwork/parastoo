@@ -1,11 +1,16 @@
-"""کیف پول: موجودی و تراکنش‌ها. شارژ در MVP توسط ادمین انجام می‌شود."""
+"""کیف پول: موجودی و تراکنش‌ها + فرم شارژ آنلاین (درگاه آزمایشی از v0.3.4).
+
+شارژ دستیِ ادمین (routes/admin.py credit) همچنان برقرار است؛ شارژ آنلاین
+مسیرش در routes/payment.py و منطقش در services/payment.py است.
+"""
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..deps import ctx, csrf_guard, redirect, render
+from ..deps import ctx, csrf_guard, render
 from ..models import Site, WalletTx
 from ..services import billing as billing_svc
+from ..services import payment as payment_svc
 
 router = APIRouter()
 
@@ -21,10 +26,5 @@ def wallet(request: Request, user=Depends(csrf_guard), db: Session = Depends(get
                .filter(Site.owner_id == user.id, Site.status == "running")
                .all())
     hourly = billing_svc.hourly_cost(running)
-    return render("wallet.html", ctx(request, user, txs=txs, hourly=hourly))
-
-
-@router.post("/wallet/request")
-def wallet_request(user=Depends(csrf_guard)):
-    # MVP: درخواست شارژ ثبت نمی‌شود؛ راهنما در صفحه کیف پول هست
-    return redirect("/wallet?m=error")
+    return render("wallet.html", ctx(request, user, txs=txs, hourly=hourly,
+                                     pay_gateways=payment_svc.gateways()))

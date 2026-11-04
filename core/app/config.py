@@ -9,7 +9,7 @@ def _bool(name: str, default: str = "false") -> bool:
 class Settings:
     # --- پایه ---
     APP_NAME: str = "پرستو"
-    VERSION: str = "0.3.3"
+    VERSION: str = "0.3.4"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me")
 
     # --- دیتابیس ---
@@ -72,6 +72,12 @@ class Settings:
     DEBT_LIMIT: int = int(os.environ.get("PARASTOO_DEBT_LIMIT", "0"))
     # کمیسیون پرستو از فروش ایمیج در مارکت‌پلیس (درصد)
     COMMISSION_PERCENT: int = int(os.environ.get("PARASTOO_COMMISSION", "10"))
+
+    # --- پرداخت (v0.3.4) ---
+    # کف/سقف مبلغ شارژ آنلاین کیف پول (تومان) — درگاه فعلی آزمایشی است و
+    # درگاه واقعی بعداً در services/payment.py رجیستری می‌شود
+    MIN_CHARGE: int = int(os.environ.get("PARASTOO_MIN_CHARGE", "10000"))
+    MAX_CHARGE: int = int(os.environ.get("PARASTOO_MAX_CHARGE", "10000000"))
 
     # پلن‌های منابع: (محدودیت CPU هسته, RAM مگابایت, قیمت ساعتی)
     TIERS: dict = {

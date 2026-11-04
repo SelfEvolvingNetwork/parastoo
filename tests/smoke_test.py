@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app import dockerops, security  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import Build, Project, Site, User, WalletTx  # noqa: E402
+from app.models import Build, Payment, Project, Site, User, WalletTx  # noqa: E402
 from app.workers import billing_once  # noqa: E402
 
 PASS = 0
@@ -163,6 +163,79 @@ with TestClient(app, follow_redirects=False) as c:
     db.close()
     r = c2.get("/sites")
     check("ادمین صفحه سایت‌ها", r.status_code == 200)
+
+    print("— پرداخت آنلاین کیف پول (درگاه آزمایشی v0.3.4) —")
+    # اعتبارسنجی مبلغ — هیچ رکوردی نباید بماند
+    for label, amount in (("غیرعددی", "abc"), ("زیر کف", "5000"), ("بالای سقف", "99999999")):
+        r = c.post("/wallet/charge", data={"amount": amount, "gateway": "mock", "csrf": csrf}, follow_redirects=False)
+        check(f"مبلغ {label} رد شد", "m=amount_invalid" in r.headers.get("location", ""))
+    r = c.post("/wallet/charge", data={"amount": "30000", "gateway": "stripe", "csrf": csrf}, follow_redirects=False)
+    check("درگاه ناشناخته رد شد", "m=gateway_invalid" in r.headers.get("location", ""))
+    r = c.post("/wallet/charge", data={"amount": "30000", "gateway": "mock"}, follow_redirects=False)
+    check("شارژ بدون CSRF رد شد", "m=csrf" in r.headers.get("location", ""))
+    db = SessionLocal()
+    check("هیچ درخواست پرداختِ ردشده‌ای رکورد نشد", db.query(Payment).count() == 0)
+    db.close()
+
+    # چرخهٔ موفق کامل: فرم → درگاه → بازگشت → شارژ
+    r = c.post("/wallet/charge", data={"amount": "30000", "gateway": "mock", "csrf": csrf}, follow_redirects=False)
+    loc = r.headers.get("location", "")
+    check("شارژ ۳۰هزار → ریدایرکت به درگاه mock", r.status_code == 303 and loc.startswith("/pay/mock/"))
+    token = loc.rsplit("/", 1)[-1]
+    r = c.get(loc)
+    check("صفحهٔ درگاه با مبلغ درست باز می‌شود", r.status_code == 200 and "30,000" in r.text and "درگاه پرداخت آزمایشی" in r.text)
+    r = c.get(f"/payment/callback/mock?token={token}&status=paid")
+    check("callback موفق → کیف پول با pay_done", r.status_code == 303 and "m=pay_done" in r.headers.get("location", ""))
+    db = SessionLocal()
+    pay = db.query(Payment).filter(Payment.token == token).first()
+    check("پرداخت paid شد و رسید درگاه دارد", pay is not None and pay.status == "paid" and pay.gateway_ref.startswith("MOCK-"))
+    u = db.get(User, uid)
+    check("موجودی ۳۰هزار اضافه شد (79,200)", u.balance == 79200, f"balance={u.balance}")
+    check("WalletTx واریز در دفتر کل ثبت شد", db.query(WalletTx).filter(WalletTx.user_id == uid, WalletTx.kind == "deposit", WalletTx.note.contains("رسید")).count() == 1)
+    db.close()
+
+    # idempotency — پخش دوبارهٔ همان callback نباید دوبار شارژ کند
+    r = c.get(f"/payment/callback/mock?token={token}&status=paid")
+    check("پخش دوبارهٔ callback → pay_dup", "m=pay_dup" in r.headers.get("location", ""))
+    db = SessionLocal()
+    u = db.get(User, uid)
+    check("موجودی تغییری نکرد (idempotent)", u.balance == 79200, f"balance={u.balance}")
+    check("فقط یک واریز آنلاین ثبت است", db.query(WalletTx).filter(WalletTx.user_id == uid, WalletTx.kind == "deposit", WalletTx.note.contains("رسید")).count() == 1)
+    db.close()
+    r = c.get(f"/pay/mock/{token}")
+    check("درگاه برای پرداختِ پردازش‌شده دوباره باز نمی‌شود", r.status_code == 303 and "m=pay_dup" in r.headers.get("location", ""))
+
+    # چرخهٔ لغو: هیچ پولی نباید حرکت کند
+    r = c.post("/wallet/charge", data={"amount": "20000", "gateway": "mock", "csrf": csrf}, follow_redirects=False)
+    token2 = r.headers.get("location", "").rsplit("/", 1)[-1]
+    r = c.post(f"/pay/mock/{token2}/result", data={"result": "cancel", "csrf": csrf}, follow_redirects=False)
+    check("انصراف در درگاه → ریدایرکت به callback", "/payment/callback/mock" in r.headers.get("location", "") and "status=cancel" in r.headers.get("location", ""))
+    r = c.get(r.headers["location"])
+    check("لغو پرداخت ثبت شد", "m=pay_canceled" in r.headers.get("location", ""))
+    db = SessionLocal()
+    pay2 = db.query(Payment).filter(Payment.token == token2).first()
+    u = db.get(User, uid)
+    check("پرداخت لغوشده هیچ credit نگرفت", pay2.status == "canceled" and u.balance == 79200)
+    db.close()
+
+    # مالکیت و مسیرهای مرزی
+    c4 = TestClient(app, follow_redirects=False)
+    r = c4.get(f"/payment/callback/mock?token={token}&status=paid")
+    check("ناشناس → ریدایرکت به ورود", r.status_code == 303 and "login" in r.headers.get("location", ""))
+    r = c4.get(f"/pay/mock/{token}")
+    check("صفحهٔ درگاه برای ناشناس → ورود", r.status_code == 303 and "login" in r.headers.get("location", ""))
+    r = c2.get(f"/pay/mock/{token}")
+    check("درگاه mock برای کاربر دیگر → 404 (مالکیت)", r.status_code == 404)
+    r = c.get("/payment/callback/mock?token=no-such-token&status=paid")
+    check("توکن ناشناخته → not_found", "m=not_found" in r.headers.get("location", ""))
+    r = c.get(f"/payment/callback/zarinpal?token={token}&status=paid")
+    check("درگاه ناشناخته در callback → not_found", "m=not_found" in r.headers.get("location", ""))
+    r = c.get("/wallet")
+    check("فرم شارژ آنلاین در کیف پول هست", "wallet/charge" in r.text and "درگاه آزمایشی" in r.text)
+    db = SessionLocal()
+    tx_note = db.query(WalletTx).filter(WalletTx.user_id == uid, WalletTx.kind == "deposit", WalletTx.note.contains("رسید")).first().note
+    check("یادداشت واریز شمارهٔ رسید دارد", "رسید" in tx_note)
+    db.close()
 
     print("— حساب کاربری و تغییر رمز (v0.2.24) —")
     r = c.get("/account")

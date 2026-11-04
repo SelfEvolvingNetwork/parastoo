@@ -4,7 +4,7 @@
 ترتیب معنایی «ویزارد ← احراز هویت ← صفحات اصلی ← عملیات‌ها» حفظ شده است.
 """
 from . import (account, admin, auth, dashboard, dev, health, hooks,
-               marketplace, projects, setup, sites, wallet)
+               marketplace, payment, projects, setup, sites, wallet)
 
 ROUTERS = (
     setup.router,        # ویزارد نصب/دامنه
@@ -15,6 +15,7 @@ ROUTERS = (
     projects.router,
     sites.router,
     marketplace.router,
+    payment.router,      # پرداخت آنلاین کیف پول (درگاه آزمایشی)
     wallet.router,
     admin.router,
     hooks.router,        # وب‌هوک gitea

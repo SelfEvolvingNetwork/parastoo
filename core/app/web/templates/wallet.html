@@ -20,7 +20,21 @@
 
 <section class="card">
   <h2>شارژ کیف پول</h2>
-  <p class="muted">در نسخه فعلی، شارژ به‌صورت دستی توسط مدیر سیستم انجام می‌شود. برای شارژ با مدیر پرستو تماس بگیرید یا ایمیل بزنید. (درگاه پرداخت در نسخه بعد اضافه می‌شود.)</p>
+  <form method="post" action="/wallet/charge" class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>مبلغ شارژ ({{ settings.CURRENCY }}) — از {{ money(settings.MIN_CHARGE) }} تا {{ money(settings.MAX_CHARGE) }}
+      <input type="number" name="amount" min="{{ settings.MIN_CHARGE }}" max="{{ settings.MAX_CHARGE }}" step="1000" required placeholder="مثلاً 50000">
+    </label>
+    <label>درگاه پرداخت
+      <select name="gateway">
+        {% for key, g in pay_gateways.items() %}
+        <option value="{{ key }}">{{ g.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-primary" type="submit">پرداخت و شارژ کیف پول</button>
+  </form>
+  <p class="muted small">درگاه فعلی آزمایشی است و پول واقعی جابه‌جا نمی‌شود؛ شارژ دستی توسط مدیر هم همچنان برقرار است. بعداً درگاه پرداخت واقعی جای همین مسیر می‌نشیند.</p>
 </section>
 
 <section class="card">
