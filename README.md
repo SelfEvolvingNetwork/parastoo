@@ -1,4 +1,4 @@
-# پرستو (Parastoo) v0.2.10
+# پرستو (Parastoo) v0.2.11
 
 [![CI](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml/badge.svg)](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml)
 
@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/b
 
 `bootstrap.sh` بسته را از گیت‌هاب می‌گیرد (ترتیب تلاش: **ریلیز zip ← تاربال مخزن ← git clone**)، در `/opt/parastoo` می‌ریزد و `install.sh` را اجرا می‌کند — داکر، عبور از تحریم، توکن نصب و کل استک، همه خودکار.
 
-- **نسخهٔ پایدار به‌جای main:**  `PARASTOO_REF=v0.2.10 curl -fsSL https://raw.githubusercontent.com/... | sudo bash`
+- **نسخهٔ پایدار به‌جای main:**  `PARASTOO_REF=v0.2.11 curl -fsSL https://raw.githubusercontent.com/... | sudo bash`
 - **زبان خروجی نصب:** ترمینال هنگام نصب کاملاً انگلیسی است — متن فارسی/RTL در SSH به‌هم می‌ریزد. پنل وب و مستندات همچنان فارسی‌اند.
 - **اگر در ایران گیت‌هاب کند بود:**  `curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash`  (همان دستور، از طریق پروکسی دانلود — این تنها روشِ جایگزینِ همان یک مسیر است)
 - **اجرای مجدد = آپدیت امن:** همان دستور را دوباره بزنید؛ کد به‌روز می‌شود ولی `.env`، پیکربندی ترافیک، بستهٔ آفلاین، پشتیبان‌ها و داده‌ها (ولیوم‌های داکر) دست‌نخورده می‌مانند.

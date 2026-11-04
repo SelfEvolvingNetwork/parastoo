@@ -170,14 +170,25 @@ def provision_user_git(user) -> None:
     token = system_token()
     if not token:
         raise GiteaError("توکن سیستمی گیتا آماده نیست")
-    gh = GiteaClient(token=token)
+    admin_gh = GiteaClient(token=token)
 
     username = user.gitea_username or _unique_username(user.email)
     password = user.gitea_password or secrets.token_urlsafe(18)
 
-    if not gh.user_exists(username):
-        gh.admin_create_user(username, user.email, password)
-    gtoken = gh.create_token(username, password, "parastoo", USER_TOKEN_SCOPES)
+    if admin_gh.user_exists(username):
+        if not user.gitea_password:
+            # هم‌نامی در گیتا هست که رمزش را نداریم (بقایای تلاش‌های ناموفق قبل) → نام تازه می‌سازیم
+            username = _unique_username(user.email)
+            password = secrets.token_urlsafe(18)
+            admin_gh.admin_create_user(username, user.email, password)
+    else:
+        admin_gh.admin_create_user(username, user.email, password)
+
+    # نکتهٔ حیاتی: endpoint ساخت توکن در API گیتا فقط با basic auth «خود کاربر» پاسخ می‌دهد؛
+    # ارسال آن با توکن سیستمی 401 می‌گیرد و حساب گیت کاربر هیچ‌وقت کامل نمی‌شود
+    # (علامت آن روی پنل: پروژه‌ها برای همیشه «در حال ساخت مخزن» می‌مانند).
+    user_gh = GiteaClient(basic=(username, password))
+    gtoken = user_gh.create_token(username, password, "parastoo", USER_TOKEN_SCOPES)
 
     user.gitea_username = username
     user.gitea_password = password
