@@ -32,7 +32,7 @@ curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/SelfEvolvingNe
 git clone https://github.com/SelfEvolvingNetwork/parastoo.git && cd parastoo && sudo bash setup.sh
 
 # مسیر ۴) کاملاً دستی: zip را از صفحهٔ ریلیزها در مرورگر بگیرید، به سرور ببرید:
-sudo bash setup.sh parastoo-v0.2.9.zip
+sudo bash setup.sh parastoo-v0.2.10.zip
 ```
 
 
@@ -153,7 +153,7 @@ parastoo update
 ## ۷) چک‌لیست نصب در ایران (خلاصه)
 
 ```bash
-unzip parastoo-v0.2.9.zip && cd parastoo
+unzip parastoo-v0.2.10.zip && cd parastoo
 sudo bash install.sh          # خودش مسیر تحریم را تشخیص می‌دهد و دور می‌زند
 # → آدرس پنل + توکن نصب چاپ می‌شود؛ بقیه در مرورگر
 ```

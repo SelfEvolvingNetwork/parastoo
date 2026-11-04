@@ -233,5 +233,23 @@ check("فاز 6b علت ریشهٔ همین خطا را خودش نام می‌�
       "grep -q 'is too old'" in inst and "Root cause found" in inst)
 
 print()
+print("— ریست کارخانه —")
+cli = (ROOT / "bin/parastoo").read_text()
+uni = (ROOT / "uninstall.sh").read_text()
+rme = (ROOT / "README.md").read_text()
+check("CLI دستور reset با تایید صریح دارد",
+      "reset)" in cli and "Type 'reset' to continue" in cli)
+check("reset کانتینرهای سایت (خارج از استک) را اول حذف می‌کند",
+      "filter name=parastoo-site-" in cli and cli.index("parastoo-site-") < cli.index("down -v"))
+check("reset ولوم‌ها و ایمیج‌های پروژه‌ها را هم پاک می‌کند",
+      "down -v --remove-orphans" in cli and "label=parastoo.slug" in cli)
+check("reset توکن نصب را از .env برمی‌گرداند",
+      "PARASTOO_SETUP_TOKEN" in cli)
+check("uninstall.sh (حالت ولوم‌ها) هم سایت‌ها و ایمیج‌ها را پاک می‌کند",
+      "filter name=parastoo-site-" in uni and "label=parastoo.slug" in uni)
+check("README روش ریست کارخانه را مستند کرده",
+      "parastoo reset" in rme and "تنظیمات کارخانه" in rme)
+
+print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

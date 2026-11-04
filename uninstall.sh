@@ -14,7 +14,13 @@ read -r -p "Are you sure? [y/N]: " CONFIRM || true
 [ "${CONFIRM:-n}" = "y" ] || { echo "Cancelled."; exit 0; }
 
 if [ "${DEL_VOLS:-n}" = "y" ]; then
+  # site containers live OUTSIDE the compose stack (created via Docker SDK,
+  # restart=unless-stopped) — compose down never touches them, remove first
+  echo "Removing deployed site containers..."
+  docker ps -aq --filter name=parastoo-site- | xargs -r docker rm -f
   docker compose down -v --remove-orphans
+  echo "Removing project images..."
+  docker images -q --filter label=parastoo.slug | xargs -r docker rmi -f
 else
   docker compose down --remove-orphans
 fi

@@ -18,6 +18,7 @@ Parastoo — management commands:
   parastoo restart    restart the whole stack
   parastoo update     update Parastoo (rebuild the core)
   parastoo backup     back up the database and git repos into backups/
+  parastoo reset      FACTORY RESET: wipe all data (users, projects, repos, sites) and re-run the setup wizard
   parastoo doctor     full diagnostic report (secrets redacted) — share it when asking for help
   parastoo version    Parastoo version
   parastoo help       this help
@@ -54,6 +55,28 @@ case "${1:-help}" in
     docker run --rm -v parastoo_gitea_data:/data -v "$APP_DIR/backups":/backup alpine:3.20 \
       tar czf "/backup/gitea-${TS}.tar.gz" /data
     echo "Backup complete: backups/db-${TS}.sql.gz and backups/gitea-${TS}.tar.gz"
+    ;;
+  reset)
+    echo "Factory reset: this PERMANENTLY deletes all Parastoo data —"
+    echo "users, projects, git repositories, wallet, sites, build history."
+    echo "The code, .env and backups/ are kept. This cannot be undone."
+    read -r -p "Type 'reset' to continue: " CONFIRM
+    [ "${CONFIRM:-}" = "reset" ] || { echo "Cancelled."; exit 0; }
+    # site containers live OUTSIDE the compose stack (created via Docker SDK,
+    # restart=unless-stopped) — compose down never touches them, remove first
+    echo "Removing deployed site containers..."
+    docker ps -aq --filter name=parastoo-site- | xargs -r docker rm -f
+    echo "Stopping the stack and deleting data volumes..."
+    docker compose down -v --remove-orphans
+    echo "Removing project images..."
+    docker images -q --filter label=parastoo.slug | xargs -r docker rmi -f
+    echo "Starting a fresh stack..."
+    docker compose up -d
+    echo ""
+    echo "Parastoo is back to factory state."
+    echo "Open the panel and complete the setup wizard again."
+    TOK="$(grep -E '^PARASTOO_SETUP_TOKEN=' .env 2>/dev/null | cut -d= -f2-)"
+    echo "Setup token: ${TOK:-see $APP_DIR/.env (PARASTOO_SETUP_TOKEN)}"
     ;;
   doctor)
     bash "$APP_DIR/scripts/doctor.sh"

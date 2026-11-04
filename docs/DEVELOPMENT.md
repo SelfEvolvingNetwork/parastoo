@@ -15,10 +15,11 @@
 ```
 install.sh                 نصب تک‌فرمانی (دامنه، رمز، ترافیک، compose up)
 uninstall.sh               حذف
-bin/parastoo               CLI مدیریت (status/logs/update/backup)
+bin/parastoo               CLI مدیریت (status/logs/update/backup/reset/doctor)
 docker-compose.yml         استک: postgres + gitea + core + traefik
 postgres-init/01-gitea.sh  ساخت DB گیتا در اولین راه‌اندازی
 deploy/templates/traefik.yml.tmpl  الگوی ترافیک (install.sh رندر می‌کند)
+scripts/github_publish.sh   انتشار ریلیز: push main + ساخت ریلیز + آپلود zip + تأیید ۴گانه (GITHUB_TOKEN لازم دارد)
 
 core/app/
   config.py     تنظیمات (دامنه‌ها، پلن‌ها/قیمت، کمیسیون، لیست فناوری‌ها، توکن نصب)
@@ -62,6 +63,8 @@ core/app/
 **دامنه (v0.2):** ویزارد /setup/domain (ادمین) → check.json برای رکوردها (JS زنده) → apply_domain در traefik_ops: نوشتن config/traefik.yml (استاتیک؛ در صورت تغییر، ری‌استارت کانتینر ترافیک از طریق docker.sock) + config/dynamic/routers.yml (روتینگ پنل/گیت؛ watch خودکار ترافیک) + ذخیره در Setting (domain_*) + بازسازی کانتینر همه سایت‌ها با زیردامنه جدید. روترهای لیبلیِ دامنه nip.io اولیه باقی می‌مانند → هیچ لحظه‌ای پنل بی‌مسیر نمی‌شود.
 
 **ویزارد نصب (v0.2):** install.sh صفر سوال: nip.io خودکار + رمزهای تصادفی + PARASTOO_SETUP_TOKEN (چاپ در ترمینال). /setup بدون کوکی gate → فرم توکن؛ توکن درست → کوکی gate (itsdangerous، ۲ ساعت) → فرم مدیر → ریدایرکت /setup/domain. بعد از وجود مدیر، /setup برای همیشه بسته است.
+
+**ریست کارخانه (v0.2.10):** `parastoo reset` و `uninstall.sh` (حالت ولوم‌ها) باید سه چیز را پاک کنند: کانتینرهای سایت (`parastoo-site-*` — خارج از استک compose و با restart=unless-stopped، پس `compose down` هرگز آنها را حذف نمی‌کند)، ولوم‌ها (`down -v`: postgres_data، gitea_data، gitea_indexer، parastoo_data) و ایمیج‌های پروژه‌ها (فیلتر `label=parastoo.slug`). ترتیب مهم است: اول کانتینرهای سایت، بعد down -v — وگرنه شبکهٔ apps آزاد نمی‌شود.
 
 ## چگونه تست کنیم (بدون سرور)
 

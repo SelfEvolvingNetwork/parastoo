@@ -1,4 +1,4 @@
-# پرستو (Parastoo) v0.2.9
+# پرستو (Parastoo) v0.2.10
 
 [![CI](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml/badge.svg)](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml)
 
@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/b
 
 `bootstrap.sh` بسته را از گیت‌هاب می‌گیرد (ترتیب تلاش: **ریلیز zip ← تاربال مخزن ← git clone**)، در `/opt/parastoo` می‌ریزد و `install.sh` را اجرا می‌کند — داکر، عبور از تحریم، توکن نصب و کل استک، همه خودکار.
 
-- **نسخهٔ پایدار به‌جای main:**  `PARASTOO_REF=v0.2.9 curl -fsSL https://raw.githubusercontent.com/... | sudo bash`
+- **نسخهٔ پایدار به‌جای main:**  `PARASTOO_REF=v0.2.10 curl -fsSL https://raw.githubusercontent.com/... | sudo bash`
 - **زبان خروجی نصب:** ترمینال هنگام نصب کاملاً انگلیسی است — متن فارسی/RTL در SSH به‌هم می‌ریزد. پنل وب و مستندات همچنان فارسی‌اند.
 - **اگر در ایران گیت‌هاب کند یا مسدود بود:**  `curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash`  — یا دستی: `git clone https://github.com/SelfEvolvingNetwork/parastoo.git && cd parastoo && sudo bash setup.sh`
 - **اجرای مجدد = آپدیت امن:** همان دستور را دوباره بزنید؛ کد به‌روز می‌شود ولی `.env`، پیکربندی ترافیک، بستهٔ آفلاین، پشتیبان‌ها و داده‌ها (ولیوم‌های داکر) دست‌نخورده می‌مانند.
@@ -40,11 +40,11 @@ curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/b
 
 ```bash
 sudo bash setup.sh                                  # فایل zip کنار setup.sh باشد
-sudo bash setup.sh parastoo-v0.2.9.zip              # یا مسیر/نام فایل
-sudo bash setup.sh https://HOST/parastoo-v0.2.9.zip # یا دانلود مستقیم (zip یا tar.gz)
+sudo bash setup.sh parastoo-v0.2.10.zip              # یا مسیر/نام فایل
+sudo bash setup.sh https://HOST/parastoo-v0.2.10.zip # یا دانلود مستقیم (zip یا tar.gz)
 ```
 
-`setup.sh` خودش وابستگی‌ها (curl/unzip)، دانلود، استخراج و کپی در `/opt/parastoo` را انجام می‌دهد و بعد `install.sh` را اجرا می‌کند. حالت کلاسیک: `curl -fsSL https://HOST/setup.sh | bash -s -- https://HOST/parastoo-v0.2.9.zip` — و اگر خودتان پکیج را از قبل باز کرده‌اید، داخل همان پوشه: `sudo bash setup.sh` (معادل `sudo bash install.sh`).
+`setup.sh` خودش وابستگی‌ها (curl/unzip)، دانلود، استخراج و کپی در `/opt/parastoo` را انجام می‌دهد و بعد `install.sh` را اجرا می‌کند. حالت کلاسیک: `curl -fsSL https://HOST/setup.sh | bash -s -- https://HOST/parastoo-v0.2.10.zip` — و اگر خودتان پکیج را از قبل باز کرده‌اید، داخل همان پوشه: `sudo bash setup.sh` (معادل `sudo bash install.sh`).
 
 ### install.sh چه می‌کند (هیچ سوالی نمی‌پرسد)
 1. داکر را نصب می‌کند (اگر نباشد)
@@ -104,8 +104,11 @@ parastoo logs core  # لاگ هسته (یا gitea/traefik/postgres)
 parastoo restart    # ری‌استارت استک
 parastoo update     # بازسازی هسته بعد از تغییر کد
 parastoo backup     # پشتیبان دیتابیس + مخزن‌ها در backups/
+parastoo reset      # بازگشت به تنظیمات کارخانه
 sudo bash uninstall.sh   # حذف کامل
 ```
+
+**بازگشت به تنظیمات کارخانه:** `parastoo reset` همهٔ داده‌ها (کاربران، پروژه‌ها، مخازن گیت، کیف پول، سایت‌ها، تاریخچهٔ بیلد) و ولوم‌های داکر و ایمیج‌های پروژه‌ها را برای همیشه پاک می‌کند؛ کد، `.env` و پشتیبان‌ها می‌مانند. بعد از آن پنل دوباره وارد ویزارد `/setup` می‌شود (توکن نصب همان توکن قبلی در `.env` است و در پایانِ reset چاپ می‌شود). برای حذف کامل به‌همراه کد: `sudo bash uninstall.sh` (به سوال ولوم‌ها «y» بدهید) و سپس پوشهٔ نصب را پاک و دوباره نصب کنید.
 
 (برای سرورهای تحریمی: اگر بستهٔ آفلاین را با fetch-images.sh بارگذاری کرده‌اید، این دستورها به هیچ pull اینترنتی نیاز ندارند.)
 
