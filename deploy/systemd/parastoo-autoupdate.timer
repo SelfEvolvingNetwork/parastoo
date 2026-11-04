@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Parastoo auto-update periodically
+
+[Timer]
+# تایمر تُک‌تُک هر ۶۰ ثانیه صدا می‌زند؛ خودِ اسکریپت با PARASTOO_AUTO_UPDATE_INTERVAL
+# (در .env، حداقل ۶۰ ثانیه) کنترل می‌کند که واقعاً هر چند ثانیه یک‌بار گیت‌هاب چک شود.
+OnBootSec=90s
+OnUnitActiveSec=60s
+AccuracySec=20s
+Unit=parastoo-autoupdate.service
+
+[Install]
+WantedBy=timers.target

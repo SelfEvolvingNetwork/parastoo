@@ -1,0 +1,13 @@
+[Unit]
+Description=Parastoo auto-update (fetch + rebuild from GitHub)
+Documentation=https://github.com/SelfEvolvingNetwork/parastoo
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=/bin/bash __INSTALL_DIR__/scripts/auto-update.sh
+TimeoutStartSec=1800
+Nice=5
+# خروجی و خطاها: journalctl -u parastoo-autoupdate + /opt/parastoo/logs/update.log

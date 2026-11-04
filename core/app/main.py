@@ -1,4 +1,5 @@
 """پرستو — کنترل‌پلین PaaS خودمیزبان. نقطه ورود FastAPI."""
+import logging
 import pathlib
 from contextlib import asynccontextmanager
 
@@ -14,8 +15,10 @@ from .config import settings
 from .db import Base, SessionLocal, engine
 from .deps import ctx, get_current_user, render
 from .models import Build, Project, Site, User
-from .routes import (account, admin, hooks, marketplace, projects, setup,
+from .routes import (account, admin, dev, hooks, marketplace, projects, setup,
                      sites, wallet)
+
+log = logging.getLogger("parastoo")
 
 WEB_STATIC = pathlib.Path(__file__).parent / "web" / "static"
 
@@ -39,7 +42,8 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=str(WEB_STATIC)), name="static")
 
 for r in (setup.router, account.router, projects.router, sites.router,
-          marketplace.router, wallet.router, admin.router, hooks.router):
+          marketplace.router, wallet.router, admin.router, hooks.router,
+          dev.router):
     app.include_router(r)
 
 
@@ -60,7 +64,26 @@ def healthz():
         db_ok = True
     except Exception:
         db_ok = False
-    return JSONResponse({"ok": db_ok, "app": "parastoo", "version": settings.VERSION})
+    return JSONResponse({
+        "ok": db_ok, "app": "parastoo", "version": settings.VERSION,
+        "commit": settings.DEPLOYED_COMMIT or None,
+        "deployed_at": settings.DEPLOYED_AT or None,
+    })
+
+
+@app.get("/api/version")
+def api_version():
+    """نسخهٔ استقرارشده — عمومی و سبک (بدون دیتابیس، بدون احراز هویت).
+
+    برای بررسی سریع «کدوم نسخه الان روی سرور است» بعد از آپدیت خودکار:
+      curl https://panel.example.com/api/version
+    """
+    return JSONResponse({
+        "ok": True, "app": "parastoo", "version": settings.VERSION,
+        "commit": settings.DEPLOYED_COMMIT or None,
+        "deployed_at": settings.DEPLOYED_AT or None,
+        "dev_mode": settings.DEV_MODE,
+    })
 
 
 @app.get("/")
@@ -132,6 +155,9 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
+    # تا v0.2.11 خطاهای ۵۰۰ بی‌صدا بودند (هیچ‌جا ثبت نمی‌شدند)؛ حالا هم در
+    # لاگ کانتینر و هم در رینگ‌بافر /api/dev/logs ثبت می‌شوند.
+    log.exception("500 on %s %s: %r", request.method, request.url.path, exc)
     if request.url.path.startswith("/api/"):
         return JSONResponse({"ok": False, "error": "internal error"}, status_code=500)
     return _error_page(request, 500, "خطای داخلی سرور. لطفاً دوباره تلاش کنید.")

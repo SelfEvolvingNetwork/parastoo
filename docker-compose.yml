@@ -126,10 +126,17 @@ services:
       PARASTOO_NPM_REGISTRY: ${PARASTOO_NPM_REGISTRY:-}
       PARASTOO_CONFIG_DIR: /app/host-config
       PARASTOO_TRAEFIK_CONTAINER: parastoo-traefik
+      # آپدیت خودکار و حالت توسعه‌دهنده (v0.2.12) — از .env خوانده می‌شوند
+      PARASTOO_DEPLOYED_COMMIT: ${PARASTOO_DEPLOYED_COMMIT:-}
+      PARASTOO_DEPLOYED_AT: ${PARASTOO_DEPLOYED_AT:-}
+      PARASTOO_DEV_MODE: ${PARASTOO_DEV_MODE:-false}
+      PARASTOO_DEV_TOKEN: ${PARASTOO_DEV_TOKEN:-}
     volumes:
       - parastoo_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
       - ./config:/app/host-config
+      # تاریخچهٔ آپدیت خودکار (logs/updates.jsonl روی هاست) برای گزارش /api/dev/updates
+      - ./logs:/app/host-logs:ro
     networks:
       - internal
       - apps

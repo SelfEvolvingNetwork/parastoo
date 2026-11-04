@@ -13,15 +13,16 @@ usage() {
   cat <<'EOF'
 Parastoo — management commands:
 
-  parastoo status     service status
-  parastoo logs [svc] show logs (core | gitea | traefik | postgres)
-  parastoo restart    restart the whole stack
-  parastoo update     update Parastoo (rebuild the core)
-  parastoo backup     back up the database and git repos into backups/
-  parastoo reset      FACTORY RESET: wipe all data (users, projects, repos, sites) and re-run the setup wizard
-  parastoo doctor     full diagnostic report (secrets redacted) — share it when asking for help
-  parastoo version    Parastoo version
-  parastoo help       this help
+  parastoo status          service status
+  parastoo logs [svc]      show logs (core | gitea | traefik | postgres)
+  parastoo restart         restart the whole stack
+  parastoo update          update from GitHub (pull latest code + rebuild the core)
+  parastoo autoupdate      auto-update control: status | on | off | run
+  parastoo backup          back up the database and git repos into backups/
+  parastoo reset           FACTORY RESET: wipe all data (users, projects, repos, sites) and re-run the setup wizard
+  parastoo doctor          full diagnostic report (secrets redacted) — share it when asking for help
+  parastoo version         Parastoo version + deployed commit
+  parastoo help            this help
 EOF
 }
 
@@ -40,10 +41,53 @@ case "${1:-help}" in
     docker compose restart
     ;;
   update)
-    echo "Rebuilding and updating the Parastoo core..."
-    docker compose build core
-    docker compose up -d
-    echo "Done."
+    # آپدیت از گیت‌هاب: کد جدید + بازسازی (نصب اولیه دستی است، آپدیت خودکارِ همان مسیر)
+    CH="$(grep -E '^PARASTOO_UPDATE_CHANNEL=' .env 2>/dev/null | cut -d= -f2-)"
+    echo "Updating Parastoo from GitHub (channel: ${CH:-main})..."
+    if bash "$APP_DIR/scripts/auto-update.sh" --force; then
+      echo "Done."
+    else
+      echo "Auto-update could not reach GitHub; rebuilding the current code only..."
+      docker compose build core
+      docker compose up -d
+      echo "Done (local rebuild)."
+    fi
+    ;;
+  autoupdate)
+    case "${2:-status}" in
+      status)
+        echo "Config:      $(grep -E '^PARASTOO_AUTO_UPDATE=' .env 2>/dev/null || echo 'PARASTOO_AUTO_UPDATE=true (default)')"
+        echo "Interval:    $(grep -E '^PARASTOO_AUTO_UPDATE_INTERVAL=' .env 2>/dev/null | cut -d= -f2- || echo 120)s   Channel: $(grep -E '^PARASTOO_UPDATE_CHANNEL=' .env 2>/dev/null | cut -d= -f2- || echo main)"
+        echo "Deployed:    $(tr '\n' ' ' < "$APP_DIR/.parastoo-deploy" 2>/dev/null || echo 'unknown')"
+        if command -v systemctl >/dev/null 2>&1; then
+          echo "Timer:       $(systemctl is-enabled parastoo-autoupdate.timer 2>/dev/null || echo 'not installed') / $(systemctl is-active parastoo-autoupdate.timer 2>/dev/null || echo '-')"
+        fi
+        echo "Last updates:"
+        tail -5 "$APP_DIR/logs/updates.jsonl" 2>/dev/null || echo "  (no update history yet)"
+        ;;
+      on|off)
+        [ -f .env ] || { echo "ERROR: .env not found in $APP_DIR"; exit 1; }
+        VAL=$([ "$2" = "on" ] && echo true || echo false)
+        if grep -qE '^PARASTOO_AUTO_UPDATE=' .env; then
+          sed -i "s/^PARASTOO_AUTO_UPDATE=.*/PARASTOO_AUTO_UPDATE=$VAL/" .env
+        else
+          echo "PARASTOO_AUTO_UPDATE=$VAL" >> .env
+        fi
+        if command -v systemctl >/dev/null 2>&1; then
+          systemctl daemon-reload 2>/dev/null || true
+          if [ "$2" = "on" ]; then
+            systemctl enable --now parastoo-autoupdate.timer 2>/dev/null || true
+          else
+            systemctl disable --now parastoo-autoupdate.timer 2>/dev/null || true
+          fi
+        fi
+        echo "Auto-update is now $2."
+        ;;
+      run)
+        bash "$APP_DIR/scripts/auto-update.sh" --force
+        ;;
+      *) usage ;;
+    esac
     ;;
   backup)
     TS="$(date +%Y%m%d-%H%M%S)"
@@ -82,7 +126,9 @@ case "${1:-help}" in
     bash "$APP_DIR/scripts/doctor.sh"
     ;;
   version)
-    docker compose exec -T core curl -fsS http://localhost:8000/healthz 2>/dev/null || echo "Parastoo is not running"
+    docker compose exec -T core curl -fsS http://localhost:8000/api/version 2>/dev/null \
+      || docker compose exec -T core curl -fsS http://localhost:8000/healthz 2>/dev/null \
+      || echo "Parastoo is not running"
     ;;
   help|--help|-h|*)
     usage

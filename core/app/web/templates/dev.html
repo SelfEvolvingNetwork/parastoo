@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}توسعه‌دهنده{% endblock %}
+{% block content %}
+<h1>حالت توسعه‌دهنده</h1>
+<p class="muted">گزارش زندهٔ استقرار، خطاها و تاریخچهٔ آپدیت خودکار. این صفحه فقط وقتی <span class="mono">PARASTOO_DEV_MODE=true</span> باشد در دسترس است.</p>
+
+<section class="card">
+  <h2>استقرار</h2>
+  <table class="w50">
+    <tr><td>نسخهٔ کد</td><td class="mono">v{{ report.app.version }}</td></tr>
+    <tr><td>کامیت مستقر</td><td class="mono small">{{ report.app.commit or '— (هنوز آپدیت خودکار اجرا نشده)' }}</td></tr>
+    <tr><td>زمان استقرار</td><td>{{ report.app.deployed_at or '—' }}</td></tr>
+    <tr><td>آپ‌تایم هسته</td><td>{{ report.app.uptime_s }} ثانیه</td></tr>
+    <tr><td>بررسی از ترمینال</td><td class="mono small">curl {{ 'https' if report.flags.tls else 'http' }}://{{ report.flags.panel_domain }}/api/version</td></tr>
+  </table>
+  <p><button class="btn btn-sm" onclick="location.reload()">به‌روزرسانی گزارش</button></p>
+</section>
+
+<section class="card">
+  <h2>سلامت</h2>
+  <table class="w50">
+    <tr><td>دیتابیس</td><td><span class="badge badge-{{ 'ok' if report.health.db else 'err' }}">{{ 'متصل' if report.health.db else 'قطع' }}</span></td></tr>
+    <tr><td>داکر</td><td><span class="badge badge-{{ 'ok' if report.health.docker else 'err' }}">{{ 'متصل' if report.health.docker else 'قطع' }}</span></td></tr>
+    <tr><td>گیت داخلی</td><td><span class="badge badge-{{ 'ok' if report.health.gitea else 'err' }}">{{ 'متصل' if report.health.gitea else 'قطع' }}</span></td></tr>
+    {% if report.health.disk_percent is not none %}
+    <tr><td>پر بودن دیسک</td><td>{{ report.health.disk_percent }}٪</td></tr>
+    {% endif %}
+  </table>
+</section>
+
+<section class="card">
+  <h2>تاریخچهٔ آپدیت خودکار (گیت‌هاب → سرور)</h2>
+  {% if report.updates %}
+  <table>
+    <thead><tr><th>زمان</th><th>از</th><th>به</th><th>نسخه</th><th>نتیجه</th><th>جزئیات</th></tr></thead>
+    <tbody>
+    {% for u in report.updates %}
+      <tr>
+        <td class="small">{{ u.time }}</td>
+        <td class="mono small">{{ (u.from or '—')[:12] }}</td>
+        <td class="mono small">{{ (u.to or '—')[:12] }}</td>
+        <td class="mono small">{{ u.version or '—' }}</td>
+        <td><span class="badge badge-{{ 'ok' if u.result == 'ok' else 'err' }}">{{ u.result }}</span></td>
+        <td class="small muted">{{ u.detail or '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">هنوز آپدیت خودکاری اجرا نشده است. بعد از اولین push به گیت‌هاب (حداکثر تا چند دقیقه) اینجا می‌بینید.</p>
+  {% endif %}
+</section>
+
+{% if report.usage.recent_failed_builds %}
+<section class="card">
+  <h2>آخرین بیلدهای ناموفق</h2>
+  <table>
+    <thead><tr><th>#</th><th>پروژه</th><th>کامیت</th><th>زمان</th><th>انتهای لاگ</th></tr></thead>
+    <tbody>
+    {% for b in report.usage.recent_failed_builds %}
+      <tr>
+        <td>{{ b.build_id }}</td>
+        <td class="mono">{{ b.project }}</td>
+        <td class="mono small">{{ b.commit or '—' }}</td>
+        <td class="small">{{ b.created_at }}</td>
+        <td><pre class="small" style="white-space:pre-wrap;max-width:480px">{{ b.log_tail or '—' }}</pre></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>لاگ زندهٔ هسته (آخرین رکوردها در حافظه)</h2>
+  <p>
+    <button class="btn btn-sm" onclick="loadLogs()">نمایش لاگ</button>
+    <label class="small muted"><input type="checkbox" id="autoLogs"> تازه‌سازی خودکار هر ۵ ثانیه</label>
+  </p>
+  <pre id="logbox" class="mono small" style="background:#0b1021;color:#c8d3f5;padding:12px;border-radius:8px;max-height:420px;overflow:auto;white-space:pre-wrap">برای دیدن لاگ، دکمهٔ بالا را بزنید.</pre>
+</section>
+
+<script>
+async function loadLogs() {
+  const box = document.getElementById('logbox');
+  try {
+    const r = await fetch('/api/dev/logs?tail=300', {headers: {'X-Dev-Token': new URLSearchParams(location.search).get('token') || ''}});
+    if (!r.ok) { box.textContent = 'خطا: HTTP ' + r.status; return; }
+    box.textContent = await r.text();
+    box.scrollTop = box.scrollHeight;
+  } catch (e) { box.textContent = 'خطا: ' + e; }
+}
+let timer = null;
+document.getElementById('autoLogs').addEventListener('change', (ev) => {
+  if (ev.target.checked) { loadLogs(); timer = setInterval(loadLogs, 5000); }
+  else { clearInterval(timer); }
+});
+</script>
+{% endblock %}

@@ -9,7 +9,7 @@ def _bool(name: str, default: str = "false") -> bool:
 class Settings:
     # --- پایه ---
     APP_NAME: str = "پرستو"
-    VERSION: str = "0.2.11"
+    VERSION: str = "0.2.12"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me")
 
     # --- دیتابیس ---
@@ -32,6 +32,16 @@ class Settings:
     # پوشه پیکربندی ترافیک روی هاست که داخل کانتینر سوار شده — ویزارد دامنه آن را بازنویسی می‌کند
     CONFIG_DIR: str = os.environ.get("PARASTOO_CONFIG_DIR", "/app/host-config")
     TRAEFIK_CONTAINER: str = os.environ.get("PARASTOO_TRAEFIK_CONTAINER", "parastoo-traefik")
+
+    # --- استقرار و آپدیت خودکار (auto-update.sh روی سرور می‌نویسد؛ در .env) ---
+    # کامیت مستقر روی این سرور و زمان استقرار — توسط install.sh/auto-update.sh ثبت می‌شود
+    DEPLOYED_COMMIT: str = os.environ.get("PARASTOO_DEPLOYED_COMMIT", "").strip()
+    DEPLOYED_AT: str = os.environ.get("PARASTOO_DEPLOYED_AT", "").strip()
+    # --- حالت توسعه‌دهنده (v0.2.12): صفحه /dev و API گزارش/لاگ/تاریخچهٔ آپدیت ---
+    # فقط روی نصب آزمایشی true بگذارید؛ در حالت عادی همهٔ مسیرهای /dev و /api/dev/* وجود ندارند (404)
+    DEV_MODE: bool = _bool("PARASTOO_DEV_MODE")
+    # توکن اختیاری برای دسترسی curl بدون لاگین: PARASTOO_DEV_TOKEN=xxx ← هدر X-Dev-Token: xxx
+    DEV_TOKEN: str = os.environ.get("PARASTOO_DEV_TOKEN", "").strip()
 
     # --- Gitea ---
     GITEA_INTERNAL_URL: str = os.environ.get("GITEA_INTERNAL_URL", "http://gitea:3000")

@@ -326,6 +326,22 @@ PARASTOO_DEBT_LIMIT="${PARASTOO_DEBT_LIMIT:-0}"
 PARASTOO_COMMISSION="${PARASTOO_COMMISSION:-10}"
 PARASTOO_SETUP_TOKEN="${PARASTOO_SETUP_TOKEN:-$SETUP_TOKEN}"
 PARASTOO_PUBLIC_IP="${PARASTOO_PUBLIC_IP:-$PUBLIC_IP}"
+
+# --- آپدیت خودکار از گیت‌هاب (v0.2.12): نصب اولیه دستی، آپدیت‌های بعدی خودکار ---
+PARASTOO_AUTO_UPDATE="${PARASTOO_AUTO_UPDATE:-true}"
+PARASTOO_AUTO_UPDATE_INTERVAL="${PARASTOO_AUTO_UPDATE_INTERVAL:-120}"
+PARASTOO_UPDATE_CHANNEL="${PARASTOO_UPDATE_CHANNEL:-main}"
+PARASTOO_GH_PROXY="${PARASTOO_GH_PROXY:-}"
+# --- حالت توسعه‌دهنده: صفحه /dev و API گزارش/لاگ (فقط برای نصب آزمایشی true) ---
+PARASTOO_DEV_MODE="${PARASTOO_DEV_MODE:-false}"
+PARASTOO_DEV_TOKEN="${PARASTOO_DEV_TOKEN:-}"
+# --- آخرین استقرار (بعداً auto-update.sh به‌روزرسانی‌اش می‌کند) ---
+_NOW_TS="$(date '+%F %T')"
+PARASTOO_DEPLOYED_AT="${PARASTOO_DEPLOYED_AT:-$_NOW_TS}"
+if [ -z "${PARASTOO_DEPLOYED_COMMIT:-}" ] && command -v git >/dev/null 2>&1 && [ -d .git ]; then
+  PARASTOO_DEPLOYED_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
+fi
+
 # sanctions: pip/npm mirrors — priority: explicit env <- existing .env (rechecked;
 # replaced by the fresh detection if it stopped answering) <- auto-detect <- empty
 if [ -z "$_EXPLICIT_PIP" ] && [ -n "$DETECTED_PIP_MIRROR" ] && [ -n "${PARASTOO_PIP_INDEX_URL:-}" ] \
@@ -371,6 +387,22 @@ PARASTOO_COMMISSION=${PARASTOO_COMMISSION}
 PARASTOO_SETUP_TOKEN=${PARASTOO_SETUP_TOKEN}
 PARASTOO_PUBLIC_IP=${PARASTOO_PUBLIC_IP}
 
+# --- آپدیت خودکار از گیت‌هاب (v0.2.12) ---
+# هر push به شاخهٔ کانال = استقرار خودکار روی همین سرور (تایمر systemd)
+PARASTOO_AUTO_UPDATE=${PARASTOO_AUTO_UPDATE}
+PARASTOO_AUTO_UPDATE_INTERVAL=${PARASTOO_AUTO_UPDATE_INTERVAL}
+PARASTOO_UPDATE_CHANNEL=${PARASTOO_UPDATE_CHANNEL}
+PARASTOO_GH_PROXY=${PARASTOO_GH_PROXY}
+
+# --- حالت توسعه‌دهنده: صفحه /dev + /api/dev/report|logs|updates (گزارش خطاها) ---
+# روی نصب عملیاتی false بماند. اگر PARASTOO_DEV_TOKEN ست شود، گزارش با هدر X-Dev-Token هم در دسترس است.
+PARASTOO_DEV_MODE=${PARASTOO_DEV_MODE}
+PARASTOO_DEV_TOKEN=${PARASTOO_DEV_TOKEN}
+
+# --- آخرین استقرار (توسط auto-update.sh نگه‌داری می‌شود؛ /api/version نشان می‌دهد) ---
+PARASTOO_DEPLOYED_COMMIT=${PARASTOO_DEPLOYED_COMMIT}
+PARASTOO_DEPLOYED_AT=${PARASTOO_DEPLOYED_AT}
+
 # --- sanctions (optional; docs/SANCTIONS.md) ---
 # pip mirror for Python builds, e.g.: https://package-mirror.liara.ir/repository/pypi/simple
 PARASTOO_PIP_INDEX_URL=${PARASTOO_PIP_INDEX_URL}
@@ -383,7 +415,15 @@ ok "Configuration saved to .env."
 # ---------- 4) Traefik configuration ----------
 mark "4) traefik config"
 say "Building Traefik configuration..."
-mkdir -p config/dynamic backups
+mkdir -p config/dynamic backups logs
+
+# وضعیت اولیهٔ استقرار — منبع /api/version و مبنای مقایسهٔ auto-update
+_CODE_VER="$(sed -n 's/^ *VERSION: *str *= *"\([^"]*\)".*/\1/p' core/app/config.py 2>/dev/null | head -1)"
+{
+  echo "version=${_CODE_VER:-unknown}"
+  echo "commit=${PARASTOO_DEPLOYED_COMMIT:-}"
+  echo "time=$(date '+%F %T')"
+} > .parastoo-deploy
 
 REDIRECT_BLOCK=""
 if [ "$TLS_ENABLED" = "true" ]; then
@@ -456,7 +496,28 @@ fi
 cp -f bin/parastoo /usr/local/bin/parastoo
 chmod +x /usr/local/bin/parastoo
 echo "$INSTALL_DIR" > /etc/parastoo-install-path
-ok "parastoo CLI installed (status/logs/update/backup)."
+ok "parastoo CLI installed (status/logs/update/autoupdate/backup)."
+
+# ---------- 7b) auto-update timer — نصب اولیه دستی، آپدیت‌های بعدی خودکار ----------
+mark "7b) auto-update timer"
+if [ "$PARASTOO_AUTO_UPDATE" = "true" ] && command -v systemctl >/dev/null 2>&1; then
+  say "Installing the auto-update timer (checks GitHub every ${PARASTOO_AUTO_UPDATE_INTERVAL}s)..."
+  mkdir -p /etc/systemd/system
+  for _u in parastoo-autoupdate.service parastoo-autoupdate.timer; do
+    sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" "deploy/systemd/$_u" > "/etc/systemd/system/$_u" 2>/dev/null || true
+  done
+  systemctl daemon-reload 2>/dev/null || true
+  if systemctl enable --now parastoo-autoupdate.timer 2>/dev/null; then
+    ok "Auto-update enabled: every push to '${PARASTOO_UPDATE_CHANNEL}' on GitHub deploys automatically."
+  else
+    warn "Could not enable the timer; check: systemctl status parastoo-autoupdate.timer"
+  fi
+elif [ "$PARASTOO_AUTO_UPDATE" = "true" ]; then
+  warn "systemd not available; add to cron instead:"
+  warn "  * * * * * root bash $INSTALL_DIR/scripts/auto-update.sh"
+else
+  warn "Auto-update disabled (PARASTOO_AUTO_UPDATE=false in .env) — update manually: sudo parastoo update"
+fi
 
 SCHEME="http"; [ "$TLS_ENABLED" = "true" ] && SCHEME="https"
 mark "done"
@@ -480,6 +541,8 @@ echo ""
 echo "  System credentials (also stored in .env):"
 echo "         Gitea admin password: ${GITEA_ADMIN_PASSWORD}"
 echo ""
-echo "  Management commands:  parastoo status | logs | update | backup | restart"
+echo "  Management commands:  parastoo status | logs | update | autoupdate | backup | restart"
+echo "  Auto-update:  every push to GitHub '${PARASTOO_UPDATE_CHANNEL}' auto-deploys (parastoo autoupdate status)"
+echo "  Version API:  ${SCHEME}://${PANEL_DOMAIN}/api/version"
 echo "  Sanctions & offline bundle:  docs/SANCTIONS.md"
 echo ""

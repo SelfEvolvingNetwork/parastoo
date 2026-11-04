@@ -1,4 +1,4 @@
-# پرستو (Parastoo) v0.2.11
+# پرستو (Parastoo) v0.2.12
 
 [![CI](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml/badge.svg)](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml)
 
@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/b
 
 `bootstrap.sh` بسته را از گیت‌هاب می‌گیرد (ترتیب تلاش: **ریلیز zip ← تاربال مخزن ← git clone**)، در `/opt/parastoo` می‌ریزد و `install.sh` را اجرا می‌کند — داکر، عبور از تحریم، توکن نصب و کل استک، همه خودکار.
 
-- **نسخهٔ پایدار به‌جای main:**  `PARASTOO_REF=v0.2.11 curl -fsSL https://raw.githubusercontent.com/... | sudo bash`
+- **نسخهٔ پایدار به‌جای main:**  `PARASTOO_REF=v0.2.12 curl -fsSL https://raw.githubusercontent.com/... | sudo bash`
 - **زبان خروجی نصب:** ترمینال هنگام نصب کاملاً انگلیسی است — متن فارسی/RTL در SSH به‌هم می‌ریزد. پنل وب و مستندات همچنان فارسی‌اند.
 - **اگر در ایران گیت‌هاب کند بود:**  `curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash`  (همان دستور، از طریق پروکسی دانلود — این تنها روشِ جایگزینِ همان یک مسیر است)
 - **اجرای مجدد = آپدیت امن:** همان دستور را دوباره بزنید؛ کد به‌روز می‌شود ولی `.env`، پیکربندی ترافیک، بستهٔ آفلاین، پشتیبان‌ها و داده‌ها (ولیوم‌های داکر) دست‌نخورده می‌مانند.
@@ -92,11 +92,51 @@ sudo PARASTOO_BASE_DOMAIN=example.com bash install.sh
 parastoo status     # وضعیت سرویس‌ها
 parastoo logs core  # لاگ هسته (یا gitea/traefik/postgres)
 parastoo restart    # ری‌استارت استک
-parastoo update     # بازسازی هسته بعد از تغییر کد
+parastoo update     # آپدیت از گیت‌هاب (کد جدید + بازسازی هسته)
+parastoo autoupdate # کنترل آپدیت خودکار: status | on | off | run
 parastoo backup     # پشتیبان دیتابیس + مخزن‌ها در backups/
 parastoo reset      # بازگشت به تنظیمات کارخانه
 sudo bash uninstall.sh   # حذف کامل
 ```
+
+## آپدیت خودکار از گیت‌هاب (v0.2.12)
+
+نصب **اولین بار دستی** است (همان یک فرمان bootstrap)؛ بعد از آن نصب‌کننده یک تایمر systemd نصب می‌کند و هر push به شاخهٔ کانال (پیش‌فرض `main`) تا حداکثر `PARASTOO_AUTO_UPDATE_INTERVAL` ثانیه (پیش‌فرض ۱۲۰) به‌صورت خودکار روی سرور مستقر می‌شود: کد جدید دانلود، به‌صورت امن جایگزین (`.env`، پیکربندی ترافیک، بکاپ‌ها و داده‌ها دست‌نخورده)، بکاپ کد قبلی در `backups/code-*.tar.gz` و استک بازسازی می‌شود.
+
+```bash
+parastoo autoupdate status        # پیکربندی + تاریخچهٔ آخرین آپدها
+parastoo autoupdate off           # خاموش کردن (بدون حذف تایمر: .env → PARASTOO_AUTO_UPDATE=false)
+parastoo update                   # همان مسیر، دستی و فوری
+journalctl -u parastoo-autoupdate # لاگ کامل اجراها
+```
+
+**بررسی نسخه بدون SSH:** خروجی سبک و عمومی (بدون احراز هویت، بدون رمز):
+
+```bash
+curl -s https://panel.example.com/api/version
+# {"ok":true,"app":"parastoo","version":"0.2.12","commit":"abc123...","deployed_at":"...","dev_mode":false}
+```
+
+تاریخچهٔ هر استقرار (موفق/ناموفق + زمان + نسخه) در `/opt/parastoo/logs/updates.jsonl` ثبت می‌شود.
+
+## حالت توسعه‌دهنده (v0.2.12)
+
+روی نصب آزمایشی، در `.env` بگذارید و استک را بالا بیاورید (`parastoo update` یا `docker compose up -d --build`):
+
+```
+PARASTOO_DEV_MODE=true
+PARASTOO_DEV_TOKEN=یک-رشته-تصادفی   # اختیاری؛ برای دسترسی curl بدون لاگین
+```
+
+با روشن بودنش:
+
+- در منوی ادمین، «توسعه» اضافه می‌شود؛ صفحه `/dev` گزارش زنده دارد: نسخه/کامیت مستقر، سلامت (دیتابیس/داکر/گیتا/دیسک)، تاریخچهٔ آپدیت خودکار، آخرین بیلدهای ناموفق با انتهای لاگ، و لاگ زندهٔ هسته (رینگ‌بافر آخرین ۱۰۰۰ رکورد).
+- API گزارش‌ها:
+  - `GET /api/dev/report` — همهٔ موارد بالا به‌صورت JSON
+  - `GET /api/dev/logs?tail=300` — متن لاگ
+  - `GET /api/dev/updates` — تاریخچهٔ آپدیت خودکار
+- دسترسی: ادمینِ واردشده، یا اگر `PARASTOO_DEV_TOKEN` ست شده باشد هدر `X-Dev-Token: <توکن>` (یا `?token=`).
+- در حالت استفاده (`false`) همهٔ این مسیرها و صفحهٔ /dev **اصلاً وجود ندارند** (پاسخ 404 — نه 403 — تا وجودشان هم لو نرود).
 
 **بازگشت به تنظیمات کارخانه:** `parastoo reset` همهٔ داده‌ها (کاربران، پروژه‌ها، مخازن گیت، کیف پول، سایت‌ها، تاریخچهٔ بیلد) و ولوم‌های داکر و ایمیج‌های پروژه‌ها را برای همیشه پاک می‌کند؛ کد، `.env` و پشتیبان‌ها می‌مانند. بعد از آن پنل دوباره وارد ویزارد `/setup` می‌شود (توکن نصب همان توکن قبلی در `.env` است و در پایانِ reset چاپ می‌شود). برای حذف کامل به‌همراه کد: `sudo bash uninstall.sh` (به سوال ولوم‌ها «y» بدهید) و سپس پوشهٔ نصب را پاک و دوباره نصب کنید.
 

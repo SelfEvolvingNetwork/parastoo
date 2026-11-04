@@ -260,5 +260,84 @@ check("README فقط یک روش نصب دارد (گیت‌هاب) — بدون 
       "sudo bash setup.sh" not in rme and "bootstrap.sh | sudo bash" in rme)
 
 print()
+print("— API نسخه و حالت توسعه‌دهنده (v0.2.12) —")
+r = c.get("/api/version")
+check("GET /api/version عمومی و سبک (بدون لاگین)", r.status_code == 200 and r.json().get("ok") is True
+      and r.json().get("version") == _ver)
+r = c.get("/healthz")
+check("/healthz نسخه و فیلدهای استقرار را دارد", r.status_code == 200 and r.json().get("version") == _ver)
+r = c.get("/api/dev/report")
+check("حالت توسعه خاموش → /api/dev/report 404 (نه 403)", r.status_code == 404)
+r = c.get("/dev")
+check("حالت توسعه خاموش → /dev 404", r.status_code == 404)
+
+from app.config import settings as _settings  # noqa: E402
+_old_dev, _old_tok = _settings.DEV_MODE, _settings.DEV_TOKEN
+_settings.DEV_MODE = True
+r = c.get("/api/dev/report")
+check("حالت توسعه روشن + کاربر عادی → 404", r.status_code == 404)
+r = c2.get("/api/dev/report")
+check("حالت توسعه روشن + ادمین → گزارش JSON", r.status_code == 200
+      and r.json().get("app", {}).get("version") == _ver)
+check("گزارش پرچم‌ها را دارد ولی هیچ رمزی ندارد", "flags" in r.json() and "test-secret-key" not in r.text)
+r = c2.get("/api/dev/logs?tail=5")
+check("GET /api/dev/logs متن لاگ را می‌دهد", r.status_code == 200)
+r = c2.get("/api/dev/updates")
+check("GET /api/dev/updates تاریخچه را می‌دهد", r.status_code == 200 and r.json().get("ok") is True)
+r = c2.get("/dev")
+check("صفحه /dev برای ادمین رندر می‌شود", r.status_code == 200 and "توسعه" in r.text)
+# دسترسی با توکن (بدون لاگین)
+_settings.DEV_TOKEN = "devtok123"
+c3 = TestClient(app, follow_redirects=False)
+r = c3.get("/api/dev/report")
+check("حالت توسعه + بدون توکن/نشست → 404", r.status_code == 404)
+r = c3.get("/api/dev/report", headers={"X-Dev-Token": "devtok123"})
+check("دسترسی با هدر X-Dev-Token", r.status_code == 200)
+r = c3.get("/api/dev/report?token=devtok123")
+check("دسترسی با ?token=", r.status_code == 200)
+r = c3.get("/api/dev/report", headers={"X-Dev-Token": "wrong"})
+check("توکن غلط → 404", r.status_code == 404)
+_settings.DEV_MODE, _settings.DEV_TOKEN = _old_dev, _old_tok
+
+print()
+print("— آپدیت خودکار از گیت‌هاب (v0.2.12) —")
+au = (ROOT / "scripts/auto-update.sh").read_text()
+check("auto-update.sh با flock از اجرای موازی جلوگیری می‌کند", "flock" in au and "parastoo-autoupdate.lock" in au)
+check("auto-update.sh کامیت را با git ls-remote مقایسه می‌کند", "git ls-remote" in au and ".parastoo-deploy" in au)
+check("جایگزینی فقط پوشه‌های کد است (نه .env و داده‌ها)",
+      "rm -rf core bin deploy scripts postgres-init docs" in au)
+check("پیش از جایگزینی، بکاپ کد گرفته می‌شود", "backups/code-" in au)
+check("تاریخچهٔ استقرار در logs/updates.jsonl ثبت می‌شود", "updates.jsonl" in au)
+check("پشتیبانی پراکسی گیت‌هاب (تحریم‌ها)", "PARASTOO_GH_PROXY" in au and "PARASTOO_UPDATE_CHANNEL" in au)
+check("حداقل فاصلهٔ بررسی ۶۰ ثانیه اعمال می‌شود", '-lt 60 ] && INTERVAL=60' in au.replace("  ", " "))
+check("auto-update.sh کلید خاموش‌کردن (PARASTOO_AUTO_UPDATE) را می‌خواند", "PARASTOO_AUTO_UPDATE" in au)
+check("پس از استقرار، سلامت هسته چک می‌شود", "healthz" in au)
+inst = (ROOT / "install.sh").read_text()
+check("install.sh تایمر systemd را رندر و فعال می‌کند",
+      "deploy/systemd/$_u" in inst
+      and "systemctl enable --now parastoo-autoupdate.timer" in inst
+      and "__INSTALL_DIR__" in inst)
+check("install.sh وضعیت اولیهٔ استقرار (.parastoo-deploy) را می‌نویسد", ".parastoo-deploy" in inst)
+check("install.sh متغیرهای آپدیت خودکار و حالت توسعه را در .env می‌گذارد",
+      "PARASTOO_AUTO_UPDATE=" in inst and "PARASTOO_DEV_MODE=" in inst)
+sd_svc = (ROOT / "deploy/systemd/parastoo-autoupdate.service").read_text()
+sd_tmr = (ROOT / "deploy/systemd/parastoo-autoupdate.timer").read_text()
+check("واحد systemd مسیر نصب را پارامتری دارد", "__INSTALL_DIR__" in sd_svc and "auto-update.sh" in sd_svc)
+check("تایمر WantedBy=timers.target دارد (فعال‌پذیر)", "WantedBy=timers.target" in sd_tmr)
+check("compose حالت توسعه و کامیت مستقر را به هسته می‌دهد",
+      "PARASTOO_DEV_MODE" in compose_src and "PARASTOO_DEPLOYED_COMMIT" in compose_src)
+check("تاریخچهٔ آپدیت به هسته سوار می‌شود (ro)", "./logs:/app/host-logs:ro" in compose_src)
+cli = (ROOT / "bin/parastoo").read_text()
+check("CLI دستور autoupdate (status/on/off/run) دارد", "autoupdate)" in cli and "run)" in cli)
+check("CLI update از مسیر آپدیت خودکار (گیت‌هاب) می‌رود", "auto-update.sh" in cli)
+uni = (ROOT / "uninstall.sh").read_text()
+check("uninstall تایمر آپدیت خودکار را هم پاک می‌کند", "parastoo-autoupdate.timer" in uni)
+check("config.py DEV_MODE/DEV_TOKEN/DEPLOYED_COMMIT دارد",
+      "PARASTOO_DEV_MODE" in (ROOT / "core/app/config.py").read_text()
+      and "PARASTOO_DEPLOYED_COMMIT" in (ROOT / "core/app/config.py").read_text())
+check("main.py خطاهای ۵۰۰ را لاگ می‌کند (قابل دریافت در گزارش)",
+      "log.exception" in (ROOT / "core/app/main.py").read_text())
+
+print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)
