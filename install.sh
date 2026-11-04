@@ -274,16 +274,37 @@ fi
 # (domain wizard) using the one-time setup token.
 BASE_DOMAIN="${PARASTOO_BASE_DOMAIN:-}"
 mark "2) base domain"
-say "Detecting server public IP..."
-PUBLIC_IP="$(curl -fs4 --max-time 10 https://api.ipify.org 2>/dev/null \
-          || curl -fs4 --max-time 10 https://ifconfig.me 2>/dev/null \
-          || curl -fs4 --max-time 10 https://checkip.amazonaws.com 2>/dev/null \
-          || curl -fs4 --max-time 10 https://icanhazip.com 2>/dev/null \
-          || true)"
+# Explicit PARASTOO_PUBLIC_IP wins. On NAT/CGNAT/tunnel servers the OUTBOUND
+# IP (what ipify/ifconfig.me see) differs from the INBOUND IP (what users hit)
+# — the auto-generated nip.io domain would then point at the wrong host
+# (field incident 2026-11-04: panel printed an unreachable address).
+PUBLIC_IP="${PARASTOO_PUBLIC_IP:-}"
+if [ -z "$PUBLIC_IP" ]; then
+  say "Detecting server public IP..."
+  PUBLIC_IP="$(curl -fs4 --max-time 10 https://api.ipify.org 2>/dev/null \
+            || curl -fs4 --max-time 10 https://ifconfig.me 2>/dev/null \
+            || curl -fs4 --max-time 10 https://checkip.amazonaws.com 2>/dev/null \
+            || curl -fs4 --max-time 10 https://icanhazip.com 2>/dev/null \
+            || true)"
+else
+  ok "Public IP from PARASTOO_PUBLIC_IP: ${PUBLIC_IP}"
+fi
 [ -n "$PUBLIC_IP" ] || die "Could not detect the public IP. Set it manually: PARASTOO_PUBLIC_IP=1.2.3.4 PARASTOO_BASE_DOMAIN=example.com bash install.sh"
 if [ -z "$BASE_DOMAIN" ]; then
   BASE_DOMAIN="${PUBLIC_IP}.nip.io"
   ok "Temporary domain: ${BASE_DOMAIN} (real domain is set later from the web panel)"
+  # cross-check: the detected IP should be plausible as the INBOUND IP.
+  # If it is not bound to any local interface, egress != inbound is likely
+  # and the domain above will not resolve to this server.
+  INTF_IPS="$(hostname -I 2>/dev/null || true)"
+  [ -n "$INTF_IPS" ] || INTF_IPS="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | paste -sd' ' - 2>/dev/null || true)"
+  if [ -n "$INTF_IPS" ] && ! printf '%s\n' $INTF_IPS | grep -qx "$PUBLIC_IP"; then
+    warn "Detected IP ${PUBLIC_IP} is NOT bound to any interface of this server (interfaces: ${INTF_IPS})."
+    warn "Outbound traffic probably leaves via another IP (NAT / VPN / provider route) — the panel may be UNREACHABLE at ${BASE_DOMAIN}."
+    say "If http://panel.${BASE_DOMAIN} does not open, re-run with the real inbound IP:"
+    say "  curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo PARASTOO_PUBLIC_IP=<real-IP> bash"
+    say "  (or set the domain later in the panel wizard: /setup/domain)"
+  fi
 else
   ok "Domain from env: ${BASE_DOMAIN}"
 fi
@@ -583,6 +604,11 @@ echo "  Three steps to finish (all in your browser):"
 echo "    1) Open the panel URL:"
 echo ""
 echo -e "       ${BLUE}${SCHEME}://${PANEL_DOMAIN}${NC}"
+echo ""
+echo "  If this URL does NOT open: the server's inbound IP differs from the"
+echo "  detected outbound IP (NAT/VPN/provider route). Re-run with the real IP:"
+echo -e "       ${BLUE}curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo PARASTOO_PUBLIC_IP=<real-IP> bash${NC}"
+echo "  (or fix the domain later in the panel wizard: /setup/domain)"
 echo ""
 echo -e "    2) Enter the one-time setup token (copy it now):"
 echo ""
