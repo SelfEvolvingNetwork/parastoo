@@ -27,6 +27,7 @@ jobs:
           bash -n setup.sh
           bash -n bootstrap.sh
           bash -n uninstall.sh
+          bash -n scripts/factory-reset.sh
           bash -n scripts/check-mirrors.sh
           bash -n scripts/fetch-images.sh
           bash -n bin/parastoo
@@ -39,3 +40,4 @@ jobs:
           python tests/smoke_wizard.py
           python tests/smoke_sanctions.py
           python tests/smoke_gitea.py
+          bash tests/factory_reset_test.sh
