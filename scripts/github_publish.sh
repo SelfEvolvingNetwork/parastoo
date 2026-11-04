@@ -32,6 +32,7 @@ trap 'rm -rf "$TMP"' EXIT
 git clone --depth 5 --branch "$BRANCH" "$GIT_URL" "$TMP/repo" 2>/dev/null
 rsync -a --delete --exclude '.git' --exclude '.env' --exclude 'backups/' \
       --exclude 'offline-images/' --exclude '__pycache__/' --exclude '*.pyc' \
+      --exclude '.secrets/' \
       "$HERE/" "$TMP/repo/"
 cd "$TMP/repo"
 if git diff --quiet && git diff --cached --quiet && [ -z "$(git status --porcelain)" ]; then
