@@ -62,13 +62,18 @@ else
 fi
 
 # 4) upload the zip asset (delete stale asset with the same name first)
-ASSET_URL="$(sed -n 's/.*"browser_download_url": *"[^"]*/\0/p' "$TMP/rel_out.json" >/dev/null 2>&1 || true)"
-UP_BASE="$(sed -n 's/.*"upload_url": *"\([^?]*\).*/\1/p' "$TMP/rel_out.json")"
+UP_BASE="$(sed -n 's/.*"upload_url": *"\([^?{]*\).*/\1/p' "$TMP/rel_out.json")"
 [ -n "$UP_BASE" ] || { echo "ERROR: no upload_url"; exit 1; }
+# delete stale assets with the same name (re-publish case), then upload
 while IFS= read -r aid; do
   curl -s -o /dev/null -X DELETE "${AUTH[@]}" "$API/repos/$REPO/releases/assets/$aid"
 done < <(curl -s "${AUTH[@]}" "$API/repos/$REPO/releases/tags/v${VER}" \
-         | sed -n 's/.*"id": *\([0-9]*\),[^{]*"name": *"parastoo-v'"$VER"'.*".*/\1/p')
+         | python3 -c "import sys,json
+try:
+    for a in json.load(sys.stdin).get('assets',[]):
+        print(a['id'])
+except Exception:
+    pass")
 code=$(curl -s -o "$TMP/up.json" -w '%{http_code}' "${AUTH[@]}" \
         -H "Content-Type: application/zip" --data-binary @"$ZIP" \
         "$UP_BASE?name=parastoo-v${VER}.zip")
