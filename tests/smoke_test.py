@@ -110,6 +110,12 @@ with TestClient(app, follow_redirects=False) as c:
     check("push به برنچ غیر main بیلد نمی‌گیرد", db.query(Build).count() == 1)
     db.close()
 
+    # رگرسیون 500 داشبورد (v0.2.22): قالب به b.project بعد از بسته‌شدن نشست دست
+    # می‌زند؛ بدون joinedload → DetachedInstanceError برای هر کاربر با بیلد.
+    r = c.get("/dashboard")
+    check("داشبورد کاربرِ دارای بیلد سالم است (رگرسیون DetachedInstanceError)",
+          r.status_code == 200 and "در صف" in r.text)
+
     print("— صفحات دیگر —")
     for path, needle in [("/projects", "پروژه‌ها"), ("/marketplace", "مارکت‌پلیس"),
                          ("/wallet", "کیف پول"), ("/sites", "سایت‌های من")]:
@@ -235,16 +241,20 @@ check("فاز 6b علت ریشهٔ همین خطا را خودش نام می‌�
 print()
 print("— ریست کارخانه —")
 cli = (ROOT / "bin/parastoo").read_text()
+reset_sh = (ROOT / "scripts/factory-reset.sh").read_text()
 uni = (ROOT / "uninstall.sh").read_text()
 rme = (ROOT / "README.md").read_text()
-check("CLI دستور reset با تایید صریح دارد",
-      "reset)" in cli and "Type 'reset' to continue" in cli)
-check("reset کانتینرهای سایت (خارج از استک) را اول حذف می‌کند",
-      "filter name=parastoo-site-" in cli and cli.index("parastoo-site-") < cli.index("down -v"))
+check("CLI دستور reset به اسکریپت مقاوم factory-reset واگذار می‌شود (v0.2.17+)",
+      "reset)" in cli and "factory-reset.sh" in cli)
+check("reset تایید صریح دارد (Type 'reset')",
+      "Type 'reset'" in reset_sh)
+check("reset کانتینرهای سایت (خارج از استک) را قبل از down حذف می‌کند",
+      "filter name=parastoo-site-" in reset_sh
+      and reset_sh.index("parastoo-site-") < reset_sh.index("down -v"))
 check("reset ولوم‌ها و ایمیج‌های پروژه‌ها را هم پاک می‌کند",
-      "down -v --remove-orphans" in cli and "label=parastoo.slug" in cli)
+      "down -v --remove-orphans" in reset_sh and "label=parastoo.slug" in reset_sh)
 check("reset توکن نصب را از .env برمی‌گرداند",
-      "PARASTOO_SETUP_TOKEN" in cli)
+      "PARASTOO_SETUP_TOKEN" in reset_sh)
 check("uninstall.sh (حالت ولوم‌ها) هم سایت‌ها و ایمیج‌ها را پاک می‌کند",
       "filter name=parastoo-site-" in uni and "label=parastoo.slug" in uni)
 check("README روش ریست کارخانه را مستند کرده",
@@ -342,7 +352,8 @@ gitea_src = (ROOT / "core/app/gitea.py").read_text()
 check("create_repo از اندپوینت ادمین گیتا استفاده می‌کند (POST /repos/{owner}/{repo} وجود ندارد و 405 است)",
       "/api/v1/admin/users/{owner}/repos" in gitea_src)
 check("اسکوپ پکیج گیتا مفرد است (write:package؛ گیتا 1.23 «write:packages» را 400 رد می‌کند)",
-      "write:packages" not in gitea_src and "write:package" in gitea_src)
+      '"write:package"' in gitea_src
+      and '"write:packages"' not in gitea_src.replace('replace("write:packages", "write:package")', ""))
 check("create_token روی خطای اسکوپ fallback دارد (نرمال‌سازی جمع→مفرد)",
       "invalid" not in "" and "scope" in gitea_src and "replace(\"write:packages\", \"write:package\")" in gitea_src)
 

@@ -87,17 +87,80 @@ def tls(db=None) -> bool:
     return v == "1"
 
 
-def server_ip() -> str:
-    """IP عمومی سرور — از env نصب، وگرنه تشخیص خودکار (یک‌بار کش می‌شود)."""
-    global _IP_CACHE
-    if settings.PUBLIC_IP:
-        return settings.PUBLIC_IP
+# ---------- IP عمومی واقعی (منبع حقیقت زنده) ----------
+
+_IP_LIVE_CACHE = ""
+_IP_LIVE_AT = 0.0
+
+
+def _nipio_ip(domain: str) -> str:
+    """IP کدشده در نام دامنهٔ nip.io — مثل panel.193.151.142.128.nip.io → 193.151.142.128."""
+    if not domain or not domain.endswith(".nip.io"):
+        return ""
+    labels = domain[:-len(".nip.io")].split(".")
+    if len(labels) < 4:
+        return ""
+    ip = ".".join(labels[-4:])
+    if all(p.isdigit() and 0 <= int(p) <= 255 for p in ip.split(".")):
+        return ip
+    return ""
+
+
+def _resolve(host: str) -> str:
+    """رزولوشن A یک میزبان — بدون استثنا."""
+    if not host:
+        return ""
+    try:
+        import socket
+        infos = socket.getaddrinfo(host, 80, family=socket.AF_INET)
+        return infos[0][4][0] if infos else ""
+    except Exception:
+        return ""
+
+
+def _egress_ip() -> str:
+    """IP از سرویس‌های egress (منبع ضعیف‌تر — ممکن است IP خروجی NAT باشد نه ورودی)."""
     if _IP_CACHE:
         return _IP_CACHE
-    try:
-        import httpx
-        r = httpx.get("https://api.ipify.org", timeout=5)
-        _IP_CACHE = r.text.strip()
-    except Exception:
-        pass
-    return _IP_CACHE
+    for url in ("https://api.ipify.org", "https://ifconfig.me/ip"):
+        try:
+            import httpx
+            r = httpx.get(url, timeout=5)
+            if r.status_code == 200 and r.text.strip():
+                _IP_CACHE = r.text.strip()
+                return _IP_CACHE
+        except Exception:
+            continue
+    return ""
+
+
+def server_ip(db=None) -> str:
+    """IP عمومیِ واقعی سرور — برای چک DNS (قبل از فعال‌سازی TLS).
+
+    منبع حقیقت زنده، به ترتیب:
+      ۱) دامنهٔ فعال پنل اگر nip.io باشد، IP را داخل خودِ نام دارد (بدون DNS)؛
+      ۲) وگرنه رزولوشن دامنهٔ فعال (ترافیک از همان‌جا می‌گذرد، پس همان IP سرور است)؛
+      ۳) سپس PUBLIC_IP env؛
+      ۴) وگرنه تشخیص egress. نتیجه ۶۰ ثانیه کش می‌شود (تا تغییر دامنه بلافاصله دیده شود).
+
+    انگیزه: نصب اول با IP خروجی NAT اجرا شده بود و PUBLIC_IP همان در .env ماند،
+    در حالی که IP عمومی واقعی چیز دیگری است؛ چک DNS ویزارد با مقایسهٔ رکوردها با
+    همان IP کهنه همیشه شکست می‌خورد و فعال‌سازی دامنهٔ واقعی و TLS ناممکن می‌شد.
+    """
+    global _IP_LIVE_CACHE, _IP_LIVE_AT, _IP_CACHE
+    now = time.time()
+    if _IP_LIVE_CACHE and now - _IP_LIVE_AT < 60.0:
+        return _IP_LIVE_CACHE
+    ip = _nipio_ip(panel(db))
+    if not ip:
+        resolved = _resolve(panel(db)) or _resolve(git(db))
+        if resolved:
+            ip = resolved
+        elif settings.PUBLIC_IP:
+            ip = settings.PUBLIC_IP
+        else:
+            ip = _egress_ip()
+    if ip:
+        _IP_LIVE_CACHE, _IP_LIVE_AT = ip, now
+        _IP_CACHE = ip
+    return ip

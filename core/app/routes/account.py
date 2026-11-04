@@ -1,5 +1,6 @@
 """ثبت‌نام، ورود، خروج."""
 import re
+import time
 
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.orm import Session
@@ -15,6 +16,49 @@ from ..security import hash_password, verify_password
 router = APIRouter()
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+# ---------- محدودسازی تلاش ورود (ضد brute-force) ----------
+# حافظهٔ درون‌پردازشی: کلید «IP|ایمیل» → زمان‌های شکست اخیر. پس از MAX_FAILS شکست
+# در پنجرهٔ FAIL_WINDOW، همان کلید به مدت LOCK_SECONDS قفل می‌شود (با همان
+# پیام bad_login — بدون لو دادن وجود قفل). ورود موفق شمارنده را صفر می‌کند.
+_LOGIN_FAILS: dict[str, list[float]] = {}
+_LOCKS: dict[str, float] = {}
+FAIL_WINDOW = 600.0   # پنجرهٔ ۱۰ دقیقه‌ای
+MAX_FAILS = 8         # حداکثر شکست مجاز در پنجره
+LOCK_SECONDS = 300.0  # قفل ۵ دقیقه‌ای پس از تجاوز
+
+
+def _client_ip(request: Request) -> str:
+    # پشت ترافیک: آخرین X-Forwarded-For واقعی‌ترین مشتری است؛ وگرنه socket
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[-1].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def login_locked(key: str) -> bool:
+    until = _LOCKS.get(key, 0)
+    if until and time.time() < until:
+        return True
+    if until:
+        del _LOCKS[key]
+    return False
+
+
+def login_record_fail(key: str) -> None:
+    now = time.time()
+    fails = [t for t in _LOGIN_FAILS.get(key, []) if now - t < FAIL_WINDOW]
+    fails.append(now)
+    _LOGIN_FAILS[key] = fails
+    if len(fails) >= MAX_FAILS:
+        _LOCKS[key] = now + LOCK_SECONDS
+        _LOGIN_FAILS[key] = []
+
+
+def login_reset(key: str) -> None:
+    _LOGIN_FAILS.pop(key, None)
+    _LOCKS.pop(key, None)
 
 
 @router.get("/register")
@@ -75,14 +119,21 @@ def login_page(
 
 @router.post("/login")
 def login_submit(
+    request: Request,
     email: str = Form(...),
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
     email = email.strip().lower()
+    key = f"{_client_ip(request)}|{email}"
+    if login_locked(key):
+        # پیام همان bad_login می‌ماند تا وجود قفل اطلاعات اضافه لو ندهد
+        return redirect("/login?m=bad_login")
     user = db.query(User).filter(User.email == email).first()
     if not user or not user.is_active or not verify_password(password, user.password_hash):
+        login_record_fail(key)
         return redirect("/login?m=bad_login")
+    login_reset(key)
     resp = redirect("/")
     set_session(resp, user.id)
     return resp

@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from sqlalchemy.orm import joinedload
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse
 
@@ -38,6 +39,16 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """هدرهای امنیتی پایه برای همهٔ پاس‌های پنل (سایت‌ها از مسیر ترافیک می‌روند و مستقل‌اند)."""
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return resp
 
 app.mount("/static", StaticFiles(directory=str(WEB_STATIC)), name="static")
 
@@ -112,7 +123,11 @@ def dashboard(request: Request, user=Depends(get_current_user)):
         my_sites = (db.query(Site)
                     .filter(Site.owner_id == user.id)
                     .order_by(Site.id.desc()).all())
+        # joinedload: قالب بعد از بسته‌شدن نشست به b.project دست می‌زند؛ بدون eager
+        # load، lazy load روی آبجکت جداشده → DetachedInstanceError → 500 داشبورد
+        # برای هر کاربری که حداقل یک بیلد دارد (باگ v0.2.21 و قبل‌تر).
         recent_builds = (db.query(Build)
+                         .options(joinedload(Build.project))
                          .join(Project)
                          .filter(Project.owner_id == user.id)
                          .order_by(Build.id.desc()).limit(6).all())

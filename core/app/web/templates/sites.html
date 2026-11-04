@@ -15,7 +15,7 @@
       <td><b>{{ s.slug }}</b><div class="muted small">{{ stack_label(s.project.stack) }}</div></td>
       <td><a href="http{{ 's' if domains.tls() else '' }}://{{ s.subdomain }}" target="_blank" rel="noopener">{{ s.subdomain }}</a></td>
       <td>{{ tier_label(s.tier) }}</td>
-      <td><span class="badge badge-{{ {'running':'ok','stopped':'wait','paused':'warn','error':'err'}[s.status] }}">{{ {'running':'روشن','stopped':'خاموش','paused':'متوقف (بدهی)','error':'خطا'}[s.status] }}</span></td>
+      <td><span class="badge badge-{{ {'running':'ok','stopped':'wait','paused':'warn','error':'err'}.get(s.status, 'wait') }}">{{ {'running':'روشن','stopped':'خاموش','paused':'متوقف (بدهی)','error':'خطا'}.get(s.status, s.status) }}</span></td>
       <td class="mono small">{{ live.get(s.id) or '—' }}</td>
       <td class="actions">
         {% if s.status == 'running' %}
