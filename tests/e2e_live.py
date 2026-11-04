@@ -23,7 +23,6 @@ import os
 import sys
 import urllib.error
 import urllib.request
-from urllib.parse import urlencode
 
 DEFAULT_PANEL = "http://panel.193.151.142.128.nip.io"
 
