@@ -108,7 +108,10 @@ def home(request: Request, user=Depends(get_current_user)):
         return RedirectResponse("/setup", status_code=303)
     if user is None:
         return render("landing.html", ctx(request, None))
-    return RedirectResponse("/dashboard", status_code=303)
+    # پیام‌های گارد (m=csrf / m=denied و …) که به / آمده‌اند در مسیر /
+    # تا /dashboard حفظ می‌شوند — وگرنه دلیلِ مسدودشدن کاربر گم می‌شد.
+    m = request.query_params.get("m")
+    return RedirectResponse(f"/dashboard?m={m}" if m else "/dashboard", status_code=303)
 
 
 @app.get("/dashboard")
