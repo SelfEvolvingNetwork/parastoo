@@ -1,0 +1,30 @@
+# پیکربندی استاتیک ترافیک — توسط install.sh از این الگو ساخته می‌شود
+entryPoints:
+  web:
+    address: ":80"
+__WEB_REDIRECT__
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    exposedByDefault: false
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+api:
+  dashboard: false
+
+log:
+  level: INFO
+
+accessLog: {}
+
+certificatesResolvers:
+  le:
+    acme:
+      email: "__ACME_EMAIL__"
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}ثبت‌نام{% endblock %}
+{% block content %}
+<div class="auth-card card">
+  <h1>ساخت حساب کاربری</h1>
+  <p class="muted">با ثبت‌نام، حساب گیت اختصاصی و توکن دسترسی شما هم به‌صورت خودکار ساخته می‌شود.</p>
+  <form method="post" action="/register">
+    <label>ایمیل
+      <input type="email" name="email" required placeholder="you@example.com">
+    </label>
+    <label>نام نمایشی
+      <input type="text" name="name" placeholder="مثلاً: علی رضایی">
+    </label>
+    <label>رمز عبور (حداقل ۶ کاراکتر)
+      <input type="password" name="password" required minlength="6">
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">ثبت‌نام</button>
+  </form>
+  <p class="muted">قبلاً ثبت‌نام کرده‌اید؟ <a href="/login">وارد شوید</a></p>
+</div>
+{% endblock %}

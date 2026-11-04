@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}دامنه و HTTPS{% endblock %}
+{% block content %}
+<h1>دامنه و HTTPS</h1>
+<p class="muted">
+  این صفحه دامنه اصلی سرور و گواهی HTTPS را تنظیم می‌کند. اگر همین حالا دامنه ندارید،
+  بگذارید خالی بماند — پرستو با دامنه موقت
+  <span class="mono">{{ base }}</span> کامل کار می‌کند و هر وقت دامنه خریدید همین‌جا برمی‌گردید.
+</p>
+
+{% if is_nip %}
+<div class="flash">فعلاً روی دامنه موقت (nip.io) هستید؛ این حالت HTTPS ندارد. با دامنه واقعی، گواهی Let's Encrypt خودکار صادر می‌شود.</div>
+{% endif %}
+
+<section class="card">
+  <h2>تنظیم دامنه</h2>
+  <form method="post" action="/setup/domain">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>دامنه پایه (مثلاً example.com)
+      <input name="base_domain" dir="ltr" value="{{ base }}" required placeholder="example.com">
+    </label>
+    <label>ایمیل گواهی Let's Encrypt
+      <input type="email" name="acme_email" dir="ltr" value="{{ acme_email }}" placeholder="admin@example.com">
+    </label>
+    <label class="check">
+      <input type="checkbox" name="tls" {% if tls %}checked{% endif %}>
+      فعال‌سازی HTTPS خودکار (Let's Encrypt) — نیازمند نشستن رکوردهای DNS
+    </label>
+    <div class="row gap-sm">
+      <button type="button" class="btn btn-ghost" id="dns-btn">بررسی DNS</button>
+      <button class="btn btn-primary" type="submit">ذخیره و فعال‌سازی</button>
+    </div>
+    <div id="dns-status" class="muted small" style="margin-top:.6rem">
+      با دکمه «بررسی DNS» وضعیت فعلی رکوردها را ببینید. فعال‌سازی HTTPS فقط وقتی ممکن است که هر سه رکورد به این سرور اشاره کنند.
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>رکوردهای DNS لازم</h2>
+  <table class="w60">
+    <thead><tr><th>نقش</th><th>رکورد</th><th>مقدار (IP سرور)</th></tr></thead>
+    <tbody>
+      <tr><td>پنل</td><td class="mono">panel.{{ base }}</td><td class="mono">{{ server_ip or '—' }}</td></tr>
+      <tr><td>گیت داخلی</td><td class="mono">git.{{ base }}</td><td class="mono">{{ server_ip or '—' }}</td></tr>
+      <tr><td>سایت‌ها (وایلدکارد)</td><td class="mono">*.apps.{{ base }}</td><td class="mono">{{ server_ip or '—' }}</td></tr>
+    </tbody>
+  </table>
+  <p class="muted small">
+    این سه رکورد را در پنل ثبت‌کننده دامنه‌تان بسازید و به IP سرور
+    (<span class="mono">{{ server_ip or 'نامشخص' }}</span>) اشاره دهید.
+    آدرس‌های فعال فعلی — پنل: <span class="mono">{{ panel }}</span> ، گیت: <span class="mono">{{ git }}</span> ، سایت‌ها: <span class="mono">*.{{ apps }}</span>
+  </p>
+</section>
+
+<script>
+const btn = document.getElementById('dns-btn');
+const box = document.getElementById('dns-status');
+btn.addEventListener('click', async () => {
+  const d = document.querySelector('input[name=base_domain]').value.trim();
+  box.textContent = 'در حال بررسی رکوردهای DNS...';
+  try {
+    const r = await fetch('/setup/domain/check.json?domain=' + encodeURIComponent(d));
+    const j = await r.json();
+    if (j.error === 'invalid_domain') {
+      box.innerHTML = '<span style="color:#c0392b">قالب دامنه درست نیست.</span>';
+      return;
+    }
+    const rows = j.records.map(x =>
+      `<div>${x.ok ? '✅' : '❌'} <span class="mono">${x.host}</span> → ` +
+      (x.resolved ? `<span class="mono">${x.resolved}</span>` : 'پیدا نشد') +
+      (x.expected ? ` (انتظار: <span class="mono">${x.expected}</span>)` : '') + '</div>'
+    ).join('');
+    const all = j.ok ? '<b style="color:#1e7e34">همه رکوردها آماده‌اند — می‌توانید HTTPS را فعال کنید.</b>'
+                     : '<b style="color:#c0392b">هنوز همه رکوردها نشسته‌اند؛ در پنل ثبت‌کننده دامنه تنظیم کنید.</b>';
+    box.innerHTML = rows + '<div style="margin-top:.4rem">' + all + '</div>';
+  } catch (e) {
+    box.textContent = 'بررسی ناموفق بود. دوباره تلاش کنید.';
+  }
+});
+</script>
+{% endblock %}

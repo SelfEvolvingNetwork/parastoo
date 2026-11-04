@@ -1,0 +1,12 @@
+# همهٔ ایمیج‌هایی که پرستو از Docker Hub نیاز دارد — منبع واحد حقیقت
+# مصرف‌کننده‌ها:
+#   - scripts/fetch-images.sh  (بستهٔ آفلاین برای سرورهای تحریم‌شده)
+#   - smoke test تحریم‌ها (سازگاری این لیست با docker-compose.yml و stacks.py)
+# اگر تگی در compose یا قالب بیلد عوض شد، همین‌جا هم عوضش کنید.
+postgres:16-alpine
+gitea/gitea:1.23
+traefik:v3.6.6
+python:3.12-slim
+nginx:1.27-alpine
+node:20-alpine
+alpine:3.20

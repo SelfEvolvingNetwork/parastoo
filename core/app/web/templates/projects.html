@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}پروژه‌ها{% endblock %}
+{% block content %}
+<div class="card-head">
+  <h1>پروژه‌ها</h1>
+  <a href="/projects/new" class="btn btn-primary">+ پروژه جدید</a>
+</div>
+
+{% if items %}
+<table>
+  <thead><tr><th>نام</th><th>فناوری</th><th>مخزن گیت</th><th>آخرین ایمیج</th><th>مارکت‌پلیس</th><th></th></tr></thead>
+  <tbody>
+  {% for p in items %}
+    <tr>
+      <td><a href="/projects/{{ p.slug }}"><b>{{ p.name }}</b></a><div class="muted small">{{ p.description|truncate(60) }}</div></td>
+      <td>{{ stack_label(p.stack) }}</td>
+      <td><span class="badge badge-{{ 'ok' if p.repo_status == 'ready' else ('err' if p.repo_status == 'error' else 'wait') }}">{{ {'ready':'آماده','pending':'در حال ساخت','error':'خطا'}[p.repo_status] }}</span></td>
+      <td class="mono small">{{ p.latest_sha[:7] if p.latest_sha else '—' }}</td>
+      <td>{% if p.is_public %}<span class="badge badge-info">{{ money(p.price) }} {{ settings.CURRENCY }}</span>{% else %}<span class="muted">خصوصی</span>{% endif %}</td>
+      <td><a class="btn btn-ghost btn-sm" href="/projects/{{ p.slug }}">مدیریت</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="card">
+  <p>هنوز پروژه‌ای نساخته‌اید. یک پروژه جدید بسازید، کدتان را push کنید و بقیه‌اش با پرستو!</p>
+  <a href="/projects/new" class="btn btn-primary">ساخت اولین پروژه</a>
+</div>
+{% endif %}
+{% endblock %}

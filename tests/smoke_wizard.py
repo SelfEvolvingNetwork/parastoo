@@ -1,0 +1,143 @@
+"""تست دودی ویزارد — توکن نصب، گام‌ها، دامنه و خروجی‌های ترافیک."""
+import os
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+os.environ.update(
+    DATABASE_URL="sqlite:////tmp/parastoo-wizard.db",
+    PARASTOO_DISABLE_WORKERS="1",
+    SECRET_KEY="wizard-test-secret",
+    BASE_DOMAIN="1-2-3-4.nip.io",
+    TLS_ENABLED="false",
+    PARASTOO_SETUP_TOKEN="aaaa-bbbb-cccc",
+    PARASTOO_PUBLIC_IP="203.0.113.10",
+    PARASTOO_CONFIG_DIR="/tmp/parastoo-test-config",
+)
+if os.path.exists("/tmp/parastoo-wizard.db"):
+    os.remove("/tmp/parastoo-wizard.db")
+
+sys.path.insert(0, str(ROOT / "core"))
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app import domains, security, traefik_ops  # noqa: E402
+from app.db import SessionLocal  # noqa: E402
+from app.main import app  # noqa: E402
+from app.models import Setting, User  # noqa: E402
+
+PASS = 0
+FAIL = 0
+
+
+def check(name, cond, extra=""):
+    global PASS, FAIL
+    if cond:
+        PASS += 1
+        print(f"  ✔ {name}")
+    else:
+        FAIL += 1
+        print(f"  ✘ {name} {extra}")
+
+
+with TestClient(app, follow_redirects=False) as c:
+    print("— گام ۱: توکن نصب —")
+    r = c.get("/setup")
+    check("بدون توکن → فرم توکن نشان داده می‌شود",
+          r.status_code == 200 and "توکن نصب" in r.text)
+    r = c.post("/setup/token", data={"token": "zzzz-yyyy-xxxx"}, follow_redirects=False)
+    check("توکن غلط رد می‌شود", "m=bad_token" in r.headers.get("location", ""))
+    r = c.post("/setup", data={"email": "x@x.ir", "password": "123456"}, follow_redirects=False)
+    check("بدون عبور از گیت، ساخت مدیر هم رد می‌شود", "m=bad_token" in r.headers.get("location", ""))
+    r = c.post("/setup/token", data={"token": " aaaa-bbbb-cccc "}, follow_redirects=False)
+    check("توکن درست (با فاصله) قبول شد", r.status_code == 303 and "parastoo_gate" in r.cookies)
+    r = c.get("/setup")
+    check("بعد از گیت → فرم مدیر", r.status_code == 200 and "حساب مدیر" in r.text)
+
+    print("— گام ۲: حساب مدیر —")
+    r = c.post("/setup", data={"email": "admin@test.ir", "password": "secret1",
+                               "name": "مدیر"}, follow_redirects=False)
+    check("ساخت مدیر → ریدایرکت به گام دامنه",
+          r.status_code == 303 and "/setup/domain" in r.headers["location"])
+    check("کوکی نشست ست شد", "parastoo_session" in r.cookies)
+    r = c.get("/setup/domain")
+    check("صفحه دامنه باز می‌شود",
+          r.status_code == 200 and "دامنه" in r.text and "1-2-3-4.nip.io" in r.text)
+    r = c.get("/setup")
+    check("ادمینِ واردشده /setup → صفحه دامنه",
+          r.status_code == 303 and "/setup/domain" in r.headers["location"])
+    c3 = TestClient(app, follow_redirects=False)
+    r = c3.get("/setup")
+    check("بازدیدکننده ناشناس /setup → login (ویزارد بسته)",
+          r.status_code == 303 and "/login" in r.headers["location"])
+    r = c.post("/setup/token", data={"token": "aaaa-bbbb-cccc"}, follow_redirects=False)
+    check("توکن بعد از نصب دیگر کار نمی‌کند", r.status_code == 303 and "/login" in r.headers["location"])
+
+    print("— گام ۳: بررسی DNS و اعمال دامنه —")
+    r = c.get("/setup/domain/check.json?domain=bad_domain!")
+    check("دامنه نامعتبر → error", r.json().get("error") == "invalid_domain")
+    r = c.get("/setup/domain/check.json?domain=example.com")
+    j = r.json()
+    check("بررسی DNS معتبر → ساختار درست",
+          r.status_code == 200 and isinstance(j.get("records"), list)
+          and len(j["records"]) == 3 and j["records"][0]["host"] == "panel.example.com")
+    check("رکوردها به IP سرور اشاره نمی‌کنند (طبیعی در تست)", j["ok"] is False)
+    r = c.post("/setup/domain", data={"base_domain": "example.com", "tls": "on",
+                                      "acme_email": "admin@example.com", "csrf": security.csrf_token(1)},
+               follow_redirects=False)
+    check("فعال‌سازی HTTPS بدون DNS نشسته رد می‌شود",
+          "m=dns_pending" in r.headers.get("location", ""))
+    r = c.post("/setup/domain", data={"base_domain": "example.com",
+                                      "acme_email": "admin@example.com",
+                                      "csrf": security.csrf_token(1)},
+               follow_redirects=False)
+    check("اعمال دامنه بدون HTTPS → موفق",
+          "m=domain_applied" in r.headers.get("location", ""))
+
+    print("— نتیجه اعمال —")
+    check("دامنه پنل پویا عوض شد", domains.panel() == "panel.example.com")
+    check("دامنه گیت پویا عوض شد", domains.git() == "git.example.com")
+    check("دامنه سایت‌ها پویا عوض شد", domains.apps() == "apps.example.com")
+    check("TLS همچنان خاموش", domains.tls() is False)
+    cfg = "/tmp/parastoo-test-config"
+    check("فایل استاتیک ترافیک نوشته شد", os.path.exists(f"{cfg}/traefik.yml"))
+    check("فایل داینامیک روترها نوشته شد", os.path.exists(f"{cfg}/dynamic/routers.yml"))
+    dyn = open(f"{cfg}/dynamic/routers.yml").read()
+    check("روتینگ داینامیک دامنه جدید را دارد",
+          "panel.example.com" in dyn and "git.example.com" in dyn and "certResolver" not in dyn)
+    static = open(f"{cfg}/traefik.yml").read()
+    check("استاتیک بدون ریدایرکت (TLS خاموش)", "redirections" not in static)
+    db = SessionLocal()
+    rows = {s.key: s.value for s in db.query(Setting).filter(Setting.key.like("domain_%")).all()}
+    db.close()
+    check("تنظیمات در جدول Setting ذخیره شد",
+          rows.get("domain_base") == "example.com" and rows.get("domain_tls") == "0")
+
+    print("— الگوهای ترافیک (یونیت) —")
+    s_on = traefik_ops.render_static(True, "a@b.ir")
+    check("استاتیک TLS روشن: ریدایرکت + ایمیل",
+          "redirections" in s_on and "a@b.ir" in s_on)
+    try:
+        import yaml
+        yaml.safe_load(s_on)
+        yaml.safe_load(traefik_ops.render_static(False, "a@b.ir"))
+        yaml.safe_load(traefik_ops.render_dynamic("p.x.ir", "g.x.ir", True))
+        yaml.safe_load(traefik_ops.render_dynamic("p.x.ir", "g.x.ir", False))
+        check("همه خروجی‌های YAML معتبرند", True)
+    except ImportError:
+        print("  (pyyaml نصب نیست — اعتبارسنجی YAML رد شد)")
+
+    print("— تغییر دامنه دوباره (idempotent) —")
+    r = c.post("/setup/domain", data={"base_domain": "shop.example.net",
+                                      "acme_email": "admin@example.net",
+                                      "csrf": security.csrf_token(1)},
+               follow_redirects=False)
+    check("اعمال دامنه دوم موفق", "m=domain_applied" in r.headers.get("location", ""))
+    check("دامنه فعال به‌روز شد", domains.base() == "shop.example.net")
+    r = c.get("/dashboard")
+    check("داشبورد ادمین سالم", r.status_code == 200)
+
+print()
+print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
+sys.exit(1 if FAIL else 0)

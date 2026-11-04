@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}سایت‌ها{% endblock %}
+{% block content %}
+<div class="card-head">
+  <h1>سایت‌های من</h1>
+  <div class="muted">هزینه جاری: {{ money(monthly) }} {{ settings.CURRENCY }}/ماه (کسر ساعتی)</div>
+</div>
+
+{% if items %}
+<table>
+  <thead><tr><th>شناسه</th><th>آدرس</th><th>پلن منابع</th><th>وضعیت</th><th>وضعیت کانتینر</th><th>عملیات</th></tr></thead>
+  <tbody>
+  {% for s in items %}
+    <tr>
+      <td><b>{{ s.slug }}</b><div class="muted small">{{ stack_label(s.project.stack) }}</div></td>
+      <td><a href="http{{ 's' if domains.tls() else '' }}://{{ s.subdomain }}" target="_blank" rel="noopener">{{ s.subdomain }}</a></td>
+      <td>{{ tier_label(s.tier) }}</td>
+      <td><span class="badge badge-{{ {'running':'ok','stopped':'wait','paused':'warn','error':'err'}[s.status] }}">{{ {'running':'روشن','stopped':'خاموش','paused':'متوقف (بدهی)','error':'خطا'}[s.status] }}</span></td>
+      <td class="mono small">{{ live.get(s.id) or '—' }}</td>
+      <td class="actions">
+        {% if s.status == 'running' %}
+        <form method="post" action="/sites/{{ s.id }}/stop"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-ghost btn-sm">خاموش</button></form>
+        {% else %}
+        <form method="post" action="/sites/{{ s.id }}/start"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-ghost btn-sm">روشن</button></form>
+        {% endif %}
+        <form method="post" action="/sites/{{ s.id }}/delete" onsubmit="return confirm('سایت {{ s.slug }} حذف شود؟')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn btn-danger btn-sm">حذف</button></form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="card">
+  <p>سایتی منتشر نکرده‌اید. از صفحه پروژه‌ها سایت خود را منتشر کنید یا از مارکت‌پلیس ایمیج آماده فعال کنید.</p>
+  <div class="row gap">
+    <a href="/projects" class="btn btn-primary">پروژه‌های من</a>
+    <a href="/marketplace" class="btn btn-ghost">مارکت‌پلیس</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}راه‌اندازی{% endblock %}
+{% block content %}
+<div class="auth-card card">
+  <h1>راه‌اندازی اولیه پرستو</h1>
+  <p class="muted">گام ۲ از ۳ — حساب مدیر را بسازید. در گام بعد می‌توانید دامنه واقعی و HTTPS را در همین پنل تنظیم کنید.</p>
+  <form method="post" action="/setup">
+    <label>ایمیل مدیر
+      <input type="email" name="email" required placeholder="admin@example.com">
+    </label>
+    <label>نام نمایشی
+      <input type="text" name="name" placeholder="مثلاً: مدیر پرستو">
+    </label>
+    <label>رمز عبور (حداقل ۶ کاراکتر)
+      <input type="password" name="password" required minlength="6">
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">ساخت حساب مدیر و شروع</button>
+  </form>
+  <p class="muted small">پس از این مرحله، اتصال به گیت داخلی به‌صورت خودکار در پس‌زمینه انجام می‌شود.</p>
+</div>
+{% endblock %}

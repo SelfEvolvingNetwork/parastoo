@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name }}{% endblock %}
+{% block content %}
+<div class="card-head">
+  <div>
+    <h1>{{ p.name }} <span class="muted small mono">{{ p.slug }}</span></h1>
+    <p class="muted">{{ stack_label(p.stack) }}{% if p.description %} — {{ p.description }}{% endif %}</p>
+  </div>
+  <form method="post" action="/projects/{{ p.slug }}/rebuild">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn btn-ghost" type="submit" title="بیلد مجدد با آخرین کامیت">بیلد مجدد</button>
+  </form>
+</div>
+
+<section class="card">
+  <h2>مخزن گیت و توکن دسترسی</h2>
+  {% if git_ready %}
+  <p>مخزن خصوصی شما آماده است. کدتان را مثل گیت‌هاب push کنید:</p>
+  <pre class="code" dir="ltr">git init
+git add .
+git commit -m "first commit"
+git remote add origin http://{{ user.gitea_username }}:YOUR_TOKEN@{{ clone_url }}
+git push -u origin main</pre>
+  <details>
+    <summary>نمایش توکن دسترسی و آدرس کامل (محرمانه)</summary>
+    <pre class="code" dir="ltr">REMOTE=http://{{ user.gitea_username }}:{{ user.gitea_token }}@{{ clone_url }}</pre>
+    <p class="muted small">این توکن مثل رمز عبور است؛ با آن می‌توان به مخزن‌های شما push و pull کرد.</p>
+  </details>
+  <p class="muted small">با هر push به شاخه <b>main</b>، بیلد خودکار شروع می‌شود و ایمیج بروزرسانی می‌گردد.</p>
+  {% else %}
+  <p class="muted">{{ FLASHES.git_pending }}</p>
+  {% endif %}
+</section>
+
+<div class="two-col">
+  <section class="card">
+    <h2>انتشار سایت</h2>
+    {% if p.latest_image %}
+    <p class="muted small">آخرین ایمیج: <span class="mono">{{ p.latest_image }}</span></p>
+    <form method="post" action="/projects/{{ p.slug }}/publish" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>زیردامنه (سایت روی آن منتشر می‌شود)
+        <div class="input-suffix">
+          <input type="text" name="site_slug" required pattern="[a-z0-9][a-z0-9-]{2,39}" placeholder="my-shop">
+          <span>.{{ domains.apps() }}</span>
+        </div>
+      </label>
+      <label>پلن منابع (هزینه ساعتی از کیف پول)
+        <select name="tier">
+          {% for key, t in settings.TIERS.items() %}
+          <option value="{{ key }}">{{ t.label }} — {{ t.cpus }} CPU / {{ t.mem }}MB — {{ money(t.price) }} {{ settings.CURRENCY }}/ساعت</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>پورت داخلی اپ (پیش‌فرض: {{ default_port }})
+        <input type="number" name="port" min="1" max="65535" value="{{ default_port }}">
+      </label>
+      <button class="btn btn-primary" type="submit">انتشار سایت</button>
+    </form>
+    {% else %}
+    <p class="muted">هنوز ایمیجی ساخته نشده. اول کد را push کنید تا بیلد خودکار انجام شود.</p>
+    {% endif %}
+
+    {% if sites %}
+    <h3 class="mt">سایت‌های این پروژه</h3>
+    <table>
+      <thead><tr><th>شناسه</th><th>آدرس</th><th>پلن</th><th>وضعیت</th></tr></thead>
+      <tbody>
+      {% for s in sites %}
+      <tr>
+        <td><b>{{ s.slug }}</b></td>
+        <td><a href="http{{ 's' if domains.tls() else '' }}://{{ s.subdomain }}" target="_blank" rel="noopener">{{ s.subdomain }}</a></td>
+        <td>{{ tier_label(s.tier) }}</td>
+        <td><span class="badge badge-{{ {'running':'ok','stopped':'wait','paused':'warn','error':'err'}[s.status] }}">{{ {'running':'روشن','stopped':'خاموش','paused':'متوقف','error':'خطا'}[s.status] }}</span></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>مارکت‌پلیس</h2>
+    <p class="muted small">با انتشار در مارکت‌پلیس، دیگران می‌توانند ایمیج شما را (رایگان یا پولی) روی حساب خودشان فعال کنند. به‌روزرسانی ایمیج برای همه خریداران خودکار است.</p>
+    <form method="post" action="/projects/{{ p.slug }}/marketplace" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="check">
+        <input type="checkbox" name="is_public" value="1" {{ 'checked' if p.is_public }}>
+        انتشار در مارکت‌پلیس
+      </label>
+      <label>قیمت ({{ settings.CURRENCY }}) — صفر یعنی رایگان
+        <input type="number" name="price" min="0" value="{{ p.price }}">
+      </label>
+      <p class="muted small">سهم شما از هر فروش: {{ 100 - settings.COMMISSION_PERCENT }}٪ (کمیسیون پرستو: {{ settings.COMMISSION_PERCENT }}٪)</p>
+      <button class="btn btn-ghost" type="submit">ذخیره تنظیمات مارکت‌پلیس</button>
+    </form>
+    {% if p.is_public %}
+      <p class="badge badge-info">این ایمیج در مارکت‌پلیس عمومی است — {{ p.installs }} نصب</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>بیلدها</h2>
+  {% if builds %}
+  <table>
+    <thead><tr><th>#</th><th>کامیت</th><th>وضعیت</th><th>شروع</th><th>پایان</th><th>گزارش</th></tr></thead>
+    <tbody>
+    {% for b in builds %}
+      <tr>
+        <td>{{ b.id }}</td>
+        <td class="mono">{{ b.commit_sha[:7] or '—' }}</td>
+        <td><span class="badge badge-{{ {'success':'ok','failed':'err','running':'info','queued':'wait'}[b.status] }}">{{ {'success':'موفق','failed':'ناموفق','running':'در حال بیلد','queued':'در صف'}[b.status] }}</span></td>
+        <td>{{ dt(b.created_at) }}</td>
+        <td>{{ dt(b.finished_at) }}</td>
+        <td>
+          {% if b.log %}
+          <details><summary class="btn-link">نمایش لاگ</summary>
+            <pre class="code log" dir="ltr">{{ b.log[-4000:] }}</pre>
+          </details>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">بیلدی ثبت نشده است.</p>
+  {% endif %}
+</section>
+{% endblock %}

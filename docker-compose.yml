@@ -1,0 +1,164 @@
+# پرستو — استک کامل تک‌سرور: Traefik + Gitea + Postgres + هسته پرستو
+name: parastoo
+
+networks:
+  internal:
+    name: parastoo-internal
+  apps:
+    name: parastoo-apps
+
+volumes:
+  postgres_data:
+  gitea_data:
+  gitea_indexer:
+  parastoo_data:
+  traefik_certs:
+
+services:
+  # ---------- دیتابیس ----------
+  postgres:
+    image: postgres:16-alpine
+    container_name: parastoo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: parastoo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: parastoo
+      GITEA_DB_PASSWORD: ${GITEA_DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parastoo -d parastoo"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  # ---------- گیت داخلی (+ رجیستری ایمیج) ----------
+  gitea:
+    image: gitea/gitea:1.23
+    container_name: parastoo-gitea
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: postgres:5432
+      GITEA__database__NAME: gitea
+      GITEA__database__USER: gitea
+      GITEA__database__PASSWD: ${GITEA_DB_PASSWORD}
+      GITEA__server__DOMAIN: ${GIT_DOMAIN}
+      GITEA__server__ROOT_URL: ${GITEA_ROOT_URL}
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__server__DISABLE_SSH: "true"
+      GITEA__service__DISABLE_REGISTRATION: "true"
+      GITEA__service__REQUIRE_SIGNIN_VIEW: "false"
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__security__SECRET_KEY: ${GITEA_SECRET_KEY}
+      GITEA__packages__ENABLED: "true"
+      GITEA__webhook__ALLOWED_HOST_LIST: parastoo-core
+      GITEA__mailer__ENABLED: "false"
+      GITEA__log__LEVEL: Info
+    volumes:
+      - gitea_data:/data
+      - gitea_indexer:/data/gitea/indexers
+    # رجیستری ایمیج روی localhost در دسترس دیمون داکر است (بدون نیاز به پیکربندی ناامن)
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+    networks:
+      - internal
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.parastoo-git.rule=Host(`${GIT_DOMAIN}`)
+      - traefik.http.routers.parastoo-git.entrypoints=${TRAEFIK_ENTRYPOINTS}
+      - traefik.http.routers.parastoo-git.tls=${TRAEFIK_TLS}
+      - traefik.http.routers.parastoo-git.tls.certresolver=le
+      - traefik.http.services.parastoo-git.loadbalancer.server.port=3000
+
+  # ---------- کنترل‌پلین پرستو ----------
+  core:
+    build:
+      context: ./core
+      args:
+        # تحریم‌ها: در .env مقدار PARASTOO_PIP_INDEX_URL را بگذارید تا pip از آینهٔ ایرانی نصب کند
+        PIP_INDEX_URL: ${PARASTOO_PIP_INDEX_URL:-https://pypi.org/simple}
+    image: parastoo/core:latest
+    container_name: parastoo-core
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      gitea:
+        condition: service_healthy
+    environment:
+      SECRET_KEY: ${PARASTOO_SECRET}
+      DATABASE_URL: postgresql+psycopg://parastoo:${POSTGRES_PASSWORD}@postgres:5432/parastoo
+      BASE_DOMAIN: ${BASE_DOMAIN}
+      PANEL_DOMAIN: ${PANEL_DOMAIN}
+      GIT_DOMAIN: ${GIT_DOMAIN}
+      APPS_DOMAIN: ${APPS_DOMAIN}
+      TLS_ENABLED: ${TLS_ENABLED}
+      GITEA_INTERNAL_URL: http://gitea:3000
+      GITEA_CONTAINER: parastoo-gitea
+      GITEA_ADMIN_USER: ${GITEA_ADMIN_USER}
+      GITEA_ADMIN_EMAIL: ${GITEA_ADMIN_EMAIL}
+      GITEA_ADMIN_PASSWORD: ${GITEA_ADMIN_PASSWORD}
+      REGISTRY_INTERNAL: 127.0.0.1:3000
+      APPS_NETWORK: parastoo-apps
+      DATA_DIR: /data
+      PARASTOO_TZ: ${PARASTOO_TZ}
+      PARASTOO_DEBT_LIMIT: ${PARASTOO_DEBT_LIMIT}
+      PARASTOO_COMMISSION: ${PARASTOO_COMMISSION}
+      PARASTOO_SETUP_TOKEN: ${PARASTOO_SETUP_TOKEN:-}
+      PARASTOO_PUBLIC_IP: ${PARASTOO_PUBLIC_IP:-}
+      # تحریم‌ها: آینه‌های pip/npm برای بیلدهای قالبی کاربران (stacks.py)
+      PARASTOO_PIP_INDEX_URL: ${PARASTOO_PIP_INDEX_URL:-}
+      PARASTOO_NPM_REGISTRY: ${PARASTOO_NPM_REGISTRY:-}
+      PARASTOO_CONFIG_DIR: /app/host-config
+      PARASTOO_TRAEFIK_CONTAINER: parastoo-traefik
+    volumes:
+      - parastoo_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config:/app/host-config
+    networks:
+      - internal
+      - apps
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.parastoo-panel.rule=Host(`${PANEL_DOMAIN}`)
+      - traefik.http.routers.parastoo-panel.entrypoints=${TRAEFIK_ENTRYPOINTS}
+      - traefik.http.routers.parastoo-panel.tls=${TRAEFIK_TLS}
+      - traefik.http.routers.parastoo-panel.tls.certresolver=le
+      - traefik.http.services.parastoo-panel.loadbalancer.server.port=8000
+
+  # ---------- پروکسی و TLS ----------
+  traefik:
+    # پینِ دقیقِ تگ: Docker Engine 29+ حداقلِ نسخهٔ API دیمون را به 1.44 برده و
+    # ترافیکِ قدیمی‌تر از v3.6.6 با «client version 1.24 is too old» می‌میرد →
+    # docker provider هیچ کانتینری را نمی‌بیند → هیچ روتری ساخته نمی‌شود → همه‌چیز 404.
+    image: traefik:v3.6.6
+    container_name: parastoo-traefik
+    restart: unless-stopped
+    command:
+      - --configFile=/etc/traefik/traefik.yml
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./config/dynamic:/etc/traefik/dynamic:ro
+      - traefik_certs:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - internal
+      - apps
