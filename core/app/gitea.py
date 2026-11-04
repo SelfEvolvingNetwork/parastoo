@@ -92,10 +92,16 @@ class GiteaClient:
 
     def create_repo(self, owner: str, name: str, private: bool = True,
                     description: str = "") -> dict:
-        r = self.client.post(f"/api/v1/repos/{owner}/{name}", json={
-            "name": name, "private": private, "auto_init": False,
-            "default_branch": "main", "description": description[:200],
-        })
+        payload = {"name": name, "private": private, "auto_init": False,
+                   "default_branch": "main", "description": description[:200]}
+        # مسیر درست برای ساخت مخزن در نام‌اسپیس «کاربر دیگر» با توکن ادمین:
+        # POST /api/v1/admin/users/{owner}/repos — مسیر قدیمی
+        # (POST /repos/{owner}/{repo}) در گیتا وجود ندارد و 405 می‌گیرد
+        # (حادثهٔ 2026-11-04: هیچ مخزنی ساخته نمی‌شد و پروژه‌ها ابد pending بودند).
+        r = self.client.post(f"/api/v1/admin/users/{owner}/repos", json=payload)
+        if r.status_code in (403, 404, 405):
+            # توکن ادمین نیست → مخزن را در نام‌اسپیس کاربرِ احرازشده بساز
+            r = self.client.post("/api/v1/user/repos", json=payload)
         if r.status_code == 201:
             return r.json()
         if r.status_code == 409:  # از قبل هست

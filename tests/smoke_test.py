@@ -339,6 +339,8 @@ check("main.py خطاهای ۵۰۰ را لاگ می‌کند (قابل دریا�
       "log.exception" in (ROOT / "core/app/main.py").read_text())
 
 gitea_src = (ROOT / "core/app/gitea.py").read_text()
+check("create_repo از اندپوینت ادمین گیتا استفاده می‌کند (POST /repos/{owner}/{repo} وجود ندارد و 405 است)",
+      "/api/v1/admin/users/{owner}/repos" in gitea_src)
 check("اسکوپ پکیج گیتا مفرد است (write:package؛ گیتا 1.23 «write:packages» را 400 رد می‌کند)",
       "write:packages" not in gitea_src and "write:package" in gitea_src)
 check("create_token روی خطای اسکوپ fallback دارد (نرمال‌سازی جمع→مفرد)",
