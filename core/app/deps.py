@@ -45,28 +45,36 @@ def require_admin(user: User = Depends(require_login)) -> User:
     return user
 
 
-async def csrf_guard(
-    request: Request,
-    user: User = Depends(require_login),
-) -> User:
-    """محافظ CSRF برای همه POSTهای کاربر واردشده."""
+async def _csrf_checked(request: Request, user: User) -> User:
+    """بررسی CSRF برای POSTها — تک‌منبعِ مشترک csrf_guard و admin_guard.
+
+    (تا v0.3.1 همین بلوک در هر دو گارد کپی شده بود؛ هر تغییر قاعدهٔ CSRF
+    باید دو جا اعمال می‌شد — همان الگوی تکراری که v0.3.0 در سرویس‌ها حذف کرد.)
+    """
     if request.method == "POST":
         form = await request.form()
         if not check_csrf(user.id, form.get("csrf")):
             raise HTTPException(status_code=303, headers={"Location": "/?m=csrf"})
     return user
+
+
+async def csrf_guard(
+    request: Request,
+    user: User = Depends(require_login),
+) -> User:
+    """محافظ CSRF برای همه POSTهای کاربر واردشده."""
+    return await _csrf_checked(request, user)
 
 
 async def admin_guard(
     request: Request,
     user: User = Depends(require_admin),
 ) -> User:
-    """ادمین بودن + CSRF — برای همه مسیرهای /admin."""
-    if request.method == "POST":
-        form = await request.form()
-        if not check_csrf(user.id, form.get("csrf")):
-            raise HTTPException(status_code=303, headers={"Location": "/?m=csrf"})
-    return user
+    """ادمین بودن + CSRF — برای همه مسیرهای /admin.
+
+    ترتیب عمدی حفظ شده: اول require_admin (m=denied)، بعد CSRF (m=csrf).
+    """
+    return await _csrf_checked(request, user)
 
 
 def ctx(request: Request, user: User | None, **extra: Any) -> dict:

@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.orm import Session
 
 from .. import dockerops, gitea
-from ..config import settings
 from ..deps import admin_guard, ctx, redirect, render
 from ..db import get_db
 from ..models import Build, Project, Site, User, WalletTx

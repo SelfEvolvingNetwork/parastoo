@@ -25,7 +25,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app import domains, security, traefik_ops  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import Setting, User  # noqa: E402
+from app.models import Setting  # noqa: E402
 
 PASS = 0
 FAIL = 0

@@ -93,11 +93,6 @@ def gen_secret(n: int = 32) -> str:
     return secrets.token_hex(n)
 
 
-def gen_password(n: int = 20) -> str:
-    alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
-    return "".join(secrets.choice(alphabet) for _ in range(n))
-
-
 SLUG_OK = "abcdefghijklmnopqrstuvwxyz0123456789-"
 
 

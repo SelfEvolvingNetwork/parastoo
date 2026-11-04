@@ -1,6 +1,4 @@
 """راه‌اندازی دیتابیس (SQLAlchemy همگام — ساده و قابل‌اعتماد برای تک‌سرور)."""
-import os
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 

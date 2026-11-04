@@ -18,8 +18,7 @@ from starlette.responses import JSONResponse
 from . import devlog, workers
 from .config import settings
 from .db import Base, SessionLocal, engine
-from .deps import ctx, render, resolve_user
-from .models import User
+from .deps import render, resolve_user
 from .routes import ROUTERS
 
 log = logging.getLogger("parastoo")
