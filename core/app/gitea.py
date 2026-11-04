@@ -108,6 +108,12 @@ class GiteaClient:
             return {"full_name": f"{owner}/{name}"}
         raise GiteaError(f"create repo {owner}/{name}: {r.status_code} {r.text[:200]}")
 
+    def delete_repo(self, owner: str, name: str) -> None:
+        r = self.client.delete(f"/api/v1/repos/{owner}/{name}")
+        if r.status_code in (200, 204, 404):  # 404 = از قبل نیست؛ همین کافی است
+            return
+        raise GiteaError(f"delete repo {owner}/{name}: {r.status_code} {r.text[:200]}")
+
     def create_webhook(self, owner: str, repo: str, url: str, secret: str) -> None:
         r = self.client.post(f"/api/v1/repos/{owner}/{repo}/hooks", json={
             "type": "gitea",
@@ -240,6 +246,20 @@ def provision_project_repo(project, owner) -> None:
     gh.create_repo(owner_name, project.slug, private=True, description=project.name)
     hook_url = f"http://parastoo-core:8000/api/hooks/gitea/{project.id}"
     gh.create_webhook(owner_name, project.slug, hook_url, project.webhook_secret)
+
+
+def delete_project_repo(project, owner) -> bool:
+    """حذف مخزن گیت پروژه (best-effort). False یعنی گیتا در دسترس نبود/ناموفق —
+    فراخواننده بدون این هم باید بقیهٔ پاکسازی را انجام دهد."""
+    token = system_token()
+    owner_name = owner.gitea_username
+    if not token or not owner_name:
+        return False
+    try:
+        GiteaClient(token=token).delete_repo(owner_name, project.slug)
+        return True
+    except Exception:
+        return False
 
 
 def clone_url_internal(owner) -> str:

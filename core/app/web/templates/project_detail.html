@@ -128,4 +128,16 @@ git push -u origin main</pre>
   <p class="muted">بیلدی ثبت نشده است.</p>
   {% endif %}
 </section>
+
+<section class="card danger-zone">
+  <h2>منطقهٔ خطر</h2>
+  <p class="muted small">حذف پروژه برگشت‌پذیر نیست: مخزن گیت، تاریخچهٔ بیلدها و <b>همهٔ سایت‌هایی که خودتان از این پروژه منتشر کرده‌اید</b> پاک می‌شوند. اگر دیگران این پروژه را از مارکت‌پلیس خریده باشند، حذف تا حذف‌شدن سایت‌های آن‌ها مسدود می‌شود تا هیچ سایت زنده‌ای نشکند.</p>
+  <form method="post" action="/projects/{{ p.slug }}/delete" class="inline-form" onsubmit="return confirm('مطمئنید؟ این کار برگشت‌پذیر نیست.')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>برای تأیید، شناسهٔ پروژه را تایپ کنید: <span class="mono">{{ p.slug }}</span>
+      <input type="text" name="confirm" required pattern="{{ p.slug }}" placeholder="{{ p.slug }}" autocomplete="off">
+    </label>
+    <button class="btn btn-danger" type="submit">حذف پروژه</button>
+  </form>
+</section>
 {% endblock %}

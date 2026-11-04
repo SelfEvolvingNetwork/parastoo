@@ -164,6 +164,65 @@ with TestClient(app, follow_redirects=False) as c:
     r = c2.get("/sites")
     check("ادمین صفحه سایت‌ها", r.status_code == 200)
 
+    print("— حساب کاربری و تغییر رمز (v0.2.24) —")
+    r = c.get("/account")
+    check("صفحه حساب کاربری باز می‌شود", r.status_code == 200 and "تغییر رمز عبور" in r.text)
+    c3 = TestClient(app, follow_redirects=False)
+    r = c3.get("/account")
+    check("ناشناس → ریدایرکت به ورود", r.status_code == 303 and "login" in r.headers["location"])
+    r = c.post("/account/password", data={"current_password": "wrong", "new_password": "newpass1",
+                                         "new_password2": "newpass1", "csrf": csrf}, follow_redirects=False)
+    check("رمز فعلی غلط رد شد", "m=bad_current" in r.headers.get("location", ""))
+    r = c.post("/account/password", data={"current_password": "secret1", "new_password": "abc",
+                                         "new_password2": "abc", "csrf": csrf}, follow_redirects=False)
+    check("رمز کوتاه رد شد", "m=pwd_short" in r.headers.get("location", ""))
+    r = c.post("/account/password", data={"current_password": "secret1", "new_password": "newpass1",
+                                         "new_password2": "newpass2", "csrf": csrf}, follow_redirects=False)
+    check("تکرار ناهمخوان رد شد", "m=pwd_mismatch" in r.headers.get("location", ""))
+    r = c.post("/account/password", data={"current_password": "secret1", "new_password": "newpass1",
+                                         "new_password2": "newpass1", "csrf": csrf}, follow_redirects=False)
+    check("تغییر رمز موفق", "m=password_changed" in r.headers.get("location", ""))
+    r = c.post("/login", data={"email": "ali@test.ir", "password": "secret1"}, follow_redirects=False)
+    check("ورود با رمز کهنه رد شد", "m=bad_login" in r.headers.get("location", ""))
+    r = c.post("/login", data={"email": "ali@test.ir", "password": "newpass1"}, follow_redirects=False)
+    check("ورود با رمز جدید موفق", r.status_code == 303)
+
+    print("— حذف پروژه (v0.2.24) —")
+    # پروژهٔ ادمین برای تست IDOR و مسدودسازی با سایتِ خریدار
+    r = c2.post("/projects/new", data={"name": "ادمین‌شاپ", "slug": "admin-shop", "stack": "static",
+                                       "csrf": acsrf}, follow_redirects=False)
+    check("ساخت پروژهٔ ادمین", r.status_code == 303 and "admin-shop" in r.headers["location"])
+    # IDOR: علی حق حذف پروژهٔ ادمین را ندارد
+    r = c.post("/projects/admin-shop/delete", data={"confirm": "admin-shop", "csrf": csrf}, follow_redirects=False)
+    check("حذف پروژهٔ دیگری → not_found", "m=not_found" in r.headers.get("location", ""))
+    # تأیید نامطابق
+    r = c.post("/projects/my-shop/delete", data={"confirm": "wrong-slug", "csrf": csrf}, follow_redirects=False)
+    check("تأیید نامطابق رد شد", "m=confirm_mismatch" in r.headers.get("location", ""))
+    # بدون CSRF
+    r = c.post("/projects/my-shop/delete", data={"confirm": "my-shop"}, follow_redirects=False)
+    check("حذف بدون CSRF → گارد", "m=csrf" in r.headers.get("location", ""))
+    # سایتِ خریدارِ خارجی → مسدود (سایت زندهٔ دیگران نباید بشکند)
+    db = SessionLocal()
+    ap = db.query(Project).filter(Project.slug == "admin-shop").first()
+    buyer_site = Site(project_id=ap.id, owner_id=uid, slug="buyer-site", subdomain="buyer.apps.test",
+                      container_name="parastoo-site-buyer-site", internal_port=80, tier="nano",
+                      status="running", image="img:latest")
+    db.add(buyer_site)
+    db.commit()
+    db.close()
+    r = c2.post("/projects/admin-shop/delete", data={"confirm": "admin-shop", "csrf": acsrf}, follow_redirects=False)
+    check("حذف با سایت خریدار خارجی مسدود شد", "m=project_in_use" in r.headers.get("location", ""))
+    # حذف موفق پروژهٔ علی (سایت demo-site هم مال خودش است → همراه پروژه حذف می‌شود)
+    r = c.post("/projects/my-shop/delete", data={"confirm": "my-shop", "csrf": csrf}, follow_redirects=False)
+    check("حذف موفق پروژه", "m=project_deleted" in r.headers.get("location", ""))
+    db = SessionLocal()
+    check("پروژه از دیتابیس پاک شد", db.query(Project).filter(Project.slug == "my-shop").first() is None)
+    check("بیلدهای پروژه پاک شدند", db.query(Build).filter(Build.project_id == pid).count() == 0)
+    check("سایت وابستهٔ مالک پاک شد", db.query(Site).filter(Site.slug == "demo-site").first() is None)
+    db.close()
+    r = c.get("/projects")
+    check("لیست پروژه‌ها دیگر my-shop ندارد", "my-shop" not in r.text)
+
 print()
 print("— واحدهای کوچک —")
 from app import stacks  # noqa: E402

@@ -8,7 +8,7 @@ from .. import dockerops, domains, gitea, stacks
 from ..config import settings
 from ..deps import ctx, csrf_guard, redirect, render
 from ..db import get_db
-from ..models import Build, Project, Site
+from ..models import Build, Project, Site, User
 from ..security import gen_secret, slugify
 from ..tpl import FLASHES
 
@@ -117,6 +117,52 @@ def project_rebuild(request: Request, slug: str,
     db.add(job)
     db.commit()
     return redirect(f"/projects/{slug}?m=build_queued")
+
+
+@router.post("/projects/{slug}/delete")
+def project_delete(
+    request: Request, slug: str,
+    confirm: str = Form(""),
+    user=Depends(csrf_guard), db: Session = Depends(get_db),
+):
+    """حذف کامل پروژه: سایت‌های خود مالک + بیلدها + مخزن گیت (best-effort).
+
+    قواعد حفاظتی:
+    - تأیید با تایپ شناسهٔ پروژه (confirm باید دقیقاً برابر slug باشد)؛
+    - اگر سایتی از این پروژه متعلق به کاربر دیگری باشد (خریدار مارکت‌پلیس)،
+      حذف مسدود می‌شود تا سایت زندهٔ دیگران نشکند — مالک باید صبر کند تا
+      خریداران سایتشان را حذف کنند.
+    """
+    project = _get_project(db, user, slug)
+    if project is None:
+        return redirect("/projects?m=not_found")
+    if confirm.strip() != project.slug:
+        return redirect(f"/projects/{slug}?m=confirm_mismatch")
+
+    referencing = db.query(Site).filter(Site.project_id == project.id).all()
+    foreign = [s for s in referencing if s.owner_id != user.id]
+    if foreign:
+        return redirect(f"/projects/{slug}?m=project_in_use")
+
+    # ۱) سایت‌های خود مالک را از داکر و دیتابیس پاک کن (best-effort در داکر)
+    for s in referencing:
+        try:
+            dockerops.remove_site(s.slug)
+        except Exception:
+            pass
+        db.delete(s)
+
+    # ۲) بیلدها و پروژه
+    db.query(Build).filter(Build.project_id == project.id).delete()
+
+    # ۳) مخزن گیت (best-effort — نبود گیتا مانع حذف پروژه نمی‌شود)
+    owner = db.get(User, project.owner_id)
+    if owner:
+        gitea.delete_project_repo(project, owner)
+
+    db.delete(project)
+    db.commit()
+    return redirect("/projects?m=project_deleted")
 
 
 @router.post("/projects/{slug}/marketplace")

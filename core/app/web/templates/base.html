@@ -18,6 +18,7 @@
       <a href="/sites" class="{{ 'active' if path == '/sites' }}">سایت‌ها</a>
       <a href="/marketplace" class="{{ 'active' if path == '/marketplace' }}">مارکت‌پلیس</a>
       <a href="/wallet" class="{{ 'active' if path == '/wallet' }}">کیف پول</a>
+      <a href="/account" class="{{ 'active' if path.startswith('/account') }}">حساب</a>
       {% if user.is_admin %}<a href="/admin" class="{{ 'active' if path == '/admin' }}">مدیریت</a>
       <a href="/setup/domain" class="{{ 'active' if path.startswith('/setup/domain') }}">دامنه‌ها</a>
       {% if settings.DEV_MODE %}<a href="/dev" class="{{ 'active' if path == '/dev' }}">توسعه</a>{% endif %}{% endif %}

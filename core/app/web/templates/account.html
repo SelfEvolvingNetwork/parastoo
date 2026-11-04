@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}حساب کاربری{% endblock %}
+{% block content %}
+<div class="card-head">
+  <div>
+    <h1>حساب کاربری</h1>
+    <p class="muted">مشخصات حساب و تغییر رمز عبور پنل</p>
+  </div>
+</div>
+
+<div class="two-col">
+  <section class="card">
+    <h2>مشخصات</h2>
+    <table>
+      <tbody>
+      <tr><th>نام</th><td>{{ user.name or '—' }}</td></tr>
+      <tr><th>ایمیل</th><td class="mono">{{ user.email }}</td></tr>
+      <tr><th>نقش</th><td>{{ 'مدیر سیستم' if user.is_admin else 'کاربر عادی' }}</td></tr>
+      <tr><th>موجودی کیف پول</th><td>{{ money(user.balance) }} {{ settings.CURRENCY }}</td></tr>
+      {% if user.gitea_username %}
+      <tr><th>حساب گیت</th><td class="mono">{{ user.gitea_username }}</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+    <p class="muted small">دسترسی گیت با <b>توکن</b> انجام می‌شود و به رمز پنل وابسته نیست؛ تغییر رمز پنل روی مخازن و بیلدهای شما اثری ندارد.</p>
+  </section>
+
+  <section class="card">
+    <h2>تغییر رمز عبور</h2>
+    <form method="post" action="/account/password" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>رمز فعلی
+        <input type="password" name="current_password" required autocomplete="current-password">
+      </label>
+      <label>رمز جدید (حداقل ۶ کاراکتر)
+        <input type="password" name="new_password" required minlength="6" autocomplete="new-password">
+      </label>
+      <label>تکرار رمز جدید
+        <input type="password" name="new_password2" required minlength="6" autocomplete="new-password">
+      </label>
+      <button class="btn btn-primary" type="submit">ذخیره رمز جدید</button>
+    </form>
+  </section>
+</div>
+{% endblock %}
