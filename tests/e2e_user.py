@@ -264,9 +264,8 @@ def main() -> int:
                 ok = pub_flash == "published"
                 check("publish", f"انتشار سایت {SITE_SLUG}", PASS if ok else FAIL,
                       f"flash={pub_flash}")
-                # ترافیک بعد از ساخت کانتینر چند ثانیه‌ای برای سینک روتر لازم دارد
-                # (اندازه‌گیری میدانی 2026-11-05: t+5s → 200؛ چک آنی → 404 کاذب)
-                deadline = time.time() + 30
+                # سینک داکر-پروایفر ترافیک در میدان ~۳۰-۳۵ث طول می‌کشد (اندازه‌گیری 2026-11-05)
+                deadline = time.time() + 90
                 st = 0
                 while time.time() < deadline:
                     st, _, _ = b.req("GET", f"http://{SITE_SLUG}.apps.{_apps_domain(base)}")
@@ -302,8 +301,8 @@ def main() -> int:
                         ok = cleaned
                         note = f"flash={b.last_flash() or '?'}"
                     else:
-                        # مثل بالا: حذف روتر هم چند ثانیه طول می‌کشد؛ تا ۳۰ث منتظر 404 می‌مانیم
-                        deadline = time.time() + 30
+                        # مثل بالا: سینک حذف روتر هم تا ~۳۵ث؛ تا ۹۰ث منتظر 404 می‌مانیم
+                        deadline = time.time() + 90
                         st = 0
                         while time.time() < deadline:
                             st = b.req("GET", f"http://{SITE_SLUG}.apps.{_apps_domain(base)}")[0]
