@@ -548,6 +548,7 @@ check("بیلد قبل از ساخت قالب، پیش‌بازرسی استک �
 # ---------------- پل دسترسی عامل (v0.3.7): exec/netcheck/sql — فقط حالت توسعه ----------------
 from app.config import settings as _settings  # noqa: E402
 from app.services import agentops as _agentops  # noqa: E402
+from app.routes import dev as _devroutes  # noqa: E402
 
 print("— پل دسترسی عامل: گارد در حالت تجاری (dev خاموش) —")
 r = c.post("/api/dev/exec", json={"cmd": "echo hi"})
@@ -562,10 +563,15 @@ check("dns API با dev خاموش + کاربر عادی → 404", r.status_code
 _old_dev, _old_token = _settings.DEV_MODE, _settings.DEV_TOKEN
 _settings.DEV_MODE, _settings.DEV_TOKEN = True, "smoke-dev-token"
 DEVH = {"X-Dev-Token": "smoke-dev-token"}
+# پنجرهٔ موقت عبور (v0.3.10) برای بقیهٔ چک‌ها بسته نگه داشته می‌شود؛ فقط در
+# بخش اختصاصی پایین‌تر موقتاً باز می‌شود تا رفتارش آزموده شود.
+_old_until = _devroutes._OPEN_EXEC_UNTIL
+_closed_until = _devroutes.datetime.min.replace(tzinfo=_devroutes.timezone.utc)
+_devroutes._OPEN_EXEC_UNTIL = _closed_until
 try:
-    print("— پل دسترسی عامل: گارد توکن —")
+    print("— پل دسترسی عامل: گارد توکن (پنجرهٔ موقت بسته) —")
     r = c.post("/api/dev/exec", json={"cmd": "echo hi"})
-    check("exec بدون توکن → 404", r.status_code == 404)
+    check("exec بدون توکن با پنجرهٔ بسته → 404", r.status_code == 404)
     r = c.post("/api/dev/exec", json={"cmd": "echo hi"}, headers={"X-Dev-Token": "wrong"})
     check("exec با توکن غلط → 404", r.status_code == 404)
     r = c.post("/api/dev/exec", json={"cmd": ""}, headers=DEVH)
@@ -623,6 +629,29 @@ try:
               r["stdout"] == "core-out" and r["stderr"] == "" and r["exit_code"] == 0)
     finally:
         _agentops.dockerops.client = _orig_dcli
+
+    print("— پنجرهٔ موقت عبور بدون توکن (v0.3.10 — خود-منقضی، فقط exec) —")
+    check("کمک‌تابع پنجره با ضرب‌الجل گذشته → False حتی با dev روشن",
+          _devroutes._exec_open_window() is False)
+    _devroutes._OPEN_EXEC_UNTIL = _devroutes.datetime.max.replace(tzinfo=_devroutes.timezone.utc)  # پنجرهٔ باز
+    try:
+        check("کمک‌تابع پنجره با dev روشن و ضرب‌الجل آینده → True",
+              _devroutes._exec_open_window() is True)
+        _agentops.run_host = lambda cmd, timeout_s=120: dict(_fake_host, cmd_len=len(cmd))
+        try:
+            r = c.post("/api/dev/exec", json={"cmd": "echo hi"})
+            check("پنجرهٔ باز: exec بدون توکن → 200 (رفتار موقت موردانتظار)",
+                  r.status_code == 200 and r.json()["stdout"] == "hi\n")
+        finally:
+            _agentops.run_host, _agentops.run_in_core = _orig_run_host, _orig_run_core
+        r = c.get("/api/dev/report")
+        check("پنجرهٔ باز: report بدون توکن همچنان 404", r.status_code == 404)
+        r = c.post("/api/dev/sql", json={"sql": "SELECT 1"})
+        check("پنجرهٔ باز: sql بدون توکن همچنان 404", r.status_code == 404)
+    finally:
+        _devroutes._OPEN_EXEC_UNTIL = _closed_until  # بستن دوباره برای بقیهٔ چک‌ها
+    r = c.post("/api/dev/exec", json={"cmd": "echo hi"})
+    check("بستن دوبارهٔ پنجره: exec بدون توکن دوباره 404", r.status_code == 404)
 
     print("— پل دسترسی عامل: netcheck با probe ماک‌شده —")
     _orig_probe = _agentops.probe_url
@@ -798,6 +827,7 @@ try:
           for l in _audit.read_text().splitlines() if l.strip()))
 finally:
     _settings.DEV_MODE, _settings.DEV_TOKEN = _old_dev, _old_token
+    _devroutes._OPEN_EXEC_UNTIL = _old_until
 
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")

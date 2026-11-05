@@ -13,6 +13,11 @@
 - POST /api/dev/sql      پرس‌وجوی فقط‌خواندنی (SELECT/WITH) روی دیتابیس
 منطق هر سه در services/agentops.py است؛ اینجا فقط ورودی/خروجی وب + گارد.
 
+موقت (v0.3.10 — دستور مالک 2026-11-05): تا نصب و تأیید ایجنت دسترسی مستقل
+(access-agent)، مسیر POST /api/dev/exec در حالت dev بدون X-Dev-Token هم باز است —
+پنجرهٔ خود-منقضی با ضرب‌الجل ثابت در کد (_OPEN_EXEC_UNTIL). پس از تأیید access-agent
+کل پل exec در چرخهٔ بعدی کامل حذف می‌شود (دستور مالک) و همین پاراگراف با آن می‌رود.
+
 زیرساخت رینگ‌بافر لاگ از v0.3.0 در devlog.py است (main.py هم برای لاگ خطاهای
 ۵۰۰ همان را استفاده می‌کند).
 """
@@ -21,6 +26,7 @@ import logging
 import shutil
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -206,6 +212,20 @@ def dev_page(request: Request):
 
 # ---------- پل دسترسی عامل (v0.3.7 — فقط حالت توسعه؛ همان گارد بالا) ----------
 
+# موقت (v0.3.10 — دستور مالک 2026-11-05): پنجرهٔ عبور بدون توکن فقط برای exec،
+# برای نصب ایجنت دسترسی مستقل (access-agent) توسط عامل. ویژگی‌های ایمنی:
+# - فقط POST /api/dev/exec؛ بقیهٔ مسیرهای /api/dev/* همان گارد توکن/ادمین را دارند؛
+# - ضرب‌الجل ثابت در کد است — بعد از این لحظه حتی اگر هیچ چرخهٔ بعدی مستقر نشود،
+#   پنجره خودش بسته است (خود-انقضا بدون وابستگی به استقرار)؛
+# - در چرخهٔ بعد (بعد از نصب و تأیید access-agent) کل پل exec کامل حذف می‌شود.
+_OPEN_EXEC_UNTIL = datetime(2026, 11, 5, 18, 30, tzinfo=timezone.utc)  # ۲۲:۰۰ تهران
+
+
+def _exec_open_window() -> bool:
+    """پنجرهٔ موقتِ عبور بدون توکن فقط برای exec — پس از ضرب‌الجل همیشه False."""
+    return settings.DEV_MODE and datetime.now(timezone.utc) < _OPEN_EXEC_UNTIL
+
+
 # اجرای هم‌زمان دستورها سری نمی‌شوند — یک دستورِ سنگین نباید صف را ببندد، اما
 # اجرای موازیِ نامحدود هم روی سرور توسعه بی‌معناست؛ هم‌پوشانی ۲ کافی است.
 _EXEC_SEM = threading.Semaphore(2)
@@ -224,7 +244,9 @@ class SqlIn(BaseModel):
 
 @router.post("/api/dev/exec")
 def dev_exec(request: Request, body: ExecIn):
-    _dev_guard(request)
+    # موقت v0.3.10: در پنجرهٔ عبور، exec بدون توکن هم باز است؛ پس از ضرب‌الجل گارد عادی
+    if not _exec_open_window():
+        _dev_guard(request)
     cmd = (body.cmd or "").strip()
     if not cmd:
         raise HTTPException(status_code=400, detail="دستور خالی است")
@@ -241,11 +263,13 @@ def dev_exec(request: Request, body: ExecIn):
             res = (agentops.run_host(cmd, timeout_s) if body.where == "host"
                    else agentops.run_in_core(cmd))
         except dockerops.DockerUnavailable as e:
-            agentops.audit("exec", {"cmd": cmd[:200], "where": body.where, "error": str(e)})
+            agentops.audit("exec", {"cmd": cmd[:200], "where": body.where, "error": str(e),
+                                    "open_window": _exec_open_window()})
             raise HTTPException(status_code=503, detail=str(e))
         agentops.audit("exec", {"cmd": cmd[:200], "where": body.where,
                                 "exit_code": res.get("exit_code"),
-                                "duration_ms": res.get("duration_ms")})
+                                "duration_ms": res.get("duration_ms"),
+                                "open_window": _exec_open_window()})
         logging.getLogger("parastoo").info(
             "agent-exec where=%s rc=%s %sms cmd=%.120r",
             body.where, res.get("exit_code"), res.get("duration_ms"), cmd)
