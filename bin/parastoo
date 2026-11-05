@@ -18,7 +18,7 @@ Parastoo — management commands:
   parastoo restart         restart the whole stack
   parastoo update          update from GitHub (pull latest code + rebuild the core)
   parastoo autoupdate      auto-update control: status | on | off | run
-  parastoo backup          back up the database and git repos into backups/
+  parastoo backup          back up the database, git repos and TLS certs into backups/
   parastoo reset           FACTORY RESET: wipe all data + rebuild the stack (hardened; same engine as the GitHub one-liner)
   parastoo doctor          full diagnostic report (secrets redacted) — share it when asking for help
   parastoo version         Parastoo version + deployed commit
@@ -98,7 +98,13 @@ case "${1:-help}" in
     # alpine:3.20 is pinned so sanction-less servers never need a latest pull from Docker Hub — deploy/images.txt
     docker run --rm -v parastoo_gitea_data:/data -v "$APP_DIR/backups":/backup alpine:3.20 \
       tar czf "/backup/gitea-${TS}.tar.gz" /data
-    echo "Backup complete: backups/db-${TS}.sql.gz and backups/gitea-${TS}.tar.gz"
+    echo "Backing up TLS certificates (acme.json)..."
+    if [ -s "$APP_DIR/config/letsencrypt/acme.json" ]; then
+      cp -a "$APP_DIR/config/letsencrypt/acme.json" "backups/acme-${TS}.json"
+    else
+      echo "  (no acme.json yet — skipped)"
+    fi
+    echo "Backup complete: backups/db-${TS}.sql.gz, backups/gitea-${TS}.tar.gz, backups/acme-${TS}.json (if present)"
     ;;
   reset)
     # v0.2.17: delegate to the hardened factory-reset script (orphan cleanup,

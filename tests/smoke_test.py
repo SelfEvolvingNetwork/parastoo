@@ -862,6 +862,22 @@ check("کاندیدهای IP اینترفیص فقط عمومی‌اند (خصو
 check("مسیر چند-IP: بجای اصلاح خودکار، دستور صریح PARASTOO_PUBLIC_IP می‌دهد",
       "Multiple interface IPs" in _ins and "PARASTOO_PUBLIC_IP=<real-IP>" in _ins)
 
+print("— درس میدانی v0.3.20: هشدار کاذب «Stack failed to start» + بیمهٔ گواهی —")
+check("شکست compose up قبل از die، پروب واقعی سلامت می‌کند (مسابقهٔ health-check)",
+      "UP_PROBE" in _ins
+      and "probing whether the stack converged anyway" in _ins
+      and "health-check race; continuing" in _ins
+      and "core does not answer /healthz" in _ins)
+check("در مسیر پروب، up بدون build یک‌بار تکرار می‌شود (خطاهای گذرا)",
+      "docker compose up -d >/dev/null 2>&1 || true" in _ins)
+check("نصب‌کننده پیش از استقرار از acme.json موجود نسخهٔ زمان‌دار می‌سازد",
+      "certificate insurance" in _ins
+      and 'cp -a "$ACME_FILE"' in _ins
+      and "ACME_FILE.preinstall-$(date +%Y%m%d-%H%M%S)" in _ins)
+_bk = (ROOT / "bin" / "parastoo").read_text()
+check("parastoo backup گواهی‌ها (acme.json) را هم پشتیبان می‌گیرد",
+      'backups/acme-${TS}.json' in _bk and "letsencrypt/acme.json" in _bk)
+
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

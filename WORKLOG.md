@@ -7,14 +7,14 @@
 | مورد | مقدار |
 |---|---|
 | مخزن | `github.com/SelfEvolvingNetwork/parastoo` (عمومی؛ شاخهٔ انتشار: `main`) |
-| پنل زنده | `http://panel.193.151.142.128.nip.io` |
-| گیت داخلی سرور | `http://git.193.151.142.128.nip.io` |
-| دامنهٔ پایه | فعلاً `193.151.142.128.nip.io` — انتقال به `zeolitecenter.ir` در جریان است: زون ساخته‌شده، NS در ایرنیک ثبت‌شده، فعال‌سازی خودگردان (v0.3.14) پس از انتشار DNS انجام می‌شود |
+| پنل زنده | `https://panel.zeolitecenter.ir` (دامنهٔ رسمی فعال؛ پیش از ویزارد → `/setup`) |
+| گیت داخلی سرور | `https://git.zeolitecenter.ir` |
+| دامنهٔ پایه | **`zeolitecenter.ir` — فعال** (glue ایرنیک → ns1/ns2 روی همین سرور؛ زون PDNS کامل؛ ۴ گواهی LE از بکاپ بازگردانی‌شده؛ سرور 2026-11-05 از صفر بازسازی شد) |
 | سرور | `193.151.142.128` (ایران) — استک docker compose + access-agent مستقل |
 | ایجنت دسترسی مستقل | `SelfEvolvingNetwork/access-agent` (v0.1.3؛ systemd، مستقل از پرستو/داکر) — **تنها مسیر اجرای دستور عامل روی سرور**؛ بلوک تحویل: `sudo access-agent handoff` |
 | فایل امن محلی | `.secrets/github.env` و `.secrets/access-agent.env` — chmod 600، gitignored، مستثنا از rsync |
 | کلون محلی کاری | `/home/z/my-project/parastoo` (sandbox؛ بین جلسات حفظ می‌شود) |
-| نسخهٔ فعلی | `v0.3.18` (`core/app/config.py`) |
+| نسخهٔ فعلی | `v0.3.20` (`core/app/config.py`) |
 | استک | FastAPI + Gitea + Traefik + PowerDNS + PostgreSQL |
 
 ## ۲) احراز هویت و قرارداد توکن‌ها
@@ -74,3 +74,4 @@
 | 11-05 | 0.3.17 | ریشه/www روتر گرفتند: sync_base_zone رکورد A ریشه را نگه می‌داشت ولی روتری نبود — گواهی پیش‌فرض ترافیک؛ دو روتر جدا با گواهی مستقل + ری‌دایرکت به پنل با حفظ مسیر |
 | 11-05 | 0.3.18 | نصب تازه خودترمیم شد: install.sh گوش‌دادن resolved روی 127.0.0.53:53 را می‌سنجد و PARASTOO_DNS_BIND_IP را خودکار به IP عمومی می‌بندد — درس EADDRINUSE دیگر قدم دستی نیست |
 | 11-05 | 0.3.19 | بازسازی کامل سرور میدانی → نصب تازه v0.3.18 از tarball (تایمر آپدیت قبل از استک، tarball مسیر اصلی) + دو باگ نصب‌کننده از دل میدان: اصلاح خودکار IP ورودی وقتی echo خروجی NAT است + رجکس resolved پسوند %lo را ببیند + فعال‌سازی zeolitecenter.ir (apply_domain از core + provision_zone) و بازگردانی acme.json پشتیبان (صفر صدور مجدد LE) — ۳۶۲ چک |
+| 11-06 | 0.3.20 | ممیزی «همهٔ تجربه‌ها در کد؟» دو شکاف باقی‌مانده را بست: (۱) هشدار کاذب «Stack failed to start» — شکست compose up دیگر بی‌درنگ die نمی‌کند؛ یک up بدون build + پروب واقعی /healthz کور (مسابقهٔ health-check میدان 11-05)؛ (۲) بیمهٔ گواهی — نسخهٔ زمان‌دار acme.json پیش از هر اجرای نصب‌کننده + `parastoo backup` گواهی‌ها را هم پشتیبان می‌گیرد + دو درس (پروب به‌جای کد خروج، دارایی‌بودن acme.json) و نسخهٔ apply_domain از core (PYTHONPATH=/app، ترتیب apply→provision→sync) به LESSONS و §۰ حلقهٔ ایجنت رفت؛ جدول وضعیت WORKLOG از nip.io به دامنهٔ رسمی به‌روز شد — ۳۶۶ چک |

@@ -590,6 +590,20 @@ else
   warn "Auto-update disabled (PARASTOO_AUTO_UPDATE=false in .env) — update manually: sudo parastoo update"
 fi
 
+# ---------- 4c) certificate insurance (v0.3.20) ----------
+# Field lesson (2026-11-05 server rebuild): acme.json IS the server's TLS
+# identity — losing it means re-issuing every cert from Let's Encrypt (rate
+# limits, and on a sanctioned network the CA may be unreachable). Keep a
+# timestamped copy before touching the stack; `parastoo backup` archives it
+# too, but that lives on the same disk — off-server copies are the agent's
+# job (docs/AI_AGENT_LOOP.md §0).
+mark "4c) certificate insurance"
+ACME_FILE="$INSTALL_DIR/config/letsencrypt/acme.json"
+if [ -s "$ACME_FILE" ]; then
+  cp -a "$ACME_FILE" "$ACME_FILE.preinstall-$(date +%Y%m%d-%H%M%S)"
+  ok "Backed up existing acme.json (Let's Encrypt accounts/certs) next to the original."
+fi
+
 # ---------- 5) bring up the stack ----------
 mark "5) docker compose up"
 # recreates interrupted by a daemon restart / failed `up` leave temp-named
@@ -604,18 +618,34 @@ if [ -n "$STALE" ]; then
 fi
 say "Building and starting the full stack (first run may take a few minutes)..."
 if ! docker compose up -d --build; then
-  echo ""
-  warn "The auto-update timer is already armed — pushing the fix to GitHub deploys it automatically."
-  say "Diagnose the failing container:"
-  say "  cd $INSTALL_DIR && sudo docker compose ps"
-  say "  sudo docker logs parastoo-<name> --tail 60   # e.g. parastoo-gitea"
-  say "  sudo bash $INSTALL_DIR/scripts/doctor.sh"
-  die "Stack failed to start. If the error is about image pulls:
+  # Field lesson (v0.3.20): `up` can exit non-zero while the stack is still
+  # converging (health-check race) — in the field every container ended up
+  # healthy and the deploy record was already written while the installer
+  # died with "Stack failed to start". The exit code alone is NOT the truth:
+  # probe the real path before declaring failure.
+  warn "docker compose up returned an error — probing whether the stack converged anyway..."
+  docker compose up -d >/dev/null 2>&1 || true   # one plain retry (transient build/pull errors)
+  UP_PROBE=""
+  for _i in 1 2 3 4 5 6 7 8; do
+    if docker compose exec -T core curl -fsS http://localhost:8000/healthz >/dev/null 2>&1; then UP_PROBE="ok"; break; fi
+    sleep 3
+  done
+  if [ "$UP_PROBE" = "ok" ]; then
+    warn "compose exited non-zero, but core answers /healthz — health-check race; continuing (docs/LESSONS.md)."
+  else
+    echo ""
+    warn "The auto-update timer is already armed — pushing the fix to GitHub deploys it automatically."
+    say "Diagnose the failing container:"
+    say "  cd $INSTALL_DIR && sudo docker compose ps"
+    say "  sudo docker logs parastoo-<name> --tail 60   # e.g. parastoo-gitea"
+    say "  sudo bash $INSTALL_DIR/scripts/doctor.sh"
+    die "Stack failed to start (verified: core does not answer /healthz). If the error is about image pulls:
   1) build the offline bundle: bash scripts/fetch-images.sh (on an unsanctioned machine) -> put the offline-images/ folder here -> run install.sh again
   2) or set a healthy mirror: PARASTOO_REGISTRY_MIRRORS=\"https://docker.arvancloud.ir\" sudo -E bash install.sh
   3) if the error mentions pypi.org / files.pythonhosted.org: set a pip mirror and re-run:
      PARASTOO_PIP_INDEX_URL=\"https://package-mirror.liara.ir/repository/pypi/simple\" sudo -E bash install.sh
   Full guide: docs/SANCTIONS.md"
+  fi
 fi
 
 # ---------- 6) wait for core health ----------
