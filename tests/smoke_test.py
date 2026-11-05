@@ -590,6 +590,38 @@ try:
     finally:
         _agentops.run_host, _agentops.run_in_core = _orig_run_host, _orig_run_core
 
+    print("— پل دسترسی عامل: مسیر واقعی exec با داکر فِیک (پوشش نرمال‌سازی جریان‌ها) —")
+    class _FakeApi:
+        def create_host_config(self, **k): return {"HostConfig": True}
+        def create_container(self, **k): return {"Id": "fake-id"}
+        def start(self, cid): pass
+        def wait(self, cid, condition=None, timeout=None): return {"StatusCode": 0}
+        def logs(self, cid, stdout=True, stderr=False, **k):
+            return b"host-out" if stdout else b"host-err"
+        def remove_container(self, cid, force=False, v=False): pass
+    class _FakeContainers:
+        def get(self, name):
+            class _C:  # exec_run با جریان stderr=None — همان الگوی واقعی docker-py
+                class res:
+                    output = (b"core-out", None)
+                    exit_code = 0
+                def exec_run(self, cmd, demux=False, workdir=None): return self.res
+            return _C()
+    class _FakeDockerClient:
+        api = _FakeApi()
+        containers = _FakeContainers()
+    _orig_dcli = _agentops.dockerops.client
+    _agentops.dockerops.client = lambda: _FakeDockerClient()
+    try:
+        r = _agentops.run_host("echo x", 30)
+        check("run_host → logs دوفراخوانیِ جدا + خروجی درست",
+              r["stdout"] == "host-out" and r["stderr"] == "host-err" and r["exit_code"] == 0)
+        r = _agentops.run_in_core("echo x")
+        check("run_in_core → جریان None → خروجی حفظ، stderr خالی",
+              r["stdout"] == "core-out" and r["stderr"] == "" and r["exit_code"] == 0)
+    finally:
+        _agentops.dockerops.client = _orig_dcli
+
     print("— پل دسترسی عامل: netcheck با probe ماک‌شده —")
     _orig_probe = _agentops.probe_url
     _agentops.probe_url = lambda url, timeout_s=8.0: {

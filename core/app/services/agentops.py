@@ -24,6 +24,7 @@
 - خروجی‌ها سقف دارند (حافظه/پهنای‌باند)؛ سقف زمان exec هم سمت Docker اعمال می‌شود.
 """
 import json
+import logging
 import os
 import re
 import socket
@@ -152,9 +153,16 @@ def run_host(cmd: str, timeout_s: int = 120) -> dict:
             except Exception:
                 pass
         try:
-            demux = api.logs(cid, stdout=True, stderr=True, demux=True) or (b"", b"")
-            out_b, err_b = demux
-        except Exception:
+            # توجه: APIClient.logs در docker-py 7.x پارامتر demux ندارد —
+            # دو فراخوانی جدا برای stdout/stderr (نسخه‌پذیر و بدون پارسِ دستی هدر استریم)
+            out_b = api.logs(cid, stdout=True, stderr=False) or b""
+            err_b = api.logs(cid, stdout=False, stderr=True) or b""
+            if not isinstance(out_b, (bytes, bytearray)):
+                out_b = b""
+            if not isinstance(err_b, (bytes, bytearray)):
+                err_b = b""
+        except Exception as e:
+            logging.getLogger("parastoo").warning("agent-exec logs fetch failed: %r", e)
             out_b, err_b = b"", b""
     finally:
         try:
@@ -181,7 +189,10 @@ def run_in_core(cmd: str) -> dict:
     except dockerops.NotFound:
         raise dockerops.DockerUnavailable("کانتینر هسته (parastoo-core) پیدا نشد")
     res = container.exec_run(["/bin/bash", "-lc", cmd], demux=True, workdir="/app")
-    out_b, err_b = res.output or (b"", b"")
+    # demux هر جریان می‌تواند None باشد (مثلاً همهٔ خروجی روی stdout) — نرمال‌سازی:
+    raw = res.output or (b"", b"")
+    out_b = raw[0] if isinstance(raw[0], (bytes, bytearray)) else b""
+    err_b = raw[1] if isinstance(raw[1], (bytes, bytearray)) else b""
     return {
         "where": "core",
         "cmd_len": len(cmd),
