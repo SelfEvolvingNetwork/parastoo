@@ -264,9 +264,17 @@ def main() -> int:
                 ok = pub_flash == "published"
                 check("publish", f"انتشار سایت {SITE_SLUG}", PASS if ok else FAIL,
                       f"flash={pub_flash}")
-                st, _, _ = b.req("GET", f"http://{SITE_SLUG}.apps.{_apps_domain(base)}")
+                # ترافیک بعد از ساخت کانتینر چند ثانیه‌ای برای سینک روتر لازم دارد
+                # (اندازه‌گیری میدانی 2026-11-05: t+5s → 200؛ چک آنی → 404 کاذب)
+                deadline = time.time() + 30
+                st = 0
+                while time.time() < deadline:
+                    st, _, _ = b.req("GET", f"http://{SITE_SLUG}.apps.{_apps_domain(base)}")
+                    if st == 200:
+                        break
+                    time.sleep(4)
                 ok = st == 200
-                check("site-live", "سایت منتشرشده 200 می‌دهد", PASS if ok else FAIL,
+                check("site-live", "سایت منتشرشده 200 می‌دهد (تا ۳۰ث فرصت سینک)", PASS if ok else FAIL,
                       f"HTTP {st}")
             else:
                 results.append((SKIP, "publish"))
@@ -294,7 +302,14 @@ def main() -> int:
                         ok = cleaned
                         note = f"flash={b.last_flash() or '?'}"
                     else:
-                        st = b.req("GET", f"http://{SITE_SLUG}.apps.{_apps_domain(base)}")[0]
+                        # مثل بالا: حذف روتر هم چند ثانیه طول می‌کشد؛ تا ۳۰ث منتظر 404 می‌مانیم
+                        deadline = time.time() + 30
+                        st = 0
+                        while time.time() < deadline:
+                            st = b.req("GET", f"http://{SITE_SLUG}.apps.{_apps_domain(base)}")[0]
+                            if st == 404:
+                                break
+                            time.sleep(4)
                         ok = cleaned and st == 404
                         note = f"flash={b.last_flash() or '?'} site_http={st}"
                     check("cleanup", "حذف پروژه (+404شدن سایت)", PASS if ok else FAIL, note)
