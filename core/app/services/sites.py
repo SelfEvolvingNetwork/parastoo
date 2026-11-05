@@ -6,7 +6,7 @@
 """
 from sqlalchemy.orm import Session
 
-from .. import dockerops, domains, stacks, traefik_ops
+from .. import dockerops, domains, stacks
 from ..config import settings
 from ..models import Site, User
 from ..security import slugify
@@ -83,7 +83,6 @@ def create_and_run(db: Session, *, project, owner_id: int, site_slug: str,
             image=site.image, slug=site.slug, subdomain=site.subdomain,
             port=site.internal_port, tier=site.tier, pull_creds=pull_creds,
         )
-        traefik_ops.nudge()  # رویداد start گاهی در شلوغی از دست می‌رود — reload تضمین‌شده
         return site, True
     except Exception:
         site.status = "error"
@@ -109,7 +108,6 @@ def start(db: Session, site: Site) -> str:
         dockerops.start_site(site.slug)
         site.status = "running"
         db.commit()
-        traefik_ops.nudge()
     except Exception:
         site.status = "error"
         db.commit()
@@ -122,7 +120,6 @@ def stop(db: Session, site: Site) -> str:
         dockerops.stop_site(site.slug)
         site.status = "stopped"
         db.commit()
-        traefik_ops.nudge()  # حذف روتر هم بلافاصله تضمین شود
     except Exception:
         site.status = "error"
         db.commit()
@@ -136,7 +133,6 @@ def delete(db: Session, site: Site) -> str:
         dockerops.remove_site(site.slug)
     except Exception:
         pass
-    traefik_ops.nudge()  # روتر سایتِ حذف‌شده بلافاصله از ترافیک بیفتد
     db.delete(site)
     db.commit()
     return "site_deleted"
