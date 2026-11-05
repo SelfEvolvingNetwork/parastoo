@@ -32,6 +32,13 @@
 #  interactive confirmation reads /dev/tty — never stdin — so
 #  `curl | bash` is safe (stdin is the script pipe itself).
 #
+#  2026-11-05 hotfix — curl|bash stdin starvation: `docker compose exec`
+#  forwards the caller's stdin to the container even with -T; under
+#  `curl | bash` it swallowed the rest of the piped script and the reset
+#  died silently right after step 0 (dump ok, then nothing — reproduced
+#  twice in the field on a healthy install). Every compose exec in this
+#  script now reads stdin from /dev/null.
+#
 #  English output on purpose — Persian/RTL text breaks over SSH.
 # =============================================================
 set -uo pipefail
@@ -91,7 +98,7 @@ mark "0/5) best-effort pre-reset backup (kept in backups/)"
 TS="$(date +%Y%m%d-%H%M%S)"
 mkdir -p backups
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'parastoo-postgres'; then
-  if docker compose exec -T postgres pg_dump -U parastoo parastoo 2>/dev/null | gzip > "backups/pre-reset-db-${TS}.sql.gz" \
+  if docker compose exec -T postgres pg_dump -U parastoo parastoo </dev/null 2>/dev/null | gzip > "backups/pre-reset-db-${TS}.sql.gz" \
      && [ -s "backups/pre-reset-db-${TS}.sql.gz" ]; then
     ok "database dump: backups/pre-reset-db-${TS}.sql.gz"
   else
@@ -161,7 +168,7 @@ fi
 mark "5/5) waiting for the core to become healthy (up to ~3 min after build)"
 OKC=0
 for _i in $(seq 1 60); do
-  if docker compose exec -T core curl -fsS http://localhost:8000/healthz >/dev/null 2>&1; then OKC=1; break; fi
+  if docker compose exec -T core curl -fsS http://localhost:8000/healthz </dev/null >/dev/null 2>&1; then OKC=1; break; fi
   sleep 3
 done
 if [ "$OKC" -ne 1 ]; then
