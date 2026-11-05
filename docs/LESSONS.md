@@ -25,3 +25,12 @@
 ## آپدیت خودکار
 
 - **رکورد استقرار در `/api/version` می‌تواند از کد مستقر عقب بماند.** رخداد واقعی v0.3.0: پنل `version: 0.3.0` می‌داد ولی `commit/deployed_at` هنوز مال کامیت قبلی بود. ترتیب auto-update «ls-remote → دانلود → جایگزینی کد → نوشتن .parastoo-deploy و .env → up --build» است؛ اگر نوشتن `.env` یا recreate کانتینر بین دو فاز به‌هم بریزد، کد تازه با env کهنه بالا می‌آید (متغیرها هنگام ساخت کانتینر خوانده می‌شوند). تشخیص: مقایسهٔ `version` با `deployed_at` — اگر نسخه تازه و زمان کهنه است، فقط رکورد کهنه است نه کد. دفاع/رفع: یک کامیت کوچک بعدی چرخهٔ کامل آپدیت را دوباره اجرا می‌کند و رکورد را می‌نویسد؛ خطر واقعی ندارد چون مقایسهٔ آپدیتر با `.parastoo-deploy` است نه env.
+
+## نیم‌سرور DNS (PowerDNS) — درس‌های میدانی v0.3.12/0.3.13
+
+- **محتوای NS و SOA-MNAME باید FQDN مطلق (با نقطهٔ پایانی) باشد.** pdns واقعی محتوای `ns1.example.ir` (بدون نقطه) را با «Not in expected format» رد می‌کند؛ ماک pdns در smoke این را نمی‌بیند. دفاع: `provision_zone` نقطه‌دار می‌کند + چک رگرسیون smoke.
+- **interpolation کمپوز `$VAR` و `$()`های اسکریپت entry را خالی می‌کند.** `printf '%s' "$KEY"` در یامِ compose بدون فرار، هنگام up به `printf '%s' ""` فرومی‌کاهد → کلید API تهی در volume. دفاع: متغیرهای واقعی با `$$` در compose؛ چک smoke اسکیپ تک-`$`.
+- **PDNS ≥ 4.8 فلگ `--master` را ندارد** → `--primary=yes` (وگرنه Fatal در اولین بوت).
+- **مالکیت volume:** ایمیج pdns با کاربر 953 اجرا می‌شود ولی volume نام‌دار root-owned است → سرویس یک‌بارهٔ `dns-init` با chown به uid کاربر pdns و `depends_on: service_completed_successfully`.
+- **بایند TCP 0.0.0.0:53 با loopbackِ systemd-resolved در سطح کرنل تداخل می‌کند** (EADDRINUSE واقعی) → `PARASTOO_DNS_BIND_IP` در compose + مستند راه‌حل بدون دست‌زدن به resolved.
+- **ایمیج pdns هیچ wget/curl/dig ندارد و `pdns_control ping` ندارد** → healthcheck فقط با تست controlsocket ممکن است.
