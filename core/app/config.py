@@ -9,7 +9,7 @@ def _bool(name: str, default: str = "false") -> bool:
 class Settings:
     # --- پایه ---
     APP_NAME: str = "پرستو"
-    VERSION: str = "0.3.8"
+    VERSION: str = "0.3.9"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me")
 
     # --- دیتابیس ---
@@ -78,6 +78,16 @@ class Settings:
     # درگاه واقعی بعداً در services/payment.py رجیستری می‌شود
     MIN_CHARGE: int = int(os.environ.get("PARASTOO_MIN_CHARGE", "10000"))
     MAX_CHARGE: int = int(os.environ.get("PARASTOO_MAX_CHARGE", "10000000"))
+
+    # --- DNS اختصاصی (v0.3.9): نیم‌سرور PowerDNS کنار هسته ---
+    # API پاوردی‌ان‌اس فقط روی شبکهٔ داخلی داکر در دسترس است؛ کلید را اگر env خالی
+    # باشد، از فایل مشترک (volume dns_meta که کانتینر dns تولید می‌کند) می‌خوانیم
+    DNS_API_URL: str = os.environ.get("PARASTOO_DNS_API_URL", "http://dns:8081/api/v1").rstrip("/")
+    DNS_API_KEY: str = os.environ.get("PARASTOO_DNS_API_KEY", "").strip()
+    DNS_API_KEY_FILE: str = os.environ.get("PARASTOO_DNS_KEY_FILE", "/opt/dns-meta/api-key")
+    # خالی = ns1/ns2 روی دامنهٔ پایهٔ فعال (مثل ns1.zeolitecenter.ir)
+    DNS_NAMESERVERS: str = os.environ.get("PARASTOO_DNS_NS", "").strip()
+    DNS_DEFAULT_TTL: int = int(os.environ.get("PARASTOO_DNS_TTL", "3600"))
 
     # پلن‌های منابع: (محدودیت CPU هسته, RAM مگابایت, قیمت ساعتی)
     TIERS: dict = {

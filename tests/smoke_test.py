@@ -556,6 +556,8 @@ r = c.get("/api/dev/netcheck")
 check("netcheck با dev خاموش → 404", r.status_code == 404)
 r = c.post("/api/dev/sql", json={"sql": "SELECT 1"})
 check("sql با dev خاموش → 404", r.status_code == 404)
+r = c.get("/api/dns/zones")
+check("dns API با dev خاموش + کاربر عادی → 404", r.status_code == 404)
 
 _old_dev, _old_token = _settings.DEV_MODE, _settings.DEV_TOKEN
 _settings.DEV_MODE, _settings.DEV_TOKEN = True, "smoke-dev-token"
@@ -653,11 +655,147 @@ try:
         r = c.post("/api/dev/sql", json={"sql": bad}, headers=DEVH)
         check(f"sql: {why}", r.status_code == 400)
 
-    print("— پل دسترسی عامل: audit —")
+    print("— DNS اختصاصی (v0.3.9): گارد + چرخهٔ کامل زون/رکورد با پاوردی‌ان‌اسِ ماک —")
     import json as _json
+    import urllib.parse as _up
+    import httpx as _httpx
+    from app.services import dnsops as _dnsops
+
+    _pzones: dict = {}   # fqdn (با نقطه) → {"kind", "rrsets": [...]}
+
+    def _pdns(request: _httpx.Request) -> _httpx.Response:
+        path = _up.unquote(request.url.path)
+        p = path[len("/api/v1"):] if path.startswith("/api/v1") else path
+        if p == "/servers/localhost" and request.method == "GET":
+            return _httpx.Response(200, json={"id": "localhost", "version": "4.9.18-smoke"})
+        if p == "/servers/localhost/zones" and request.method == "GET":
+            return _httpx.Response(200, json=[{"name": k, "kind": v["kind"], "serial": 1}
+                                              for k, v in _pzones.items()])
+        if p == "/servers/localhost/zones" and request.method == "POST":
+            body = _json.loads(request.content)
+            if body["name"] in _pzones:
+                return _httpx.Response(409, json={"error": "Conflict: zone already exists"})
+            _pzones[body["name"]] = {"kind": body.get("kind", "Master"),
+                                     "rrsets": [dict(r) for r in body.get("rrsets", [])]}
+            return _httpx.Response(201, json={"name": body["name"]})
+        if p.startswith("/servers/localhost/zones/"):
+            zid = p[len("/servers/localhost/zones/"):]
+            if zid not in _pzones:
+                return _httpx.Response(404, json={"error": "Could not find domain"})
+            if request.method == "GET":
+                return _httpx.Response(200, json={"name": zid, "kind": _pzones[zid]["kind"],
+                                                  "serial": 1, "rrsets": _pzones[zid]["rrsets"]})
+            if request.method == "PATCH":
+                body = _json.loads(request.content)
+                store = _pzones[zid]["rrsets"]
+                for rr in body.get("rrsets", []):
+                    nm, tp = rr["name"], rr["type"]
+                    store = [x for x in store if not (x["name"] == nm and x["type"] == tp)]
+                    if rr.get("changetype") != "DELETE":
+                        store.append({"name": nm, "type": tp, "ttl": rr.get("ttl", 3600),
+                                      "records": list(rr.get("records", []))})
+                _pzones[zid]["rrsets"] = store
+                return _httpx.Response(204)
+            if request.method == "DELETE":
+                del _pzones[zid]
+                return _httpx.Response(204)
+        return _httpx.Response(404, json={"error": "no route"})
+
+    _dnsops._FORCE_TRANSPORT = _httpx.MockTransport(_pdns)
+    try:
+        r = c.get("/api/dns/zones")
+        check("dns API کاربر عادی → 404", r.status_code == 404)
+        r = c.get("/api/dns/zones", headers=DEVH)
+        check("dns API با توکن → 200 و فهرست خالی", r.status_code == 200 and r.json().get("zones") == [])
+        r = c.get("/api/dns/status", headers=DEVH)
+        d = r.json() if r.status_code == 200 else {}
+        check("dns status → در دسترس + ns روی دامنهٔ پایه", r.status_code == 200 and d.get("available") is True
+              and d.get("nameservers") == ["ns1.127.0.0.1.nip.io", "ns2.127.0.0.1.nip.io"]
+              and d.get("server_ip") == "127.0.0.1" and "A" in (d.get("record_types") or []))
+
+        r = c.post("/api/dns/zones", json={"name": "customer-one.example.com"}, headers=DEVH)
+        d = r.json() if r.status_code == 200 else {}
+        zrecs = (d.get("zone", {}) or {}).get("records") or []
+        recs = {(x["name"], x["type"]) for x in zrecs}
+        check("ساخت زون مشتری → NS/A/ریشه/www/SOA پیش‌فرض", r.status_code == 200
+              and ("customer-one.example.com", "NS") in recs
+              and ("www.customer-one.example.com", "A") in recs
+              and ("customer-one.example.com", "A") in recs
+              and any(x["type"] == "SOA" and (x["contents"] or [""])[0].startswith("ns1.") for x in zrecs))
+        r = c.post("/api/dns/zones", json={"name": "customer-one.example.com"}, headers=DEVH)
+        check("ساخت زون تکراری → 409", r.status_code == 409)
+        r = c.post("/api/dns/zones", json={"name": "bad name!!"}, headers=DEVH)
+        check("نام زون نامعتبر → 400", r.status_code == 400)
+
+        r = c.post("/api/dns/zones", json={"name": "127.0.0.1.nip.io", "kind": "base"}, headers=DEVH)
+        d = r.json() if r.status_code == 200 else {}
+        recs = {(x["name"], x["type"]) for x in ((d.get("zone", {}) or {}).get("records") or [])}
+        check("ساخت زون دامنهٔ اصلی → ns1/ns2/panel/git/apps/وایلدکارد", r.status_code == 200
+              and ("ns1.127.0.0.1.nip.io", "A") in recs and ("ns2.127.0.0.1.nip.io", "A") in recs
+              and ("panel.127.0.0.1.nip.io", "A") in recs and ("*.apps.127.0.0.1.nip.io", "A") in recs)
+
+        r = c.post("/api/dns/zones/customer-one.example.com/records",
+                   json={"name": "test", "type": "A", "content": "1.2.3.4"}, headers=DEVH)
+        d = r.json() if r.status_code == 200 else {}
+        recs = {(x["name"], x["type"]) for x in ((d.get("zone", {}) or {}).get("records") or [])}
+        check("افزودن رکورد نسبی → FQDN با نقطهٔ پایانی", r.status_code == 200
+              and ("test.customer-one.example.com", "A") in recs)
+        r = c.post("/api/dns/zones/customer-one.example.com/records",
+                   json={"name": "bad", "type": "A", "content": "999.1.1.1"}, headers=DEVH)
+        check("محتوای A نامعتبر → 400", r.status_code == 400)
+        r = c.post("/api/dns/zones/customer-one.example.com/records",
+                   json={"name": "x", "type": "BOGUS", "content": "v"}, headers=DEVH)
+        check("نوع ناشناخته → 400", r.status_code == 400)
+        r = c.post("/api/dns/zones/customer-one.example.com/records",
+                   json={"name": "_dmarc", "type": "TXT", "content": "v=DMARC1; p=none"}, headers=DEVH)
+        d = r.json() if r.status_code == 200 else {}
+        txt = next((x for x in ((d.get("zone", {}) or {}).get("records") or []) if x["type"] == "TXT"), {})
+        check("TXT خودکار کوتیشن می‌گیرد", r.status_code == 200
+              and txt.get("contents") == ['"v=DMARC1; p=none"'])
+        r = c.delete("/api/dns/zones/customer-one.example.com/records?name=test&type=A", headers=DEVH)
+        d = r.json() if r.status_code == 200 else {}
+        recs = {(x["name"], x["type"]) for x in ((d.get("zone", {}) or {}).get("records") or [])}
+        check("حذف رکورد → از زون می‌رود", r.status_code == 200
+              and ("test.customer-one.example.com", "A") not in recs)
+        r = c.get("/api/dns/zones", headers=DEVH)
+        check("دو زون در فهرست", r.status_code == 200 and len(r.json().get("zones") or []) == 2)
+
+        print("— DNS اختصاصی: UI ادمین —")
+        db2 = SessionLocal()
+        _adm = db2.query(User).filter(User.email == "admin@test.ir").first()
+        _adm_csrf = security.csrf_token(_adm.id)
+        db2.close()
+        r = c2.get("/admin/dns")
+        check("صفحهٔ /admin/dns رندر می‌شود", r.status_code == 200 and "نیم‌سرور" in r.text)
+        r = c2.get("/admin/dns/customer-one.example.com")
+        check("صفحهٔ زون رندر می‌شود", r.status_code == 200 and "رکوردها" in r.text)
+        r = c2.post("/admin/dns/create", data={"name": "ui-zone.example.com", "kind": "customer", "csrf": _adm_csrf},
+                    follow_redirects=False)
+        check("ساخت زون از UI → ریدایرکت به صفحهٔ زون", r.status_code == 303
+              and r.headers.get("location", "").startswith("/admin/dns/ui-zone.example.com"))
+        r = c2.post("/admin/dns/ui-zone.example.com/record",
+                    data={"name": "", "type": "A", "content": "10.0.0.5", "ttl": "", "csrf": _adm_csrf},
+                    follow_redirects=False)
+        check("افزودن رکورد از UI", r.status_code == 303 and "m=dns_record_saved" in r.headers.get("location", ""))
+        r = c2.post("/admin/dns/ui-zone.example.com/record",
+                    data={"name": "bad", "type": "A", "content": "nope", "csrf": _adm_csrf},
+                    follow_redirects=False)
+        check("رکورد نامعتبر از UI → dns_invalid", r.status_code == 303
+              and "m=dns_invalid" in r.headers.get("location", ""))
+        r = c2.post("/admin/dns/ui-zone.example.com/record_delete",
+                    data={"name": "", "type": "A", "csrf": _adm_csrf}, follow_redirects=False)
+        check("حذف رکورد از UI", r.status_code == 303 and "m=dns_record_deleted" in r.headers.get("location", ""))
+        r = c2.post("/admin/dns/ui-zone.example.com/delete", data={"csrf": _adm_csrf}, follow_redirects=False)
+        check("حذف زون از UI", r.status_code == 303 and "m=dns_zone_deleted" in r.headers.get("location", ""))
+    finally:
+        _dnsops._FORCE_TRANSPORT = None
+
+    print("— پل دسترسی عامل: audit —")
     _audit = Path("/tmp/parastoo-smoke-audit/dev/agent-audit.jsonl")
     check("فایل audit ساخته شد و رکورد exec دارد", _audit.is_file()
           and any(_json.loads(l)["kind"] == "exec" for l in _audit.read_text().splitlines() if l.strip()))
+    check("رکورد audit عملیات‌های DNS هم ثبت شده", any(_json.loads(l)["kind"] == "dns"
+          for l in _audit.read_text().splitlines() if l.strip()))
 finally:
     _settings.DEV_MODE, _settings.DEV_TOKEN = _old_dev, _old_token
 

@@ -6,6 +6,7 @@
 postgres:16-alpine
 gitea/gitea:1.23
 traefik:v3.6.6
+powerdns/pdns-auth-49:4.9.18
 python:3.12-slim
 nginx:1.27-alpine
 node:20-alpine

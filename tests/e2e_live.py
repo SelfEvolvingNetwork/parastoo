@@ -244,6 +244,63 @@ def main() -> int:
         check("dev-exec", "/api/dev/exec — اجرای دستور روی هاست", c_dev_exec)
         check("dev-sql", "/api/dev/sql — پرس‌وجوی فقط‌خواندنی", c_dev_sql)
 
+        # ---------- لایهٔ DNS اختصاصی (v0.3.9) — تا استقرار سرویس dns SKIP تمیز ----------
+        def _skip_or_fail(st: int, what: str):
+            if st == 404:
+                return SKIP, "سرویس DNS هنوز مستقر نیست (v0.3.9)"
+            if st == 503:
+                return SKIP, "کانتینر dns پایین است (docker compose up -d dns)"
+            return FAIL, f"{what}: HTTP {st}"
+
+        def c_dev_dns_status():
+            st, _, body = fetch("GET", f"{base}/api/dns/status", headers=h, timeout=timeout)
+            if st != 200:
+                return _skip_or_fail(st, "status")
+            d = json.loads(body)
+            if not d.get("ok"):
+                return FAIL, f"پاسخ غیرمنتظره: {str(d)[:100]}"
+            return PASS, (f"PowerDNS {d.get('version', '')} — ns: {','.join(d.get('nameservers') or [])}"
+                          f" — ip: {d.get('server_ip')}")
+
+        def c_dev_dns_roundtrip():
+            # دامنهٔ پایه را از گزارش dev می‌خوانیم (منبع حقیقت فعال)
+            st, _, body = fetch("GET", f"{base}/api/dev/report", headers=h, timeout=timeout)
+            if st != 200:
+                return SKIP, "دامنهٔ پایه از report خوانده نشد"
+            try:
+                bdom = (json.loads(body).get("flags") or {}).get("base_domain") or ""
+            except Exception:
+                bdom = ""
+            if not bdom or bdom in ("127.0.0.1.nip.io",):
+                return SKIP, "دامنهٔ پایهٔ معتبر از report خوانده نشد"
+            zname = f"dns-test-{os.urandom(3).hex()}.{bdom}"
+            hh = {**h, "Content-Type": "application/json"}
+            st, _, body = fetch("POST", f"{base}/api/dns/zones", headers=hh,
+                                data=json.dumps({"name": zname}).encode(), timeout=timeout)
+            if st != 200:
+                return _skip_or_fail(st, f"ساخت زون {zname}")
+            st, _, body = fetch("POST", f"{base}/api/dns/zones/{zname}/records", headers=hh,
+                                data=json.dumps({"name": "probe", "type": "TXT",
+                                                 "content": f"parastoo-{zname}"}).encode(),
+                                timeout=timeout)
+            if st != 200:
+                fetch("DELETE", f"{base}/api/dns/zones/{zname}", headers=h, timeout=timeout)
+                return FAIL, f"افزودن رکورد: HTTP {st}"
+            st, _, body = fetch("GET", f"{base}/api/dns/zones/{zname}", headers=h, timeout=timeout)
+            txt = None
+            if st == 200:
+                recs = (json.loads(body).get("zone") or {}).get("records") or []
+                txt = next((r for r in recs if r.get("type") == "TXT"), None)
+            st2, _, _ = fetch("DELETE", f"{base}/api/dns/zones/{zname}", headers=h, timeout=timeout)
+            if st != 200 or txt is None:
+                return FAIL, "رکورد TXT بعد از افزودن پیدا نشد"
+            if st2 != 200:
+                return FAIL, f"حذف زون موقت: HTTP {st2}"
+            return PASS, f"چرخهٔ کامل زون/رکورد/حذف روی probe.{bdom} انجام شد"
+
+        check("dev-dns-status", "/api/dns/status — سرویس نیم‌سرور", c_dev_dns_status)
+        check("dev-dns-roundtrip", "/api/dns/zones — ساخت/رکورد/حذف زون موقت", c_dev_dns_roundtrip)
+
     npass = sum(1 for s, *_ in results if s == PASS)
     nfail = sum(1 for s, *_ in results if s == FAIL)
     nskip = sum(1 for s, *_ in results if s == SKIP)

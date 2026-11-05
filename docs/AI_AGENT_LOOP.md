@@ -272,6 +272,7 @@ curl -s -H "X-Dev-Token: $PARASTOO_DEV_TOKEN" -H "Content-Type: application/json
 - ✓ هارنس استاندارد راستی‌آزمایی زندهٔ عمومی: `tests/e2e_live.py`.
 - ✓ هارنس کاربر-محور دائمی: `tests/e2e_user.py` — L0 خواندنی همیشه؛ L1 نوشتاری فقط حالت dev با پاکسازی خودکار.
 - ✓ حالت توسعه روی نصب زنده روشن شده (مالک — 2026-11-05: `dev_mode=true` در `/api/version` تأیید شد).
+- ✓ **نیم‌سرور اختصاصی v0.3.9:** سرویس `dns` (PowerDNS 4.9.18) در compose + `services/dnsops.py` (کلاینت REST، بدون shell — قاعدهٔ طلایی) + UI `/admin/dns` + API `/api/dns/*` (گارد: نشست ادمین در هر حالتی | X-Dev-Token فقط dev؛ ثبت audit) — عامل از این پس زون/رکورد دامنهٔ مالک و مشتری‌ها را خودگردان می‌سازد؛ چک‌های زندهٔ `dev-dns-status/roundtrip` به هارنس اضافه شد (SKIP تمیز تا استقرار). راهنمای کامل مالک: `docs/DOMAIN_DNS_GUIDE.fa.md`.
 
 **شکاف‌ها / گام‌های اصولی بعدی ✗ (اولویت‌دار):**
 

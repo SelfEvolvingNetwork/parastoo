@@ -13,6 +13,8 @@ volumes:
   gitea_indexer:
   parastoo_data:
   traefik_certs:
+  dns_data:
+  dns_meta:
 
 services:
   # ---------- دیتابیس ----------
@@ -134,12 +136,17 @@ services:
       PARASTOO_DEPLOYED_AT: ${PARASTOO_DEPLOYED_AT:-}
       PARASTOO_DEV_MODE: ${PARASTOO_DEV_MODE:-false}
       PARASTOO_DEV_TOKEN: ${PARASTOO_DEV_TOKEN:-}
+      # نیم‌سرور اختصاصی (v0.3.9) — هسته فقط با REST API با پاوردی‌ان‌اس حرف می‌زند
+      PARASTOO_DNS_API_URL: ${PARASTOO_DNS_API_URL:-http://dns:8081/api/v1}
+      PARASTOO_DNS_API_KEY: ${PARASTOO_DNS_API_KEY:-}
     volumes:
       - parastoo_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
       - ./config:/app/host-config
       # تاریخچهٔ آپدیت خودکار (logs/updates.jsonl روی هاست) برای گزارش /api/dev/updates
       - ./logs:/app/host-logs:ro
+      # کلید API تولیدشدهٔ خودکار توسط کانتینر dns (وقتی .env مقداری نداشته باشد)
+      - dns_meta:/opt/dns-meta:ro
     networks:
       - internal
       - apps
@@ -150,6 +157,62 @@ services:
       - traefik.http.routers.parastoo-panel.tls=${TRAEFIK_TLS}
       - traefik.http.routers.parastoo-panel.tls.certresolver=le
       - traefik.http.services.parastoo-panel.loadbalancer.server.port=8000
+
+  # ---------- نیم‌سرور اختصاصی (v0.3.9) — PowerDNS Authoritative ----------
+  # دامنه‌های مشتری + دامنهٔ اصلی پرستو را همین‌جا جواب می‌دهیم (پورت ۵۳ TCP+UDP).
+  # نکتهٔ نسخهٔ ۴۹: متغیرهای PDNS_* این ایمیج به کانفیگ ترجمه نمی‌شوند (issue #14951)
+  # → همهٔ تنظیمات را صریح با فلگ خط فرمان می‌دهیم. کلید API: اگر .env مقدار
+  # PARASTOO_DNS_API_KEY داشته باشد همان، وگرنه اولین اجرا تولید و در volume مشترک
+  # dns_meta می‌نویسد که هسته از همان می‌خواند (صفر-پیکربندی برای مالک).
+  # API فقط روی شبکهٔ داخلی در دسترس است (۸۰۸۱ پابلیش نمی‌شود).
+  dns:
+    image: powerdns/pdns-auth-49:4.9.18
+    container_name: parastoo-dns
+    restart: unless-stopped
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -e
+        mkdir -p /var/lib/powerdns /meta
+        KEY="${PARASTOO_DNS_API_KEY:-}"
+        if [ -z "$KEY" ] && [ -s /meta/api-key ]; then KEY="$(cat /meta/api-key)"; fi
+        if [ -z "$KEY" ]; then KEY="$(tr -dc a-f0-9 < /dev/urandom | head -c 48)"; fi
+        printf '%s' "$KEY" > /meta/api-key
+        chmod 600 /meta/api-key
+        [ -s /var/lib/powerdns/pdns.sqlite3 ] || pdnsutil create-schema \
+          --launch=gsqlite3 --gsqlite3-database=/var/lib/powerdns/pdns.sqlite3
+        exec pdns_server \
+          --launch=gsqlite3 \
+          --gsqlite3-database=/var/lib/powerdns/pdns.sqlite3 \
+          --local-address=0.0.0.0 \
+          --local-port=53 \
+          --master=yes \
+          --allow-axfr-ips=${PARASTOO_DNS_ALLOW_AXFR:-127.0.0.0/8,::1} \
+          --api=yes \
+          --webserver=yes \
+          --webserver-address=0.0.0.0 \
+          --webserver-port=8081 \
+          --webserver-allow-from=0.0.0.0/0,::/0 \
+          --api-key="$KEY" \
+          --default-soa-content='ns1.@ hostmaster.@ 0 10800 3600 604800 3600' \
+          --version-string=parastoo
+    environment:
+      PARASTOO_DNS_API_KEY: ${PARASTOO_DNS_API_KEY:-}
+    ports:
+      - "53:53"
+      - "53:53/udp"
+    volumes:
+      - dns_data:/var/lib/powerdns
+      - dns_meta:/meta
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --header=\"X-API-Key: $$(cat /meta/api-key)\" http://127.0.0.1:8081/api/v1/servers/localhost > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - internal
 
   # ---------- پروکسی و TLS ----------
   traefik:

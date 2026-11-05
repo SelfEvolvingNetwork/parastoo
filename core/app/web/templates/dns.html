@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}مدیریت DNS{% endblock %}
+{% block content %}
+<h1>نیم‌سرور اختصاصی — مدیریت DNS</h1>
+
+<section class="card">
+  <h2>وضعیت سرویس DNS</h2>
+  <table class="w50">
+    <tr><td>سرویس PowerDNS</td><td><span class="badge badge-{{ 'ok' if status.ok else 'err' }}">{{ 'در حال اجرا' if status.ok else 'در دسترس نیست' }}</span></td></tr>
+    <tr><td>دامنهٔ پایهٔ فعال</td><td class="mono small">{{ status.base }}</td></tr>
+    <tr><td>IP عمومی سرور</td><td class="mono small">{{ status.server_ip or '—' }}</td></tr>
+    <tr><td>نیم‌سرورهای عمومی (NS)</td><td class="mono small">{% for n in status.nameservers %}{{ n }}{% if not loop.last %} و {% endif %}{% endfor %}</td></tr>
+  </table>
+  {% if not status.ok %}
+  <p class="muted small">کانتینر <span class="mono">dns</span> اجرا نمی‌شود. روی سرور: <span class="mono">docker compose up -d dns</span> — و اگر ایمیج دانلود نشد: <span class="mono">bash scripts/fetch-images.sh</span></p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>افزودن زون (دامنهٔ جدید)</h2>
+  <p class="muted small">پذیرش دامنهٔ مشتری: فقط نام دامنه را بنویسید و «ساخت» بزنید — رکوردهای NS، ریشه و www خودکار به IP همین سرور وصل می‌شوند. مشتری هم در پنل ثبت‌کنندهٔ خودش نیم‌سرورها را روی <span class="mono">{{ status.nameservers[0] if status.nameservers else 'ns1.…' }}</span> و <span class="mono">{{ status.nameservers[1] if status.nameservers|length > 1 else 'ns2.…' }}</span> می‌گذارد. راهنمای کامل: <span class="mono">docs/DOMAIN_DNS_GUIDE.fa.md</span></p>
+  <form method="post" action="/admin/dns/create" class="row gap-sm">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="text" name="name" placeholder="example.com" class="w200" required>
+    <select name="kind">
+      <option value="customer">دامنهٔ مشتری (NS + ریشه + www)</option>
+      <option value="base">دامنهٔ اصلی پرستو (+ panel/git/apps و وایلدکارد سایت‌ها)</option>
+    </select>
+    <button class="btn btn-primary btn-sm">ساخت</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>زون‌های موجود</h2>
+  {% if zones %}
+  <table>
+    <thead><tr><th>دامنه</th><th>نوع</th><th>سریال SOA</th><th></th></tr></thead>
+    <tbody>
+    {% for z in zones %}
+      <tr>
+        <td><a href="/admin/dns/{{ z.name }}"><b class="mono">{{ z.name }}</b></a></td>
+        <td><span class="badge badge-{{ 'ok' if z.kind == 'Master' else 'wait' }}">{{ {'Master':'اصلی','Native':'بومی','Slave':'ثانویه'}.get(z.kind, z.kind) }}</span></td>
+        <td class="mono small">{{ z.serial or '—' }}</td>
+        <td><a class="btn btn-ghost btn-sm" href="/admin/dns/{{ z.name }}">مدیریت رکوردها</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">هنوز زونی ساخته نشده است. اولین قدم: زون «دامنهٔ اصلی پرستو» را با نام <span class="mono">{{ status.base }}</span> بسازید تا پنل و گیت و سایت‌ها روی دامنهٔ واقعی بیایند.</p>
+  {% endif %}
+</section>
+{% endblock %}

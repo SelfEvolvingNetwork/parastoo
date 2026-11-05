@@ -1,4 +1,4 @@
-# پرستو (Parastoo) v0.3.8
+# پرستو (Parastoo) v0.3.9
 
 [![CI](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml/badge.svg)](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml)
 
@@ -14,6 +14,7 @@
 | گیت داخلی + رجیستری ایمیج OCI | Gitea |
 | بیلد و اجرای سایت‌ها | Docker (از طریق Docker SDK) |
 | پروکسی، دامنه، HTTPS خودکار | Traefik |
+| نیم‌سرور اختصاصی (DNS) | PowerDNS Authoritative (v0.3.9) |
 | دیتابیس | PostgreSQL |
 
 هیچ Kubernetes، GitLab یا نرم‌افزار سنگینی در کار نیست؛ پرستو فقط «چسب نازک» بین ابزارهای بالغ است و تمام منطق کسب‌وکار (کاربر، پروژه، مارکت‌پلیس، کیف پول) در `core/` lives می‌شود.
@@ -138,6 +139,15 @@ curl -s https://panel.example.com/api/version
 ```
 
 تاریخچهٔ هر استقرار (موفق/ناموفق + زمان + نسخه) در `/opt/parastoo/logs/updates.jsonl` ثبت می‌شود.
+
+## نیم‌سرور اختصاصی — DNS (v0.3.9)
+
+پرستو می‌تواند «مرجع رسمی DNS» باشد: هر دامنه‌ای که نیم‌سرورهایش را روی سرور شما بگذارند (مثل دامنهٔ خودتان یا دامنهٔ مشتری‌ها)، از پنل ادمین مدیریت می‌شود:
+
+- **منوی «DNS» در پنل (ادمین):** ساخت زون با یک کلیک (`customer` یا `base`)، افزودن/ویرایش/حذف رکورد (A/AAAA/CNAME/MX/TXT/NS/SRV/CAA)، حذف زون.
+- **سرویس `dns` در compose:** PowerDNS Authoritative با SQLite در volume؛ پورت ۵۳ سرور را جواب می‌دهد؛ API آن فقط داخل شبکهٔ داکر است.
+- **API:** `GET/POST /api/dns/zones|records` — با نشست ادمین یا (در حالت dev) هدر `X-Dev-Token`.
+- راهنمای کامل فارسی (ایرنیک، گلو-رکورد، پذیرش دامنهٔ مشتری، ns2 دوم، عیب‌یابی): **`docs/DOMAIN_DNS_GUIDE.fa.md`**
 
 ## حالت توسعه‌دهنده (v0.2.12)
 

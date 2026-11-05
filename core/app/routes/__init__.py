@@ -3,7 +3,7 @@
 ترتیب ثبت فقط برای هم‌پوشانی مسیرها مهم است؛ الان هیچ تداخلی نیست، اما
 ترتیب معنایی «ویزارد ← احراز هویت ← صفحات اصلی ← عملیات‌ها» حفظ شده است.
 """
-from . import (account, admin, auth, dashboard, dev, health, hooks,
+from . import (account, admin, auth, dashboard, dev, dns, health, hooks,
                marketplace, payment, projects, setup, sites, wallet)
 
 ROUTERS = (
@@ -18,6 +18,7 @@ ROUTERS = (
     payment.router,      # پرداخت آنلاین کیف پول (درگاه آزمایشی)
     wallet.router,
     admin.router,
+    dns.router,          # نیم‌سرور اختصاصی (UI ادمین + API)
     hooks.router,        # وب‌هوک gitea
     dev.router,          # حالت توسعه‌دهنده
 )

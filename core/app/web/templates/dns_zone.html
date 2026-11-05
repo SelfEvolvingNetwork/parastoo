@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}DNS — {{ zone.name }}{% endblock %}
+{% block content %}
+<h1>زون <span class="mono">{{ zone.name }}</span></h1>
+
+<p>
+  <a class="btn btn-ghost btn-sm" href="/admin/dns">← همهٔ زون‌ها</a>
+  <span class="badge badge-wait">سریال SOA: {{ zone.serial or '—' }}</span>
+</p>
+
+<section class="card">
+  <h2>رکوردها</h2>
+  <table>
+    <thead><tr><th>نام</th><th>نوع</th><th>TTL</th><th>مقدار</th><th></th></tr></thead>
+    <tbody>
+    {% for r in zone.records %}
+      <tr>
+        <td class="mono small">{{ r.name }}</td>
+        <td><span class="badge badge-wait">{{ r.type }}</span></td>
+        <td class="mono small">{{ r.ttl }}</td>
+        <td class="mono small">{% for c in r.contents %}{{ c }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+        <td>
+          {% if r.type != 'SOA' %}
+          <form method="post" action="/admin/dns/{{ zone.name }}/record_delete" onsubmit="return confirm('رکورد {{ r.type }} حذف شود؟')">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <input type="hidden" name="type" value="{{ r.type }}">
+            {% if r.name == zone.name %}<input type="hidden" name="name" value="@">{% else %}<input type="hidden" name="name" value="{{ r.name }}">{% endif %}
+            <button class="btn btn-danger btn-sm">حذف</button>
+          </form>
+          {% else %}<span class="muted small">سیستمی</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2>افزودن / به‌روزرسانی رکورد</h2>
+  <p class="muted small">نام خالی یا @ = خود دامنه. مقدار relative بنویسید (مثل <span class="mono">mail</span> یا <span class="mono">*.apps</span>). رکورد هم‌نام و هم‌نوع «جایگزین» می‌شود. مثال MX: <span class="mono">10 mail.example.com</span> — مثال TXT: <span class="mono">v=spf1 a mx -all</span></p>
+  <form method="post" action="/admin/dns/{{ zone.name }}/record" class="row gap-sm">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="text" name="name" placeholder="نام (@ یا www یا mail)" class="w150">
+    <select name="type">
+      {% for t in ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'CAA'] %}<option>{{ t }}</option>{% endfor %}
+    </select>
+    <input type="text" name="content" placeholder="مقدار (مثل IP یا نام میزبان)" class="w200" required>
+    <input type="text" name="ttl" placeholder="TTL (اختیاری)" class="w100">
+    <button class="btn btn-primary btn-sm">ذخیره</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>حذف زون</h2>
+  <p class="muted small">حذف زون همهٔ رکوردهایش را هم پاک می‌کند و دامنه از اینترنت محو می‌شود. اگر دامنهٔ اصلی پرستو را حذف کنید، پنل و سایت‌ها با دامنه در دسترس نخواهند بود (سرو با IP خام از بین نمی‌رود).</p>
+  <form method="post" action="/admin/dns/{{ zone.name }}/delete" onsubmit="return confirm('زون {{ zone.name }} و همهٔ رکوردهایش حذف شود؟')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn btn-danger btn-sm">حذف کامل زون</button>
+  </form>
+</section>
+{% endblock %}
