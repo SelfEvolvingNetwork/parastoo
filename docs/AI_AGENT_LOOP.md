@@ -40,10 +40,10 @@
 |---|---|
 | مخزن گیت‌هاب | `https://github.com/SelfEvolvingNetwork/parastoo` — شاخهٔ انتشار: `main` |
 | کلون محلی کاری | `/home/z/my-project/parastoo` (sandbox؛ بین جلسات حفظ می‌شود) |
-| **پنل زندهٔ پرستو** | **`http://panel.193.151.142.128.nip.io`** |
-| گیت داخلی سرور | `http://git.193.151.142.128.nip.io` |
-| الگوی سایت‌های کاربران | `http://<slug>.apps.193.151.142.128.nip.io` |
-| دامنهٔ پایهٔ سرور (BASE_DOMAIN) | `193.151.142.128.nip.io` — انتقال به `zeolitecenter.ir` در جریان است (زون ساخته‌شده، NS در ایرنیک؛ ورکر v0.3.14 پس از انتشار خودش اعمال می‌کند) |
+| **پنل زندهٔ پرستو** | **`https://panel.zeolitecenter.ir`** (دامنهٔ رسمی فعال؛ قبل از ویزارد: `http://panel.193.151.142.128.nip.io`) |
+| گیت داخلی سرور | `https://git.zeolitecenter.ir` |
+| الگوی سایت‌های کاربران | `https://<slug>.apps.zeolitecenter.ir` (وایلکارد `*.apps` در زون) |
+| دامنهٔ پایهٔ سرور (BASE_DOMAIN) | **`zeolitecenter.ir` — فعال** (glue ایرنیک → ns1/ns2 روی همین سرور، زون PDNS کامل، ۴ گواهی LE از acme.json پشتیبان بازگردانی‌شده؛ سرور 2026-11-05 از صفر بازسازی شد و دامنه دوباره فعال شد) |
 | فایل امن محلی (توکن‌ها) | `/home/z/my-project/parastoo/.secrets/github.env` — chmod 600، gitignored، مستثنا از rsync انتشار |
 | **ایجنت دسترسی مستقل (access-agent)** | مخزن `https://github.com/SelfEvolvingNetwork/access-agent` (v0.1.3)؛ کلون محلی `/home/z/my-project/access-agent`؛ **روی سرور نصب و راستی‌آزمایی شده (2026-11-05)** — سرویس systemd مستقل از پرستو و داکر؛ مقادیر اتصال (URL + اثرانگشت گواهی + توکن عامل) در `.secrets/access-agent.env` — بلوک آمادهٔ این سه مقدار: `sudo access-agent handoff` روی سرور؛ تنها مسیر اجرای دستور عامل از همین پس |
 | CI مخزن | `.github/workflows/ci.yml` (۴ سوئیت دودی + سینتکس شل، روی هر push به main) |
@@ -280,7 +280,7 @@ curl -s -H "X-Dev-Token: $PARASTOO_DEV_TOKEN" -H "Content-Type: application/json
 **فعال و مستقر ✓ (وضعیت جاری، بدون تاریخچه):**
 
 - پل انتشار: push به main → تایمر systemd + `scripts/auto-update.sh` (فلاک، بکاپ کد، جایگزینی فقط-کد، گیت سلامت، تاریخچهٔ `updates.jsonl`)؛ تأیید استقرار با `commit` در `/api/version`.
-- چک‌های محلی: ۵ سوئیت دودی (۳۵۹ چک) + CI گیت‌هاب‌اکشنز + ruff F + `bash -n`.
+- چک‌های محلی: ۵ سوئیت دودی (۳۶۲ چک) + CI گیت‌هاب‌اکشنز + ruff F + `bash -n`.
 - هارنس‌های زنده: `tests/e2e_live.py` (عمومی، ۱۲ چک + ۳ چک dev که بدون توکن dev SKIP تمیز می‌دهند) و `tests/e2e_user.py` (نوشتاری، فقط حالت dev، با پاکسازی خودکار).
 - پل‌های عامل در حالت dev: `netcheck` + `sql` با audit JSONL؛ پل exec حذف‌شده (§۶/§۷) و تنها مسیر اجرای دستور، access-agent مستقل (v0.1.3، systemd بدون داکر؛ قرارداد: `docs/AGENT_PROTOCOL.fa.md` همان مخزن؛ مقادیر در `.secrets/access-agent.env`).
 - نیم‌سرور اختصاصی: PowerDNS در compose + `services/dnsops.py` + UI/API `/api/dns/*` + راهنمای مالک (`docs/DOMAIN_DNS_GUIDE.fa.md`) + فعال‌سازی خودگردان دامنهٔ معلق (ورکر ۶۰ثانیه‌ای v0.3.14) + خودترمیمی زون پایه و پروب HTTPS (v0.3.15) + نظافت خودکار پوشهٔ داینامیک ترافیک و اعتبارسنجی پسوند عمومی ایمیل ACME (v0.3.16 — درس میدانی زندهٔ دامنه).

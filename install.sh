@@ -296,14 +296,31 @@ if [ -z "$BASE_DOMAIN" ]; then
   # cross-check: the detected IP should be plausible as the INBOUND IP.
   # If it is not bound to any local interface, egress != inbound is likely
   # and the domain above will not resolve to this server.
-  INTF_IPS="$(hostname -I 2>/dev/null || true)"
-  [ -n "$INTF_IPS" ] || INTF_IPS="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | paste -sd' ' - 2>/dev/null || true)"
+  # v0.3.19 — field incident (server rebuild 2026-11-05): the egress echo
+  # (ipify) returned the provider NAT IP (205.x) while the real inbound IP
+  # sat on the NIC (193.x) — the installer only WARNED and built the whole
+  # install around an unreachable nip.io domain. Auto-correct instead:
+  # candidate inbound IPs = public IPs actually bound to interfaces
+  # (RFC1918/CGNAT/link-local/docker bridges excluded), and when exactly
+  # one such IP exists, prefer it over the egress echo.
+  INTF_IPS="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 \
+              | grep -vE '^(10\.|127\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\.)' \
+              | paste -sd' ' - 2>/dev/null || true)"
+  [ -n "$INTF_IPS" ] || INTF_IPS="$(hostname -I 2>/dev/null || true)"
   if [ -n "$INTF_IPS" ] && ! printf '%s\n' $INTF_IPS | grep -qx "$PUBLIC_IP"; then
     warn "Detected IP ${PUBLIC_IP} is NOT bound to any interface of this server (interfaces: ${INTF_IPS})."
-    warn "Outbound traffic probably leaves via another IP (NAT / VPN / provider route) — the panel may be UNREACHABLE at ${BASE_DOMAIN}."
-    say "If http://panel.${BASE_DOMAIN} does not open, re-run with the real inbound IP:"
-    say "  curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo PARASTOO_PUBLIC_IP=<real-IP> bash"
-    say "  (or set the domain later in the panel wizard: /setup/domain)"
+    warn "Outbound traffic probably leaves via another IP (NAT / VPN / provider route)."
+    if [ "$(printf '%s\n' $INTF_IPS | grep -c . )" = "1" ]; then
+      INBOUND_IP="$(printf '%s\n' $INTF_IPS | head -n1)"
+      warn "Auto-correcting to the interface (inbound) IP: ${INBOUND_IP}"
+      PUBLIC_IP="$INBOUND_IP"
+      BASE_DOMAIN="${PUBLIC_IP}.nip.io"
+      ok "Inbound IP: ${PUBLIC_IP} — temporary domain: ${BASE_DOMAIN}"
+    else
+      warn "Multiple interface IPs — cannot auto-pick; re-run with the real inbound IP:"
+      say "  curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo PARASTOO_PUBLIC_IP=<real-IP> bash"
+      say "  (or set the domain later in the panel wizard: /setup/domain)"
+    fi
   fi
 else
   ok "Domain from env: ${BASE_DOMAIN}"
@@ -438,8 +455,11 @@ PARASTOO_NPM_REGISTRY="${PARASTOO_NPM_REGISTRY:-${DETECTED_NPM_MIRROR:-}}"
 # 127.0.0.53:53 گوش می‌دهد و بایند TCP 0.0.0.0:53 داکر در سطح کرنل با آن
 # تداخل می‌کند → کانتینر dns بالا نمی‌آید. اگر resolved فعال بود، بایند DNS
 # را خودکار به IP عمومی محدود می‌کنیم (بدون دست‌زدن به resolved).
+# v0.3.19 — درس میدانی بازسازی سرور: ss در اوبونتو ۲۴.۰۴ این آدرس را با پسوند
+# اسکوپ چاپ می‌کند (127.0.0.53%lo:53) و الگوی ساده هرگز نمی‌دید → بایند خالی ماند
+# و همانی EADDRINUSE رخ داد. الگو حالا پسوند %scope را هم می‌پذیرد (۱۲۷.0.0.54 هم).
 if [ -z "${PARASTOO_DNS_BIND_IP:-}" ] && [ -n "${PUBLIC_IP:-}" ] \
-   && (ss -tln 2>/dev/null | grep -q '127\.0\.0\.53:53'); then
+   && (ss -tln 2>/dev/null | grep -Eq '127\.0\.0\.5[34](%[a-zA-Z0-9._-]+)?:53'); then
   PARASTOO_DNS_BIND_IP="${PUBLIC_IP}"
   ok "systemd-resolved detected on 127.0.0.53:53 -> DNS binds to ${PUBLIC_IP} (PARASTOO_DNS_BIND_IP)"
 fi

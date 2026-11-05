@@ -844,13 +844,23 @@ check("بدون دامنهٔ پایه: روتر ریشه ساخته نمی‌ش�
 
 print("— درس میدانی v0.3.18: EADDRINUSE پورت ۵۳ در نصب تازه —")
 _ins = (ROOT / "install.sh").read_text()
-check("install.sh گوش‌دادن resolved روی 127.0.0.53 را می‌سنجد",
-      "127.0.0.53:53" in _ins and "ss -tln" in _ins)
+check("install.sh گوش‌دادن resolved را با پسوند اسکوپ %lo هم می‌بیند (v0.3.19)",
+      "127\\.0\\.0\\.5[34](%[a-zA-Z0-9._-]+)?:53" in _ins and "ss -tln" in _ins)
 check("بایند DNS خودکار به IP عمومی می‌رود و در .env نوشته می‌شود",
       "PARASTOO_DNS_BIND_IP=\"${PUBLIC_IP}\"" in _ins
       and "PARASTOO_DNS_BIND_IP=${PARASTOO_DNS_BIND_IP}" in _ins)
 check("صریح‌بودن env بر تشخیص خودکار مقدم است",
       "-z \"${PARASTOO_DNS_BIND_IP:-}\"" in _ins)
+
+print("— درس میدانی v0.3.19: بازسازی سرور — IP خروجی NAT به‌جای IP ورودی —")
+check("IP خروجی که روی اینترفیسی نیست به IP ورودیِ اینترفیص اصلاح می‌شود",
+      "INBOUND_IP=" in _ins
+      and "Auto-correcting to the interface (inbound) IP" in _ins
+      and 'PUBLIC_IP="$INBOUND_IP"' in _ins)
+check("کاندیدهای IP اینترفیص فقط عمومی‌اند (خصوصی/بریج داکر/لینک-لوکال حذف)",
+      "grep -vE '^(10\\.|127\\.|169\\.254\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\." in _ins)
+check("مسیر چند-IP: بجای اصلاح خودکار، دستور صریح PARASTOO_PUBLIC_IP می‌دهد",
+      "Multiple interface IPs" in _ins and "PARASTOO_PUBLIC_IP=<real-IP>" in _ins)
 
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
