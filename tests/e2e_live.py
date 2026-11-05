@@ -212,19 +212,14 @@ def main() -> int:
                                and t.get("ok")), sum(1 for t in d["targets"] if t["url"].startswith("https://github")))
             return PASS, f"github: {g_ok}/{g_all} باز — کل {d.get('n_ok')}/{d.get('n_total')} ({d.get('duration_ms')}ms)"
 
-        def c_dev_exec():
-            st, _, body = fetch("POST", f"{base}/api/dev/exec", headers={**h, "Content-Type": "application/json"},
-                                data=json.dumps({"cmd": "echo parastoo-agent-ok",
-                                                 "timeout_s": 30}).encode(),
-                                timeout=60)
-            if st != 200:
-                return FAIL, f"HTTP {st}"
-            d = json.loads(body)
-            if not d.get("ok"):
-                return FAIL, f"ok=false: {str(d)[:100]}"
-            if d.get("exit_code") != 0 or "parastoo-agent-ok" not in (d.get("stdout") or ""):
-                return FAIL, f"rc={d.get('exit_code')} stdout={str(d.get('stdout'))[:80]}"
-            return PASS, f"rc=0 ({d.get('duration_ms')}ms) — اجرای دستور روی هاست کار می‌کند"
+        def c_dev_exec_removed():
+            """v0.3.11 — دستور مالک: پل exec کامل حذف شد؛ حتی با توکن dev باید 404 باشد
+            (تنها مسیر اجرای دستور عامل، access-agent مستقل است)."""
+            st, _, _ = fetch("POST", f"{base}/api/dev/exec",
+                             headers={**h, "Content-Type": "application/json"},
+                             data=json.dumps({"cmd": "echo probe", "timeout_s": 10}).encode(),
+                             timeout=timeout)
+            return (PASS, "404 — مسیر حذف شده") if st == 404 else (FAIL, f"HTTP {st} (انتظار 404)")
 
         def c_dev_sql():
             st, _, body = fetch("POST", f"{base}/api/dev/sql", headers={**h, "Content-Type": "application/json"},
@@ -241,7 +236,7 @@ def main() -> int:
         check("dev-report", "/api/dev/report با X-Dev-Token", c_dev_report)
         check("dev-updates", "/api/dev/updates با X-Dev-Token", c_dev_updates)
         check("dev-netcheck", "/api/dev/netcheck — دسترسی جهانی از سرور", c_dev_netcheck)
-        check("dev-exec", "/api/dev/exec — اجرای دستور روی هاست", c_dev_exec)
+        check("dev-exec-removed", "/api/dev/exec حذف شده — حتی با توکن 404", c_dev_exec_removed)
         check("dev-sql", "/api/dev/sql — پرس‌وجوی فقط‌خواندنی", c_dev_sql)
 
         # ---------- لایهٔ DNS اختصاصی (v0.3.9) — تا استقرار سرویس dns SKIP تمیز ----------

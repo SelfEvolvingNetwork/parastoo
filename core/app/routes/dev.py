@@ -7,26 +7,21 @@
 - وقتی روشن است: اگر PARASTOO_DEV_TOKEN در .env ست شده باشد، هدر X-Dev-Token
   (یا ?token=) کافی است؛ در غیر این صورت فقط ادمینِ واردشده به پنل.
 
-پل دسترسی عامل (v0.3.7 — فقط در همین حالت توسعه؛ در حالت تجاری 404):
-- POST /api/dev/exec     اجرای دستور روی هاست (معادل SSH) یا داخل کانتینر هسته
+پل دسترسی عامل (در حالت توسعه؛ در حالت تجاری 404):
 - GET  /api/dev/netcheck بررسی واقعی دسترسی سرور به سرویس‌های جهانی (بدون حدس)
 - POST /api/dev/sql      پرس‌وجوی فقط‌خواندنی (SELECT/WITH) روی دیتابیس
-منطق هر سه در services/agentops.py است؛ اینجا فقط ورودی/خروجی وب + گارد.
+منطق هر دو در services/agentops.py است؛ اینجا فقط ورودی/خروجی وب + گارد.
 
-موقت (v0.3.10 — دستور مالک 2026-11-05): تا نصب و تأیید ایجنت دسترسی مستقل
-(access-agent)، مسیر POST /api/dev/exec در حالت dev بدون X-Dev-Token هم باز است —
-پنجرهٔ خود-منقضی با ضرب‌الجل ثابت در کد (_OPEN_EXEC_UNTIL). پس از تأیید access-agent
-کل پل exec در چرخهٔ بعدی کامل حذف می‌شود (دستور مالک) و همین پاراگراف با آن می‌رود.
+تاریخچهٔ exec: مسیر POST /api/dev/exec (v0.3.7~v0.3.10، معادل SSH) در v0.3.11 به
+دستور مالک کامل حذف شد — تنها مسیر اجرای دستور عامل روی سرور، ایجنت دسترسی مستقل
+(access-agent) است؛ پنجرهٔ موقت بدون توکن v0.3.10 هم با آن حذف شد.
 
 زیرساخت رینگ‌بافر لاگ از v0.3.0 در devlog.py است (main.py هم برای لاگ خطاهای
 ۵۰۰ همان را استفاده می‌کند).
 """
 import json
-import logging
 import shutil
-import threading
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -210,73 +205,13 @@ def dev_page(request: Request):
     return render("dev.html", ctx(request, user, report=collect_report()))
 
 
-# ---------- پل دسترسی عامل (v0.3.7 — فقط حالت توسعه؛ همان گارد بالا) ----------
+# ---------- پل دسترسی عامل (در حالت توسعه؛ همان گارد بالا) ----------
 
-# موقت (v0.3.10 — دستور مالک 2026-11-05): پنجرهٔ عبور بدون توکن فقط برای exec،
-# برای نصب ایجنت دسترسی مستقل (access-agent) توسط عامل. ویژگی‌های ایمنی:
-# - فقط POST /api/dev/exec؛ بقیهٔ مسیرهای /api/dev/* همان گارد توکن/ادمین را دارند؛
-# - ضرب‌الجل ثابت در کد است — بعد از این لحظه حتی اگر هیچ چرخهٔ بعدی مستقر نشود،
-#   پنجره خودش بسته است (خود-انقضا بدون وابستگی به استقرار)؛
-# - در چرخهٔ بعد (بعد از نصب و تأیید access-agent) کل پل exec کامل حذف می‌شود.
-_OPEN_EXEC_UNTIL = datetime(2026, 11, 5, 18, 30, tzinfo=timezone.utc)  # ۲۲:۰۰ تهران
+# تاریخچه: POST /api/dev/exec + پنجرهٔ موقت بدون توکن (v0.3.7~v0.3.10) در v0.3.11
+# کامل حذف شد (دستور مالک: «قابلیت ssh را از پرستو کاملاً حذف کن») — چون access-agent
+# روی همین سرور نصب و راستی‌آزمایی شده و از این پس مسیر اجرای دستور عامل همان است.
 
-
-def _exec_open_window() -> bool:
-    """پنجرهٔ موقتِ عبور بدون توکن فقط برای exec — پس از ضرب‌الجل همیشه False."""
-    return settings.DEV_MODE and datetime.now(timezone.utc) < _OPEN_EXEC_UNTIL
-
-
-# اجرای هم‌زمان دستورها سری نمی‌شوند — یک دستورِ سنگین نباید صف را ببندد، اما
-# اجرای موازیِ نامحدود هم روی سرور توسعه بی‌معناست؛ هم‌پوشانی ۲ کافی است.
-_EXEC_SEM = threading.Semaphore(2)
-
-
-class ExecIn(BaseModel):
-    cmd: str
-    where: str = "host"      # host = خودِ سرور (معادل SSH) | core = داخل کانتینر هسته
-    timeout_s: int = 120
-
-
-class SqlIn(BaseModel):
-    sql: str
-    limit: int = 100
-
-
-@router.post("/api/dev/exec")
-def dev_exec(request: Request, body: ExecIn):
-    # موقت v0.3.10: در پنجرهٔ عبور، exec بدون توکن هم باز است؛ پس از ضرب‌الجل گارد عادی
-    if not _exec_open_window():
-        _dev_guard(request)
-    cmd = (body.cmd or "").strip()
-    if not cmd:
-        raise HTTPException(status_code=400, detail="دستور خالی است")
-    if len(cmd) > agentops.MAX_CMD_LEN:
-        raise HTTPException(status_code=400,
-                            detail=f"دستور بلندتر از {agentops.MAX_CMD_LEN} کاراکتر است")
-    if body.where not in ("host", "core"):
-        raise HTTPException(status_code=400, detail="where باید host یا core باشد")
-    timeout_s = max(1, min(int(body.timeout_s or 120), agentops.MAX_TIMEOUT_S))
-    if not _EXEC_SEM.acquire(blocking=False):
-        raise HTTPException(status_code=429, detail="اجراهای دیگری در جریان‌اند؛ بعداً تلاش کنید")
-    try:
-        try:
-            res = (agentops.run_host(cmd, timeout_s) if body.where == "host"
-                   else agentops.run_in_core(cmd))
-        except dockerops.DockerUnavailable as e:
-            agentops.audit("exec", {"cmd": cmd[:200], "where": body.where, "error": str(e),
-                                    "open_window": _exec_open_window()})
-            raise HTTPException(status_code=503, detail=str(e))
-        agentops.audit("exec", {"cmd": cmd[:200], "where": body.where,
-                                "exit_code": res.get("exit_code"),
-                                "duration_ms": res.get("duration_ms"),
-                                "open_window": _exec_open_window()})
-        logging.getLogger("parastoo").info(
-            "agent-exec where=%s rc=%s %sms cmd=%.120r",
-            body.where, res.get("exit_code"), res.get("duration_ms"), cmd)
-        return JSONResponse({"ok": True, **res})
-    finally:
-        _EXEC_SEM.release()
-
+# ---------- مسیرها — netcheck ----------
 
 @router.get("/api/dev/netcheck")
 def dev_netcheck(request: Request, url: str = "", groups: str = ""):
@@ -289,6 +224,11 @@ def dev_netcheck(request: Request, url: str = "", groups: str = ""):
     agentops.audit("netcheck", {"url": url[:200], "groups": groups[:200],
                                 "n_ok": res.get("n_ok"), "n_total": res.get("n_total")})
     return JSONResponse(res)
+
+
+class SqlIn(BaseModel):
+    sql: str
+    limit: int = 100
 
 
 @router.post("/api/dev/sql")

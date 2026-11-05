@@ -545,14 +545,14 @@ workers_src = (ROOT / "core/app/workers.py").read_text()
 check("مسیر pending (ورکر) هم اسکفولد می‌کارد", "seed_scaffold" in workers_src)
 check("بیلد قبل از ساخت قالب، پیش‌بازرسی استک می‌کند", "missing_marker" in workers_src)
 
-# ---------------- پل دسترسی عامل (v0.3.7): exec/netcheck/sql — فقط حالت توسعه ----------------
+# ---------------- پل دسترسی عامل: netcheck/sql — فقط حالت توسعه ----------------
+# (مسیر exec «معادل SSH» در v0.3.11 به دستور مالک کامل حذف شد؛ تنها مسیر اجرای
+#  دستور عامل روی سرور، access-agent مستقل است.)
 from app.config import settings as _settings  # noqa: E402
 from app.services import agentops as _agentops  # noqa: E402
 from app.routes import dev as _devroutes  # noqa: E402
 
 print("— پل دسترسی عامل: گارد در حالت تجاری (dev خاموش) —")
-r = c.post("/api/dev/exec", json={"cmd": "echo hi"})
-check("exec با dev خاموش → 404", r.status_code == 404)
 r = c.get("/api/dev/netcheck")
 check("netcheck با dev خاموش → 404", r.status_code == 404)
 r = c.post("/api/dev/sql", json={"sql": "SELECT 1"})
@@ -563,95 +563,26 @@ check("dns API با dev خاموش + کاربر عادی → 404", r.status_code
 _old_dev, _old_token = _settings.DEV_MODE, _settings.DEV_TOKEN
 _settings.DEV_MODE, _settings.DEV_TOKEN = True, "smoke-dev-token"
 DEVH = {"X-Dev-Token": "smoke-dev-token"}
-# پنجرهٔ موقت عبور (v0.3.10) برای بقیهٔ چک‌ها بسته نگه داشته می‌شود؛ فقط در
-# بخش اختصاصی پایین‌تر موقتاً باز می‌شود تا رفتارش آزموده شود.
-_old_until = _devroutes._OPEN_EXEC_UNTIL
-_closed_until = _devroutes.datetime.min.replace(tzinfo=_devroutes.timezone.utc)
-_devroutes._OPEN_EXEC_UNTIL = _closed_until
 try:
-    print("— پل دسترسی عامل: گارد توکن (پنجرهٔ موقت بسته) —")
+    print("— حذف کامل پل exec (v0.3.11 — دستور مالک) —")
+    check("سرویس exec از agentops حذف شده (run_host/run_in_core نبود)",
+          not hasattr(_agentops, "run_host") and not hasattr(_agentops, "run_in_core"))
+    check("پنجرهٔ موقت عبور هم حذف شده (_OPEN_EXEC_UNTIL و _exec_open_window نبود)",
+          not hasattr(_devroutes, "_OPEN_EXEC_UNTIL")
+          and not hasattr(_devroutes, "_exec_open_window"))
     r = c.post("/api/dev/exec", json={"cmd": "echo hi"})
-    check("exec بدون توکن با پنجرهٔ بسته → 404", r.status_code == 404)
-    r = c.post("/api/dev/exec", json={"cmd": "echo hi"}, headers={"X-Dev-Token": "wrong"})
-    check("exec با توکن غلط → 404", r.status_code == 404)
-    r = c.post("/api/dev/exec", json={"cmd": ""}, headers=DEVH)
-    check("exec با دستور خالی → 400", r.status_code == 400)
-    r = c.post("/api/dev/exec", json={"cmd": "echo hi", "where": "kernel"}, headers=DEVH)
-    check("exec با where نامعتبر → 400", r.status_code == 400)
+    check("exec بدون توکن → 404 (مسیر حذف شده)", r.status_code == 404)
+    r = c.post("/api/dev/exec", json={"cmd": "echo hi"}, headers=DEVH)
+    check("exec حتی با توکن dev → 404 (مسیر واقعاً حذف شده)", r.status_code == 404)
+    r = c.get("/api/dev/report", headers=DEVH)
+    check("report با توکن dev → 200 (بقیهٔ پل‌ها پابرجا)", r.status_code == 200
+          and "app" in (r.json() if r.status_code == 200 else {}))
+
+    print("— پل دسترسی عامل: گارد توکن —")
     r = c.get("/api/dev/netcheck?url=ftp://x.example", headers=DEVH)
     check("netcheck با scheme نامعتبر → 400", r.status_code == 400)
     r = c.get("/api/dev/netcheck?groups=nogroup", headers=DEVH)
     check("netcheck با گروه ناشناخته → 400", r.status_code == 400)
-
-    print("— پل دسترسی عامل: exec با داکر ماک‌شده —")
-    _fake_host = {"where": "host", "cmd_len": 7, "exit_code": 0, "timed_out": False,
-                  "stdout": "hi\n", "stderr": "", "duration_ms": 12}
-    _orig_run_host, _orig_run_core = _agentops.run_host, _agentops.run_in_core
-    _agentops.run_host = lambda cmd, timeout_s=120: dict(_fake_host, cmd_len=len(cmd))
-    _agentops.run_in_core = lambda cmd: dict(_fake_host, where="core")
-    try:
-        r = c.post("/api/dev/exec", json={"cmd": "echo hi"}, headers=DEVH)
-        check("exec روی هاست → 200 + خروجی", r.status_code == 200 and r.json()["stdout"] == "hi\n"
-              and r.json()["exit_code"] == 0)
-        r = c.post("/api/dev/exec", json={"cmd": "echo hi", "where": "core"}, headers=DEVH)
-        check("exec داخل هسته → 200", r.status_code == 200 and r.json()["where"] == "core")
-    finally:
-        _agentops.run_host, _agentops.run_in_core = _orig_run_host, _orig_run_core
-
-    print("— پل دسترسی عامل: مسیر واقعی exec با داکر فِیک (پوشش نرمال‌سازی جریان‌ها) —")
-    class _FakeApi:
-        def create_host_config(self, **k): return {"HostConfig": True}
-        def create_container(self, **k): return {"Id": "fake-id"}
-        def start(self, cid): pass
-        def wait(self, cid, condition=None, timeout=None): return {"StatusCode": 0}
-        def logs(self, cid, stdout=True, stderr=False, **k):
-            return b"host-out" if stdout else b"host-err"
-        def remove_container(self, cid, force=False, v=False): pass
-    class _FakeContainers:
-        def get(self, name):
-            class _C:  # exec_run با جریان stderr=None — همان الگوی واقعی docker-py
-                class res:
-                    output = (b"core-out", None)
-                    exit_code = 0
-                def exec_run(self, cmd, demux=False, workdir=None): return self.res
-            return _C()
-    class _FakeDockerClient:
-        api = _FakeApi()
-        containers = _FakeContainers()
-    _orig_dcli = _agentops.dockerops.client
-    _agentops.dockerops.client = lambda: _FakeDockerClient()
-    try:
-        r = _agentops.run_host("echo x", 30)
-        check("run_host → logs دوفراخوانیِ جدا + خروجی درست",
-              r["stdout"] == "host-out" and r["stderr"] == "host-err" and r["exit_code"] == 0)
-        r = _agentops.run_in_core("echo x")
-        check("run_in_core → جریان None → خروجی حفظ، stderr خالی",
-              r["stdout"] == "core-out" and r["stderr"] == "" and r["exit_code"] == 0)
-    finally:
-        _agentops.dockerops.client = _orig_dcli
-
-    print("— پنجرهٔ موقت عبور بدون توکن (v0.3.10 — خود-منقضی، فقط exec) —")
-    check("کمک‌تابع پنجره با ضرب‌الجل گذشته → False حتی با dev روشن",
-          _devroutes._exec_open_window() is False)
-    _devroutes._OPEN_EXEC_UNTIL = _devroutes.datetime.max.replace(tzinfo=_devroutes.timezone.utc)  # پنجرهٔ باز
-    try:
-        check("کمک‌تابع پنجره با dev روشن و ضرب‌الجل آینده → True",
-              _devroutes._exec_open_window() is True)
-        _agentops.run_host = lambda cmd, timeout_s=120: dict(_fake_host, cmd_len=len(cmd))
-        try:
-            r = c.post("/api/dev/exec", json={"cmd": "echo hi"})
-            check("پنجرهٔ باز: exec بدون توکن → 200 (رفتار موقت موردانتظار)",
-                  r.status_code == 200 and r.json()["stdout"] == "hi\n")
-        finally:
-            _agentops.run_host, _agentops.run_in_core = _orig_run_host, _orig_run_core
-        r = c.get("/api/dev/report")
-        check("پنجرهٔ باز: report بدون توکن همچنان 404", r.status_code == 404)
-        r = c.post("/api/dev/sql", json={"sql": "SELECT 1"})
-        check("پنجرهٔ باز: sql بدون توکن همچنان 404", r.status_code == 404)
-    finally:
-        _devroutes._OPEN_EXEC_UNTIL = _closed_until  # بستن دوباره برای بقیهٔ چک‌ها
-    r = c.post("/api/dev/exec", json={"cmd": "echo hi"})
-    check("بستن دوبارهٔ پنجره: exec بدون توکن دوباره 404", r.status_code == 404)
 
     print("— پل دسترسی عامل: netcheck با probe ماک‌شده —")
     _orig_probe = _agentops.probe_url
@@ -821,13 +752,13 @@ try:
 
     print("— پل دسترسی عامل: audit —")
     _audit = Path("/tmp/parastoo-smoke-audit/dev/agent-audit.jsonl")
-    check("فایل audit ساخته شد و رکورد exec دارد", _audit.is_file()
-          and any(_json.loads(l)["kind"] == "exec" for l in _audit.read_text().splitlines() if l.strip()))
+    check("فایل audit ساخته شد و رکورد netcheck/sql دارد", _audit.is_file()
+          and any(_json.loads(l)["kind"] in ("netcheck", "sql")
+                  for l in _audit.read_text().splitlines() if l.strip()))
     check("رکورد audit عملیات‌های DNS هم ثبت شده", any(_json.loads(l)["kind"] == "dns"
           for l in _audit.read_text().splitlines() if l.strip()))
 finally:
     _settings.DEV_MODE, _settings.DEV_TOKEN = _old_dev, _old_token
-    _devroutes._OPEN_EXEC_UNTIL = _old_until
 
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")

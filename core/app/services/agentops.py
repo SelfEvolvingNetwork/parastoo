@@ -1,30 +1,24 @@
-"""پل دسترسی عامل هوشمند در حالت توسعه (v0.3.7) — «دست باز» برای چرخهٔ تست/توسعه.
+"""سرویس‌های ابزاری عامل هوشمند در حالت توسعه (netcheck + sql + audit).
 
 هدف: عامل هوشمند (AI Agent) هیچ‌چیز را «حدس» نزند؛ از طریق مسیرهای
 `/api/dev/*` (فقط وقتی PARASTOO_DEV_MODE=true) می‌تواند:
 
-1. **exec روی هاست** («SSH از طریق پرستو»): دستور دلخواه روی خود سرور اجرا شود و
-   خروجی/کدخروج/مدت برگردد. اجرا بدون هیچ شلی از پروسهٔ هسته و فقط با Docker SDK
-   در یک کانتینر کمکی کم‌عمرِ privileged انجام می‌شود که `/` هاست را در `/host`
-   سوار و با `chroot` دستور را در فضای واقعی هاست می‌زند (پاسخ همان چیزی است که
-   SSH مستقیم می‌داد — از جمله امکان ssh به سرورهای دیگر، وقتی کلید روی هاست باشد).
-2. **exec داخل کانتینر هسته** — برای کارهای درون‌پلنی (مثلاً دسترسی به env هسته).
-3. **netcheck** — بررسی واقعیِ دسترسی سرور (که در ایران است) به سرویس‌های جهانی
+1. **netcheck** — بررسی واقعیِ دسترسی سرور (که در ایران است) به سرویس‌های جهانی
    (گیت‌هاب، Docker Hub، PyPI، npm، Let's Encrypt و پراکسی‌های تنظیم‌شده در .env)
    به‌همراه آدرس دلخواه — با تأخیر و وضعیت، تا عامل دربارهٔ آینه/پراکسی حدس نزند.
-4. **SQL فقط‌خواندنی** — پرس‌وجوی SELECT روی دیتابیس برای بازرسی داده بدون حدس.
+2. **SQL فقط‌خواندنی** — پرس‌وجوی SELECT روی دیتابیس برای بازرسی داده بدون حدس.
+
+تاریخچهٔ exec: ابزارهای «exec روی هاست/core» (معادل SSH، v0.3.7~v0.3.10) در v0.3.11
+به دستور مالک کامل حذف شدند — تنها مسیر اجرای دستور عامل روی سرور، ایجنت دسترسی
+مستقل (access-agent) است که مستقل از پرستو و داکر کار می‌کند.
 
 قواعد این ماژول:
 - گارد دسترسی اینجاست؟ نه — این ماژول بدون گارد است؛ فقط routes/dev.py بعد از
   `_dev_guard` (و در حالت تجاری: هیچ‌وقت) باید صدایش بزند.
-- هرگز subprocess/shell از پروسهٔ هسته زده نمی‌شود (قاعدهٔ طلایی dockerops) —
-  همهٔ اجراها با Docker SDK است.
-- هر فراخوانی exec با `audit()` به `DATA_DIR/dev/agent-audit.jsonl` ثبت می‌شود
-  (best-effort؛ شکست ثبت هرگز جریان اصلی را نمی‌شکند).
-- خروجی‌ها سقف دارند (حافظه/پهنای‌باند)؛ سقف زمان exec هم سمت Docker اعمال می‌شود.
+- هر فراخوانی netcheck/sql با `audit()` به `DATA_DIR/dev/agent-audit.jsonl` ثبت
+  می‌شود (best-effort؛ شکست ثبت هرگز جریان اصلی را نمی‌شکند).
 """
 import json
-import logging
 import os
 import re
 import socket
@@ -36,18 +30,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .. import dockerops
 from ..config import settings
 
 # ---------- ثابت‌ها ----------
 
-# ایمیج کانتینر کمکی exec هاست — روی هر نصب، ایمیج خودِ هسته لوکال وجود دارد
-# (بیلد compose)؛ قابل بازنویسی با PARASTOO_EXEC_IMAGE برای نصب‌های خاص.
-EXEC_IMAGE = os.environ.get("PARASTOO_EXEC_IMAGE", "parastoo/core:latest")
-
-MAX_CMD_LEN = 8000          # سقف طول دستور exec (کاراکتر)
-MAX_TIMEOUT_S = 600         # سقف زمان اجرای exec (ثانیه)
-MAX_OUTPUT_CHARS = 200_000  # سقف هر کدام از stdout/stderr در پاسخ (دم نگه داشته می‌شود)
 MAX_SQL_ROWS = 200          # سقف ردیف پاسخ SQL
 MAX_CELL_CHARS = 300        # سقف طول هر سلول سریالایزشده
 
@@ -110,98 +96,6 @@ def audit(kind: str, payload: dict) -> None:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     except Exception:
         pass  # audit هرگز نباید خودش خطا بدهد
-
-
-# ---------- exec ----------
-
-def _trim(s: str) -> str:
-    if s is None:
-        return ""
-    return s if len(s) <= MAX_OUTPUT_CHARS else "…\n" + s[-MAX_OUTPUT_CHARS:]
-
-
-def run_host(cmd: str, timeout_s: int = 120) -> dict:
-    """اجرای دستور روی خودِ هاست با کانتینر کمکی privileged + chroot (Docker SDK).
-
-    معادل SSH روی سرور: کدخروج، stdout و stderr واقعی هاست برمی‌گردد.
-    کانتینر همیشه حذف می‌شود (حتی در خطا/تایم‌اوت) — اثری روی هاست نمی‌ماند.
-    """
-    c = dockerops.client()  # DockerUnavailable اگر داکر نیست
-    api = c.api
-    t0 = time.time()
-    hc = api.create_host_config(privileged=True, pid_mode="host",
-                                binds={"/": {"bind": "/host", "mode": "rw"}})
-    cont = api.create_container(
-        image=EXEC_IMAGE,
-        command=["chroot", "/host", "/bin/bash", "-lc", cmd],
-        host_config=hc,
-        environment={"HOME": "/root", "TERM": "dumb"},
-        detach=True, tty=False, stdin_open=False,
-    )
-    cid = cont["Id"]
-    timed_out = False
-    try:
-        api.start(cid)
-        try:
-            wait = api.wait(cid, condition="not-running", timeout=max(1, int(timeout_s)))
-            rc = int(wait.get("StatusCode", -1))
-        except Exception:
-            timed_out = True
-            rc = -1
-            try:
-                api.kill(cid)
-            except Exception:
-                pass
-        try:
-            # توجه: APIClient.logs در docker-py 7.x پارامتر demux ندارد —
-            # دو فراخوانی جدا برای stdout/stderr (نسخه‌پذیر و بدون پارسِ دستی هدر استریم)
-            out_b = api.logs(cid, stdout=True, stderr=False) or b""
-            err_b = api.logs(cid, stdout=False, stderr=True) or b""
-            if not isinstance(out_b, (bytes, bytearray)):
-                out_b = b""
-            if not isinstance(err_b, (bytes, bytearray)):
-                err_b = b""
-        except Exception as e:
-            logging.getLogger("parastoo").warning("agent-exec logs fetch failed: %r", e)
-            out_b, err_b = b"", b""
-    finally:
-        try:
-            api.remove_container(cid, force=True, v=True)
-        except Exception:
-            pass
-    return {
-        "where": "host",
-        "cmd_len": len(cmd),
-        "exit_code": rc,
-        "timed_out": timed_out,
-        "stdout": _trim(out_b.decode(errors="replace")),
-        "stderr": _trim(err_b.decode(errors="replace")),
-        "duration_ms": int((time.time() - t0) * 1000),
-    }
-
-
-def run_in_core(cmd: str) -> dict:
-    """اجرای دستور داخل کانتینر هسته (parastoo-core) — برای کارهای درون‌پلنی."""
-    c = dockerops.client()
-    t0 = time.time()
-    try:
-        container = c.containers.get("parastoo-core")
-    except dockerops.NotFound:
-        raise dockerops.DockerUnavailable("کانتینر هسته (parastoo-core) پیدا نشد")
-    res = container.exec_run(["/bin/bash", "-lc", cmd], demux=True, workdir="/app")
-    # demux هر جریان می‌تواند None باشد (مثلاً همهٔ خروجی روی stdout) — نرمال‌سازی:
-    raw = res.output or (b"", b"")
-    out_b = raw[0] if isinstance(raw[0], (bytes, bytearray)) else b""
-    err_b = raw[1] if isinstance(raw[1], (bytes, bytearray)) else b""
-    return {
-        "where": "core",
-        "cmd_len": len(cmd),
-        "exit_code": res.exit_code or 0,
-        "timed_out": False,
-        "stdout": _trim(out_b.decode(errors="replace")),
-        "stderr": _trim(err_b.decode(errors="replace")),
-        "duration_ms": int((time.time() - t0) * 1000),
-    }
 
 
 # ---------- netcheck ----------
