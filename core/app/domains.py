@@ -12,7 +12,12 @@ from .db import SessionLocal
 from .models import Setting
 
 _DOMAIN_KEYS = ("domain_base", "domain_panel", "domain_git",
-                "domain_apps", "domain_tls", "domain_acme_email")
+                "domain_apps", "domain_tls", "domain_acme_email",
+                # انتظارِ فعال‌سازی خودگردان (v0.3.14) — با همان کش ۵ ثانیه‌ای
+                "domain_pending_base", "domain_pending_tls",
+                "domain_pending_acme", "domain_pending_since")
+_PENDING_KEYS = ("domain_pending_base", "domain_pending_tls",
+                 "domain_pending_acme", "domain_pending_since")
 
 _CACHE: dict[str, str] = {}
 _CACHE_AT = 0.0
@@ -87,6 +92,54 @@ def tls(db=None) -> bool:
     return v == "1"
 
 
+# ---------- انتظارِ فعال‌سازی خودگردان (v0.3.14) ----------
+#
+# ویزارد قبلاً وقتی DNS نشسته نبود بن‌بست می‌ساخت (dns_pending و دستیِ مالک).
+# از v0.3.14 درخواست در جدول Setting معلق می‌شود و ورکرِ هسته هر ۶۰ ثانیه
+# چک می‌کند؛ پس از انتشار DNS همان مسیر apply_domain اجرا می‌شود — مالک
+# نیازی به بازگشت به این صفحه ندارد (دستور مالک: «فرایندها را انجام بده و
+# منتظر نباش؛ خودش درست می‌شود»). سقف تلاش ۷۲ ساعت در workers.py است.
+
+def pending_set(base_domain: str, acme_email: str, tls: bool, db=None) -> None:
+    """ثبت درخواست فعال‌سازی زمان‌بندی‌شده (دامنه + ایمیل ACME + TLS)."""
+    set_many({
+        "domain_pending_base": base_domain.strip().lower().rstrip("."),
+        "domain_pending_tls": "1" if tls else "0",
+        "domain_pending_acme": (acme_email or "").strip(),
+        "domain_pending_since": str(int(time.time())),
+    }, db)
+
+
+def pending_get(db=None) -> dict | None:
+    """درخواست معلق یا None — فرم: {base, tls, acme, since}."""
+    v = _all()
+    base = (v.get("domain_pending_base") or "").strip()
+    if not base:
+        return None
+    try:
+        since = int(v.get("domain_pending_since") or 0)
+    except ValueError:
+        since = 0
+    return {"base": base,
+            "tls": v.get("domain_pending_tls") == "1",
+            "acme": v.get("domain_pending_acme") or "",
+            "since": since}
+
+
+def pending_clear(db=None) -> None:
+    """حذف کامل ردیف‌های انتظار (پس از اعمال موفق، انقضا یا لغو دستی)."""
+    own = db is None
+    s = db or SessionLocal()
+    try:
+        s.query(Setting).filter(Setting.key.in_(_PENDING_KEYS)).\
+            delete(synchronize_session=False)
+        s.commit()
+    finally:
+        if own:
+            s.close()
+    _invalidate()
+
+
 # ---------- IP عمومی واقعی (منبع حقیقت زنده) ----------
 
 _IP_LIVE_CACHE = ""
@@ -120,6 +173,7 @@ def _resolve(host: str) -> str:
 
 def _egress_ip() -> str:
     """IP از سرویس‌های egress (منبع ضعیف‌تر — ممکن است IP خروجی NAT باشد نه ورودی)."""
+    global _IP_CACHE  # تعمیر F823 (v0.3.14): بدون global، کش فقط محلی بود و هرگز نمی‌ماند
     if _IP_CACHE:
         return _IP_CACHE
     for url in ("https://api.ipify.org", "https://ifconfig.me/ip"):

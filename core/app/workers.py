@@ -5,6 +5,9 @@
 2) build_worker   : صف بیلد (وب‌هوک push → کلون → بیلد → push به رجیستری → دیپلوی خودکار).
 3) billing_loop   : کسر هزینه ساعتی منابع از کیف پول و توقف سایت‌های بدحساب
    (منطق کسر از v0.3.0 در services/billing.py است؛ اینجا فقط زمان‌بندی و نشست).
+4) domain_loop    : فعال‌سازی خودگردان دامنهٔ زمان‌بندی‌شده (v0.3.14) — هر ۶۰
+   ثانیه چک DNS برای درخواست معلق ویزارد؛ پس از نشستن رکوردها همان مسیر
+   apply_domain اجرا می‌شود (مالک نیازی به بازگشت به ویزارد ندارد).
 """
 import subprocess
 import threading
@@ -12,7 +15,7 @@ import time
 import traceback
 from pathlib import Path
 
-from . import dockerops, gitea, stacks
+from . import dockerops, domains, gitea, stacks, traefik_ops
 from .config import settings
 from .db import SessionLocal, db_now
 from .models import Build, Project, Setting, Site, User
@@ -21,6 +24,8 @@ from .services import projects as projects_svc
 
 BUILD_ROOT = Path(settings.DATA_DIR) / "builds"
 LOG_TAIL = 60_000  # حداکثر کاراکترهای نگه‌داری‌شده در لاگ بیلد
+DOMAIN_INTERVAL = 60          # ثانیه بین چک‌های DNS
+PENDING_DEADLINE_S = 72 * 3600  # سقف تلاش برای فعال‌سازی معلق (۷۲ ساعت)
 
 
 def start_workers() -> None:
@@ -30,7 +35,8 @@ def start_workers() -> None:
     threading.Thread(target=_loop, args=(bootstrap_once, 15), daemon=True, name="bootstrap").start()
     threading.Thread(target=_loop, args=(build_once, 5), daemon=True, name="builder").start()
     threading.Thread(target=_loop, args=(billing_once, 60), daemon=True, name="billing").start()
-    print("[parastoo] workers started (bootstrap / builder / billing)")
+    threading.Thread(target=_loop, args=(domain_once, DOMAIN_INTERVAL), daemon=True, name="domain").start()
+    print("[parastoo] workers started (bootstrap / builder / billing / domain)")
 
 
 def _loop(fn, interval: int) -> None:
@@ -212,6 +218,42 @@ def billing_once() -> None:
     db = SessionLocal()
     try:
         billing.charge_running_sites(db)
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------- domain
+
+def domain_once() -> None:
+    """یک دور فعال‌سازی خودگردان دامنهٔ معلق (v0.3.14).
+
+    درخواست معلق ویزارد (domains.pending_get) را می‌گیرد؛ اگر رکوردهای DNS
+    (پنل/گیت/وایلکارد) به IP سرور نشسته باشند، همان مسیر apply_domain ویزارد
+    را کامل اجرا می‌کند و انتظار را برمی‌دارد. سقف ۷۲ ساعت — بعدش پاک می‌شود
+    تا ورکر تا ابد دنبال دامنه‌ای که هرگز ننشست نماند.
+    """
+    db = SessionLocal()
+    try:
+        if not db.query(User).filter(User.is_admin.is_(True)).first():
+            return  # ویزارد هنوز کامل نشده
+        p = domains.pending_get(db)
+        if not p:
+            return
+        if p.get("since") and time.time() - p["since"] > PENDING_DEADLINE_S:
+            domains.pending_clear(db)
+            print(f"[parastoo] pending domain expired (>72h): {p['base']} — cleared")
+            return
+        records = traefik_ops.check_dns(p["base"], domains.server_ip(db))
+        if not all(r["ok"] for r in records):
+            return  # DNS هنوز ننشسته — سیکل بعدی
+        result = traefik_ops.apply_domain(db, p["base"], p.get("acme") or "",
+                                          bool(p.get("tls")))
+        domains.pending_clear(db)
+        print(f"[parastoo] pending domain activated: {p['base']} "
+              f"(tls={bool(p.get('tls'))}, sites={result['sites_updated']}, "
+              f"errors={result['errors'] or 'none'})")
+    except Exception as e:
+        print(f"[parastoo] domain worker error: {e}")
     finally:
         db.close()
 

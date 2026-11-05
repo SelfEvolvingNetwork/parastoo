@@ -122,6 +122,7 @@ def domain_page(
         acme_email=domains.acme_email(),
         is_nip=base.endswith(".nip.io"),
         server_ip=server_ip, records=records,
+        pending=domains.pending_get(),
     ))
 
 
@@ -155,11 +156,25 @@ def domain_apply(
         # گواهی Let's Encrypt سقف نرخ دارد؛ قبل از درخواست، DNS باید نشسته باشد
         records = traefik_ops.check_dns(base_domain, domains.server_ip())
         if not all(r["ok"] for r in records):
-            return redirect("/setup/domain?m=dns_pending")
+            # v0.3.14 — بن‌بست نیست؛ فعال‌سازی زمان‌بندی می‌شود و ورکر هسته
+            # هر ۶۰ ثانیه چک می‌کند تا پس از انتشار DNS خودش اعمال کند
+            # (دستور مالک: «فرایندها را انجام بده و منتظر نباش؛ خودش درست می‌شود»).
+            if "@" not in acme_email.strip():
+                return redirect("/setup/domain?m=domain_invalid")
+            domains.pending_set(base_domain, acme_email.strip(), True)
+            return redirect("/setup/domain?m=domain_scheduled")
         if "@" not in acme_email.strip():
             return redirect("/setup/domain?m=domain_invalid")
     result = traefik_ops.apply_domain(db, base_domain,
                                       acme_email.strip(), want_tls)
     if not result["files"]:
         return redirect("/setup/domain?m=apply_failed")
+    domains.pending_clear(db)  # اعمال موفق → هر انتظارِ معلق بی‌معناست
     return redirect("/setup/domain?m=domain_applied")
+
+
+@router.post("/setup/domain/pending/clear")
+def domain_pending_cancel(user=Depends(admin_guard)):
+    """لغو دستی زمان‌بندی فعال‌سازی خودگردان (v0.3.14)."""
+    domains.pending_clear()
+    return redirect("/setup/domain?m=pending_cleared")

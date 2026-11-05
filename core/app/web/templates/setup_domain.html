@@ -12,6 +12,22 @@
 <div class="flash">فعلاً روی دامنه موقت (nip.io) هستید؛ این حالت HTTPS ندارد. با دامنه واقعی، گواهی Let's Encrypt خودکار صادر می‌شود.</div>
 {% endif %}
 
+{% if pending %}
+<section class="card">
+  <h2>فعال‌سازی خودکار در انتظار DNS</h2>
+  <p>
+    دامنهٔ <span class="mono">{{ pending.base }}</span> زمان‌بندی شده است
+    (HTTPS: {{ 'روشن' if pending.tls else 'خاموش' }}{% if pending.acme %} — ایمیل گواهی: <span class="mono">{{ pending.acme }}</span>{% endif %}).
+    ورکر هسته هر ۶۰ ثانیه رکوردها را چک می‌کند و پس از نشستن DNS همان لحظه اعمال می‌شود؛
+    نیازی به بازگشت به این صفحه نیست (سقف تلاش: ۷۲ ساعت).
+  </p>
+  <form method="post" action="/setup/domain/pending/clear">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn btn-ghost" type="submit">لغو زمان‌بندی</button>
+  </form>
+</section>
+{% endif %}
+
 <section class="card">
   <h2>تنظیم دامنه</h2>
   <form method="post" action="/setup/domain">

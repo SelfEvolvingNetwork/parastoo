@@ -1,6 +1,7 @@
 """تست دودی ویزارد — توکن نصب، گام‌ها، دامنه و خروجی‌های ترافیک."""
 import os
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -22,7 +23,7 @@ sys.path.insert(0, str(ROOT / "core"))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import domains, security, traefik_ops  # noqa: E402
+from app import domains, security, traefik_ops, workers  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Setting  # noqa: E402
@@ -86,14 +87,30 @@ with TestClient(app, follow_redirects=False) as c:
     r = c.post("/setup/domain", data={"base_domain": "example.com", "tls": "on",
                                       "acme_email": "admin@example.com", "csrf": security.csrf_token(1)},
                follow_redirects=False)
-    check("فعال‌سازی HTTPS بدون DNS نشسته رد می‌شود",
-          "m=dns_pending" in r.headers.get("location", ""))
+    check("HTTPS بدون DNS نشسته → بن‌بست نیست؛ زمان‌بندی خودکار",
+          "m=domain_scheduled" in r.headers.get("location", ""))
+    db2 = SessionLocal()
+    _prows = {s.key: s.value for s in db2.query(Setting).filter(Setting.key.like("domain_pending_%")).all()}
+    db2.close()
+    check("درخواست معلق در جدول Setting ثبت شد (base/tls/acme/since)",
+          _prows.get("domain_pending_base") == "example.com"
+          and _prows.get("domain_pending_tls") == "1"
+          and _prows.get("domain_pending_acme") == "admin@example.com"
+          and int(_prows.get("domain_pending_since") or 0) > 0)
+    r = c.get("/setup/domain")
+    check("صفحهٔ دامنه بنر انتظار را نشان می‌دهد",
+          r.status_code == 200 and "فعال‌سازی خودکار در انتظار DNS" in r.text
+          and "example.com" in r.text)
     r = c.post("/setup/domain", data={"base_domain": "example.com",
                                       "acme_email": "admin@example.com",
                                       "csrf": security.csrf_token(1)},
                follow_redirects=False)
     check("اعمال دامنه بدون HTTPS → موفق",
           "m=domain_applied" in r.headers.get("location", ""))
+    db2 = SessionLocal()
+    _left = db2.query(Setting).filter(Setting.key.like("domain_pending_%")).count()
+    db2.close()
+    check("اعمال موفق، انتظار معلق را خودکار پاک می‌کند", _left == 0)
 
     print("— نتیجه اعمال —")
     check("دامنه پنل پویا عوض شد", domains.panel() == "panel.example.com")
@@ -128,15 +145,54 @@ with TestClient(app, follow_redirects=False) as c:
     except ImportError:
         print("  (pyyaml نصب نیست — اعتبارسنجی YAML رد شد)")
 
-    print("— تغییر دامنه دوباره (idempotent) —")
-    r = c.post("/setup/domain", data={"base_domain": "shop.example.net",
-                                      "acme_email": "admin@example.net",
+    print("— فعال‌سازی خودگردان: ورکر دامنه (v0.3.14) —")
+    r = c.post("/setup/domain", data={"base_domain": "shop.example.net", "tls": "on",
+                                      "acme_email": "tls@example.net",
                                       "csrf": security.csrf_token(1)},
                follow_redirects=False)
-    check("اعمال دامنه دوم موفق", "m=domain_applied" in r.headers.get("location", ""))
-    check("دامنه فعال به‌روز شد", domains.base() == "shop.example.net")
-    r = c.get("/dashboard")
-    check("داشبورد ادمین سالم", r.status_code == 200)
+    check("زمان‌بندی دامنهٔ دوم با HTTPS",
+          "m=domain_scheduled" in r.headers.get("location", ""))
+    _real_check = traefik_ops.check_dns
+    traefik_ops.check_dns = lambda base, ip: [
+        {"label": x, "host": x, "expected": ip, "resolved": ip, "ok": True}
+        for x in ("panel", "git", "wildcard")]
+    try:
+        workers.domain_once()
+    finally:
+        traefik_ops.check_dns = _real_check
+    check("ورکر پس از نشستن DNS دامنه را با TLS اعمال کرد",
+          domains.base() == "shop.example.net" and domains.tls() is True)
+    db2 = SessionLocal()
+    _left = db2.query(Setting).filter(Setting.key.like("domain_pending_%")).count()
+    db2.close()
+    check("اعمال توسط ورکر، انتظار را پاک کرد", _left == 0)
+    dyn = open(f"{cfg}/dynamic/routers.yml").read()
+    static = open(f"{cfg}/traefik.yml").read()
+    check("روتینگ داینامیک دامنهٔ دوم با certResolver",
+          "panel.shop.example.net" in dyn and "certResolver" in dyn)
+    check("استاتیک TLS روشن: ریدایرکت + ایمیل ACME",
+          "redirections" in static and "tls@example.net" in static)
+
+    print("— فعال‌سازی خودگردان: انقضا و لغو —")
+    domains.pending_set("late.example.org", "a@b.ir", True)
+    db2 = SessionLocal()
+    _row = db2.get(Setting, "domain_pending_since")
+    _row.value = str(int(time.time()) - workers.PENDING_DEADLINE_S - 60)
+    db2.commit()
+    db2.close()
+    domains._invalidate()  # تست مستقیم DB زده — کش ۵ ثانیه‌ای را باطل کن
+    workers.domain_once()
+    db2 = SessionLocal()
+    _left = db2.query(Setting).filter(Setting.key.like("domain_pending_%")).count()
+    db2.close()
+    check("درخواست کهنهٔ بیش از ۷۲ ساعت پاک می‌شود و دامنهٔ فعال دست‌نخورده می‌ماند",
+          _left == 0 and domains.base() == "shop.example.net")
+    domains.pending_set("cancel.example.org", "a@b.ir", True)
+    r = c.post("/setup/domain/pending/clear", data={"csrf": security.csrf_token(1)},
+               follow_redirects=False)
+    check("لغو دستی زمان‌بندی",
+          "m=pending_cleared" in r.headers.get("location", "")
+          and domains.pending_get() is None)
 
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
