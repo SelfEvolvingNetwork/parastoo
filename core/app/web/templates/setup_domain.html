@@ -66,6 +66,9 @@
     این سه رکورد را در پنل ثبت‌کننده دامنه‌تان بسازید و به IP سرور
     (<span class="mono">{{ server_ip or 'نامشخص' }}</span>) اشاره دهید.
     آدرس‌های فعال فعلی — پنل: <span class="mono">{{ panel }}</span> ، گیت: <span class="mono">{{ git }}</span> ، سایت‌ها: <span class="mono">*.{{ apps }}</span>
+    {% if not is_nip %}
+    <br>وضعیت HTTPS فعلی: {{ https_badge }}
+    {% endif %}
   </p>
 </section>
 
@@ -87,9 +90,13 @@ btn.addEventListener('click', async () => {
       (x.resolved ? `<span class="mono">${x.resolved}</span>` : 'پیدا نشد') +
       (x.expected ? ` (انتظار: <span class="mono">${x.expected}</span>)` : '') + '</div>'
     ).join('');
+    const httpsLine = j.https === 'ok' ? '✅ HTTPS فعال است — گواهی صادر و سالم است.'
+                    : j.https === 'error' ? '⚠️ گواهی برقرار است ولی سرویس پاسخ خطا می‌دهد.'
+                    : '⏳ HTTPS هنوز صادر نشده (طبیعی است تا DNS بنشیند و گواهی صادر شود).';
     const all = j.ok ? '<b style="color:#1e7e34">همه رکوردها آماده‌اند — می‌توانید HTTPS را فعال کنید.</b>'
                      : '<b style="color:#c0392b">هنوز همه رکوردها نشسته‌اند؛ در پنل ثبت‌کننده دامنه تنظیم کنید.</b>';
-    box.innerHTML = rows + '<div style="margin-top:.4rem">' + all + '</div>';
+    box.innerHTML = rows + '<div style="margin-top:.4rem">' + all + '</div>'
+                  + '<div class="muted small">' + httpsLine + '</div>';
   } catch (e) {
     box.textContent = 'بررسی ناموفق بود. دوباره تلاش کنید.';
   }

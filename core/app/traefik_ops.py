@@ -13,6 +13,8 @@ import secrets
 import socket
 from pathlib import Path
 
+import httpx
+
 from .config import settings
 
 try:
@@ -98,6 +100,32 @@ def render_dynamic(panel_domain: str, git_domain: str, tls_enabled: bool) -> str
     )
 
 
+# ---------- پروب HTTPS (v0.3.15) ----------
+
+# برای تست‌ها: transport اجباری — در تولید همیشه None
+_PROBE_TRANSPORT: httpx.BaseTransport | None = None
+
+
+def probe_https(host: str) -> str:
+    """پروب سرتاسری HTTPS پنل روی دامنهٔ داده‌شده — خروجی همیشه یکی از سه رشته:
+    ok     = دست‌دادن TLS سالم بود و پاسخ زیر ۵۰۰ آمد (گواهی صادر و معتبر است)
+    pending= DNS/شبکه/گواهی هنوز آماده نیست (اتصال برقرار نشد)
+    error  = وصل شد ولی پاسخ ۵xx (سرویس پشت گواهی مشکل دارد)
+    بدون استثنا — این پروب فقط «وضعیت» می‌گوید، هرگز مسیر فعال‌سازی را نمی‌بندد.
+    """
+    h = (host or "").strip().lower().rstrip(".")
+    if not h:
+        return "pending"
+    url = f"https://{h}/healthz"
+    try:
+        with httpx.Client(timeout=8.0, verify=True,
+                          transport=_PROBE_TRANSPORT) as cli:
+            r = cli.get(url)
+        return "ok" if r.status_code < 500 else "error"
+    except Exception:
+        return "pending"
+
+
 # ---------- بررسی DNS ----------
 
 def _resolve_a(host: str) -> str | None:
@@ -127,6 +155,49 @@ def check_dns(base_domain: str, server_ip: str) -> list[dict]:
             "ok": bool(server_ip and resolved and resolved == server_ip),
         })
     return out
+
+
+# ---------- خودترمیمی زون پایه (v0.3.15) ----------
+
+def sync_base_zone(db, base_domain: str) -> str:
+    """همگام‌سازی A رکوردهای زون پایه روی نیم‌سرور خودمان با IP سرور.
+
+    حلقهٔ کامل دامنه: زون (v0.3.9 provision) → فعال‌سازی (ویزارد/ورکر v0.3.14).
+    تا v0.3.15 این دو سرِ کوه بودند: اگر IP سرور عوض می‌شد یا رکوردهای زون
+    از فعال‌سازی جا می‌ماندند، check_dns برای همیشه شکست می‌خورد بی‌آنکه کسی
+    بفهمد چرا. اکنون هر apply_domain اگر زون پایه روی PDNS خودمان باشد،
+    ریشه/www/panel/git/apps/*.apps را با IP زنده بازنویسی می‌کند.
+    زونِ ناموجود یعنی DNS جای دیگری میزبانی می‌شود → بی‌صدا رد می‌شویم.
+    این گام بیمه است، نه پیش‌نیاز — هرگز استثنا نمی‌دهد و مسیر را نمی‌بندد.
+    """
+    from . import domains
+    from .services import dnsops
+
+    z = (base_domain or "").strip().lower().rstrip(".")
+    if not z:
+        return "no_domain"
+    try:
+        if not dnsops.available():
+            return "dns_unavailable"
+        try:
+            dnsops.get_zone(z)
+        except dnsops.DnsError as e:
+            return "no_zone" if e.status == 404 else f"zone_check_failed:{e.status}"
+        except dnsops.DnsUnavailable:
+            return "dns_unavailable"
+        ip = domains.server_ip(db)
+        if not ip:
+            return "no_ip"
+        n = 0
+        for name in ("", "www", "panel", "git", "apps", "*.apps"):
+            try:
+                dnsops.upsert_record(z, name, "A", ip)
+                n += 1
+            except Exception:
+                pass  # یک رکورد ناموفق نباید بقیه یا مسیر فعال‌سازی را ببندد
+        return f"updated:{n}/6"
+    except Exception as e:
+        return f"error:{type(e).__name__}"
 
 
 # ---------- اعمال تغییر دامنه ----------
@@ -177,6 +248,13 @@ def apply_domain(db, base_domain: str, acme_email: str, tls_enabled: bool) -> di
         "domain_tls": "1" if tls_enabled else "0",
         "domain_acme_email": acme_email,
     }, db)
+
+    # ۳.۵) خودترمیمی زون پایه روی PDNS خودمان (v0.3.15) — اگر زون اینجاست،
+    # رکوردها با IP زنده همگام می‌شوند تا حلقهٔ provision→activate بسته بماند
+    try:
+        result["zone_sync"] = sync_base_zone(db, base_domain)
+    except Exception:
+        result["zone_sync"] = "error"
 
     # ۴) سایت‌های موجود: زیردامنه جدید + بازسازی کانتینر با لیبل‌های جدید
     if Site is not None and dockerops.available():

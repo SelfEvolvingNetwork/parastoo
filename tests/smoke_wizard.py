@@ -173,6 +173,103 @@ with TestClient(app, follow_redirects=False) as c:
     check("استاتیک TLS روشن: ریدایرکت + ایمیل ACME",
           "redirections" in static and "tls@example.net" in static)
 
+    print("— خودترمیمی زون پایه و پروب HTTPS (v0.3.15) —")
+    import json as _json  # noqa: E402
+    import urllib.parse as _up  # noqa: E402
+    import httpx as _httpx  # noqa: E402
+    from app.services import dnsops as _dnsops  # noqa: E402
+
+    _zones2 = {"example.com.": {"kind": "Master", "rrsets": [
+        {"name": "example.com.", "type": "A", "ttl": 3600,
+         "records": [{"content": "1.1.1.1", "disabled": False}]},
+    ]}}
+
+    def _pdns2(request):
+        _path = _up.unquote(request.url.path)
+        p = _path[len("/api/v1"):] if _path.startswith("/api/v1") else _path
+        if p == "/servers/localhost":
+            return _httpx.Response(200, json={"version": "mock-4.9", "id": "localhost"})
+        if p == "/servers/localhost/zones" and request.method == "GET":
+            return _httpx.Response(200, json=[{"name": k, "kind": v["kind"], "serial": 1}
+                                              for k, v in _zones2.items()])
+        if p.startswith("/servers/localhost/zones/"):
+            zid = p[len("/servers/localhost/zones/"):]
+            if zid not in _zones2:
+                return _httpx.Response(404, json={"error": "Could not find domain"})
+            if request.method == "GET":
+                return _httpx.Response(200, json={"name": zid, "kind": "Master", "serial": 1,
+                                                  "rrsets": _zones2[zid]["rrsets"]})
+            if request.method == "PATCH":
+                b = _json.loads(request.content)
+                store = _zones2[zid]["rrsets"]
+                for rr in b.get("rrsets", []):
+                    store = [x for x in store
+                             if not (x["name"] == rr["name"] and x["type"] == rr["type"])]
+                    if rr.get("changetype") != "DELETE":
+                        store.append({"name": rr["name"], "type": rr["type"],
+                                      "ttl": rr.get("ttl", 3600),
+                                      "records": list(rr.get("records", []))})
+                _zones2[zid]["rrsets"] = store
+                return _httpx.Response(204)
+        return _httpx.Response(404, json={"error": "no route"})
+
+    _real_transport = _dnsops._FORCE_TRANSPORT
+    _real_ip = domains.server_ip
+    domains.server_ip = lambda db=None: "203.0.113.10"  # قطعیت تست: cache واقعی nip.io را دور بزن
+    _dnsops._FORCE_TRANSPORT = _httpx.MockTransport(_pdns2)
+    try:
+        db3 = SessionLocal()
+        _res = traefik_ops.sync_base_zone(db3, "example.com")
+        db3.close()
+        check("همگام‌سازی زون موجود → ۶ رکورد A بازنویسی شد",
+              _res == "updated:6/6", extra=str(_res))
+        _a_ok = True
+        for _nm in ("example.com.", "www.example.com.", "panel.example.com.",
+                    "git.example.com.", "apps.example.com.", "*.apps.example.com."):
+            _rr = next((x for x in _zones2["example.com."]["rrsets"]
+                        if x["name"] == _nm and x["type"] == "A"), None)
+            if not _rr or _rr["records"][0]["content"] != "203.0.113.10":
+                _a_ok = False
+        check("همهٔ A رکوردهای زون (ریشه/www/panel/git/apps/وایلکارد) به IP زنده رفتند", _a_ok)
+        db3 = SessionLocal()
+        _res2 = traefik_ops.sync_base_zone(db3, "missing.example.org")
+        db3.close()
+        check("زون ناموجود (DNS جای دیگر) → بی‌صدا رد می‌شود",
+              _res2 == "no_zone", extra=str(_res2))
+        db3 = SessionLocal()
+        _ap = traefik_ops.apply_domain(db3, "shop.example.net", "tls@example.net", True)
+        db3.close()
+        check("apply_domain گام همگام‌سازی زون را در نتیجه ثبت می‌کند (زون اینجا نیست → no_zone)",
+              _ap.get("zone_sync") == "no_zone" and _ap.get("files") is True)
+
+        def _probe_handler(request):
+            if request.url.host == "panel.good.example":
+                return _httpx.Response(200, json={"ok": True})
+            if request.url.host == "panel.err.example":
+                return _httpx.Response(502, text="bad gateway")
+            raise _httpx.ConnectError("no dns", request=request)
+
+        _real_probe = traefik_ops._PROBE_TRANSPORT
+        traefik_ops._PROBE_TRANSPORT = _httpx.MockTransport(_probe_handler)
+        try:
+            check("پروب HTTPS سالم → ok",
+                  traefik_ops.probe_https("panel.good.example") == "ok")
+            check("پروب HTTPS بدون DNS/گواهی → pending",
+                  traefik_ops.probe_https("panel.nodns.example") == "pending")
+            check("پروب HTTPS با خطای ۵xx → error",
+                  traefik_ops.probe_https("panel.err.example") == "error")
+            r = c.get("/setup/domain/check.json?domain=good.example")
+            check("check.json وضعیت HTTPS هم می‌دهد", r.status_code == 200
+                  and r.json().get("https") in ("ok", "pending", "error"))
+        finally:
+            traefik_ops._PROBE_TRANSPORT = _real_probe
+        r = c.get("/setup/domain")
+        check("صفحهٔ دامنه نشان وضعیت HTTPS را دارد (دامنهٔ واقعی)",
+              r.status_code == 200 and "وضعیت HTTPS فعلی" in r.text)
+    finally:
+        domains.server_ip = _real_ip
+        _dnsops._FORCE_TRANSPORT = _real_transport
+
     print("— فعال‌سازی خودگردان: انقضا و لغو —")
     domains.pending_set("late.example.org", "a@b.ir", True)
     db2 = SessionLocal()

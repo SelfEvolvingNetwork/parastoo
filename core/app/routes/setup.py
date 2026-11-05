@@ -115,6 +115,11 @@ def domain_page(
     base = domains.base()
     server_ip = domains.server_ip()
     records = traefik_ops.check_dns(base, server_ip)
+    # v0.3.15 — نشان وضعیت HTTPS فعال (پروب سرتاسری پنل)
+    _https = traefik_ops.probe_https(domains.panel())
+    https_badge = {"ok": "✅ فعال — گواهی سالم است",
+                   "error": "⚠️ گواهی برقرار است ولی سرویس خطا می‌دهد",
+                   "pending": "⏳ در انتظار صادرشدن گواهی"}.get(_https, "—")
     return render("setup_domain.html", ctx(
         request, user,
         base=base, panel=domains.panel(), git=domains.git(),
@@ -122,6 +127,7 @@ def domain_page(
         acme_email=domains.acme_email(),
         is_nip=base.endswith(".nip.io"),
         server_ip=server_ip, records=records,
+        https_badge=https_badge,
         pending=domains.pending_get(),
     ))
 
@@ -136,7 +142,10 @@ def domain_check(
     if not valid_domain(domain):
         return JSONResponse({"ok": False, "error": "invalid_domain"})
     records = traefik_ops.check_dns(domain, domains.server_ip())
-    return JSONResponse({"ok": all(r["ok"] for r in records), "records": records})
+    # v0.3.15 — پروب HTTPS: گواهی صادر شده است یا هنوز در انتظار است
+    https = traefik_ops.probe_https(f"panel.{domain}")
+    return JSONResponse({"ok": all(r["ok"] for r in records), "records": records,
+                         "https": https})
 
 
 @router.post("/setup/domain")
