@@ -32,7 +32,7 @@
 - **interpolation کمپوز `$VAR` و `$()`های اسکریپت entry را خالی می‌کند.** `printf '%s' "$KEY"` در یامِ compose بدون فرار، هنگام up به `printf '%s' ""` فرومی‌کاهد → کلید API تهی در volume. دفاع: متغیرهای واقعی با `$$` در compose؛ چک smoke اسکیپ تک-`$`.
 - **PDNS ≥ 4.8 فلگ `--master` را ندارد** → `--primary=yes` (وگرنه Fatal در اولین بوت).
 - **مالکیت volume:** ایمیج pdns با کاربر 953 اجرا می‌شود ولی volume نام‌دار root-owned است → سرویس یک‌بارهٔ `dns-init` با chown به uid کاربر pdns و `depends_on: service_completed_successfully`.
-- **بایند TCP 0.0.0.0:53 با loopbackِ systemd-resolved در سطح کرنل تداخل می‌کند** (EADDRINUSE واقعی) → `PARASTOO_DNS_BIND_IP` در compose + مستند راه‌حل بدون دست‌زدن به resolved.
+- **بایند TCP 0.0.0.0:53 با loopbackِ systemd-resolved در سطح کرنل تداخل می‌کند** (EADDRINUSE واقعی) → `PARASTOO_DNS_BIND_IP` در compose + مستند راه‌حل بدون دست‌زدن به resolved. دفاع v0.3.18: نصبِ تازه خودش resolved را می‌سنجد (گوش‌دادن روی 127.0.0.53:53) و بایند DNS را خودکار به IP عمومی می‌بندد — قدم دستی حذف شد.
 - **ایمیج pdns هیچ wget/curl/dig ندارد و `pdns_control ping` ندارد** → healthcheck فقط با تست controlsocket ممکن است.
 
 ## دامنه و HTTPS — درس میدانی زندهٔ v0.3.16–v0.3.17

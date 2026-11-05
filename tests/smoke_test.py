@@ -842,6 +842,16 @@ check("بدون TLS: هدف http و بدون گواهی",
 check("بدون دامنهٔ پایه: روتر ریشه ساخته نمی‌شود",
       "noop@internal" not in _rd("panel.example.com", "git.example.com", True))
 
+print("— درس میدانی v0.3.18: EADDRINUSE پورت ۵۳ در نصب تازه —")
+_ins = (ROOT / "install.sh").read_text()
+check("install.sh گوش‌دادن resolved روی 127.0.0.53 را می‌سنجد",
+      "127.0.0.53:53" in _ins and "ss -tln" in _ins)
+check("بایند DNS خودکار به IP عمومی می‌رود و در .env نوشته می‌شود",
+      "PARASTOO_DNS_BIND_IP=\"${PUBLIC_IP}\"" in _ins
+      and "PARASTOO_DNS_BIND_IP=${PARASTOO_DNS_BIND_IP}" in _ins)
+check("صریح‌بودن env بر تشخیص خودکار مقدم است",
+      "-z \"${PARASTOO_DNS_BIND_IP:-}\"" in _ins)
+
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)
