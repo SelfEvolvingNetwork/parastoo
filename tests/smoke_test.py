@@ -712,6 +712,12 @@ try:
         check("ساخت زون دامنهٔ اصلی → ns1/ns2/panel/git/apps/وایلدکارد", r.status_code == 200
               and ("ns1.127.0.0.1.nip.io", "A") in recs and ("ns2.127.0.0.1.nip.io", "A") in recs
               and ("panel.127.0.0.1.nip.io", "A") in recs and ("*.apps.127.0.0.1.nip.io", "A") in recs)
+        # درس میدانی v0.3.13 (zeolitecenter.ir): پاوردی‌ان‌اس واقعی محتوای NS بدون
+        # نقطهٔ پایانی را با «Not in expected format» رد می‌کند؛ ماک قبلی این را نمی‌دید.
+        _ns_bad = [r["content"] for z in _pzones.values() for rr in z["rrsets"]
+                   if rr["type"] == "NS" for r in rr.get("records", [])
+                   if not str(r["content"]).endswith(".")]
+        check("محتوای NS در provision مطلق است (FQDN با نقطهٔ پایانی)", not _ns_bad)
 
         r = c.post("/api/dns/zones/customer-one.example.com/records",
                    json={"name": "test", "type": "A", "content": "1.2.3.4"}, headers=DEVH)

@@ -324,6 +324,10 @@ def provision_zone(name: str, db=None, kind: str | None = None) -> dict:
         raise DnsError("IP عمومی سرور تشخیص داده نشد؛ PARASTOO_PUBLIC_IP را در .env ست کنید", 500)
     ttl = settings.DNS_DEFAULT_TTL
     ns = nameservers(db) or [f"ns1.{base}", f"ns2.{base}"]
+    # درس میدانی v0.3.13: پاوردی‌ان‌اس محتوای NS/SOA-MNAME را باید FQDN مطلق
+    # (با نقطهٔ پایانی) بگیرد؛ وگرنه «Not in expected format» می‌دهد (آزمون زنده
+    # zeolitecenter.ir، 2026-11-05 — اولین provision میدانی).
+    ns = [h.rstrip(".") + "." for h in ns]
     ns1 = ns[0]
     rrsets = [
         _rr(_fqdn(zone), "NS", ns, ttl),
@@ -345,5 +349,5 @@ def provision_zone(name: str, db=None, kind: str | None = None) -> dict:
         if e.status == 409:
             raise DnsError("این زون از قبل وجود دارد", 409)
         raise
-    replace_soa(zone, ns1, f"hostmaster.{base}")
+    replace_soa(zone, ns1, f"hostmaster.{base}.")
     return get_zone(zone)
