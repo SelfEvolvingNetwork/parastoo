@@ -11,6 +11,7 @@
 """
 import secrets
 import socket
+from datetime import datetime
 from pathlib import Path
 
 from .config import settings
@@ -19,6 +20,34 @@ try:
     from .models import Site
 except ImportError:  # برای تست‌های مستقل
     Site = None
+
+
+def nudge() -> None:
+    """Guarantee Traefik docker-router sync with one file-provider reload.
+
+    Traefik's docker provider is event-driven with no periodic poll; if the
+    container start/stop event is dropped under event load (e.g. during a
+    concurrent image build) the site router is not created/removed until the
+    NEXT event — measured in the field (2026-11-05): after some publishes the
+    site stayed 404 for 30+ seconds. The file provider has watch:true on the
+    dynamic dir, and every change there rebuilds the whole config including a
+    fresh docker listing. Rewriting this valid-empty YAML marker is that
+    reliable trigger. Best-effort: any failure here is swallowed — it must
+    never break the publish/delete flow itself.
+    """
+    try:
+        dyn = Path(settings.CONFIG_DIR) / "dynamic"
+        dyn.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().isoformat(timespec="seconds")
+        (dyn / ".parastoo-sync.yml").write_text(
+            "# parastoo sync marker — rewriting this file triggers a Traefik reload\n"
+            "http:\n"
+            "  routers: {}\n"
+            "  services: {}\n"
+            f"# updated: {stamp}\n",
+        )
+    except OSError:
+        pass
 
 _STATIC_TEMPLATE = """\
 # پیکربندی استاتیک ترافیک — ساخته/به‌روزرسانی‌شده توسط پرستو

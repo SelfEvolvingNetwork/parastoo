@@ -60,9 +60,10 @@ def charge_running_sites(db: Session, now=None) -> None:
 
 def _pause_site(db: Session, site: Site, user: User) -> None:
     """توقف سایت بدحساب — خرابی داکر وضعیت را error می‌کند، نه crash ورکر."""
-    from .. import dockerops
+    from .. import dockerops, traefik_ops
     try:
         dockerops.stop_site(site.slug)
+        traefik_ops.nudge()  # روتر سایتِ متوقف‌شده بلافاصله حذف شود
         site.status = "paused"
         print(f"[billing] site {site.slug} paused (balance {user.balance})")
     except Exception as e:
