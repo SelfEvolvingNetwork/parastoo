@@ -173,7 +173,7 @@ def main() -> int:
         results.append((SKIP, "dev-report", ""))
         print("[−] dev-updates     — (وابسته به توکن)")
         results.append((SKIP, "dev-updates", ""))
-        print("[−] dev-agent       پل عامل exec/netcheck/sql — (وابسته به توکن)")
+        print("[−] dev-agent       پل عامل netcheck/sql (exec از v0.3.11 حذف شده) — (وابسته به توکن)")
         results.append((SKIP, "dev-agent", ""))
     else:
         h = {"X-Dev-Token": dev_token}
