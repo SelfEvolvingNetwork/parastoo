@@ -22,6 +22,7 @@
 | الگوی سایت‌های کاربران | `http://<slug>.apps.193.151.142.128.nip.io` |
 | دامنهٔ پایهٔ سرور (BASE_DOMAIN) | `193.151.142.128.nip.io` |
 | فایل امن محلی (توکن‌ها) | `/home/z/my-project/parastoo/.secrets/github.env` — chmod 600، gitignored، مستثنا از rsync انتشار |
+| **ایجنت دسترسی مستقل (access-agent)** | مخزن `https://github.com/SelfEvolvingNetwork/access-agent` — کلون محلی `/home/z/my-project/access-agent`؛ نصب یک‌فرمانی روی سرور؛ **مستقل از پرستو و داکر** (تصمیم معماری مالک، 2026-11-05) |
 | CI مخزن | `.github/workflows/ci.yml` (۴ سوئیت دودی + سینتکس شل، روی هر push به main) |
 | هارنس راستی‌آزمایی زندهٔ عمومی | `tests/e2e_live.py` (لایهٔ الف/ب گام M6؛ فقط خواندنی) |
 | هارنس کاربر-محور زنده | `tests/e2e_user.py` (لایهٔ جِ M6؛ نوشتاری فقط در حالت dev، با پاکسازی خودکار) |
@@ -33,6 +34,8 @@ set -a; . /home/z/my-project/parastoo/.secrets/github.env; set +a
 ```
 
 اگر توکن گیت‌هاب عوض شد، فقط همین فایل را به‌روز کن — گیتِ کلون با credential-helper (`store --file=.secrets/.git-credentials`) خودکار از آن می‌خواند و توکن هرگز در URL ریموت یا تاریخچه نمی‌نشیند.
+
+فایل `.secrets/access-agent.env` هم سه مقدار اتصال به ایجنت دسترسی را دارد: `ACCESS_AGENT_URL`، `ACCESS_AGENT_CERT_SHA256`، `ACCESS_AGENT_AGENT_TOKEN` (پس از نصب مالک پر می‌شود؛ قرارداد کامل اتصال: `docs/AGENT_PROTOCOL.fa.md` در مخزن access-agent).
 
 ---
 
@@ -245,6 +248,10 @@ curl -s -H "X-Dev-Token: $PARASTOO_DEV_TOKEN" -H "Content-Type: application/json
 
 **قاعدهٔ استفاده:** قبل از فراخوانی هر سه مسیر، `dev_mode` را از `/api/version` چک کن؛ اگر false است، این ابزارها اصلاً وجود ندارند (404) و عامل باید مانند گذشته فقط لایهٔ عمومی را ببیند و نیاز سروری را برای مالک گزارش کند.
 
+### مسیر مستقل access-agent — وقتی پرستو 502 است (معماری جدید، 2026-11-05)
+
+از مخزن `SelfEvolvingNetwork/access-agent` (v0.1.0): سرویس systemd مستقل روی سرور که به عامل exec/status/token می‌دهد — **چرخهٔ توسعه–تست با کرش پرستو نمی‌شکند** و عامل می‌تواند نصب/تعمیر/بازراه‌اندازی خودِ پرستو را خودگردان انجام دهد. قرارداد اتصال کامل (پین گواهی با اثرانگشت، endpoints، سقف‌ها، خطوط قرمز ویژه): `docs/AGENT_PROTOCOL.fa.md` همان مخزن. قاعدهٔ عامل: اگر `/api/version` پرستو پاسخ نداد، اول وضعیت را از access-agent بگیر (`/healthz` → `/api/status` → `/api/exec`)، علت را با لاگ سرور پیدا کن، تعمیر را انجام بده و نتیجهٔ کامل را به مالک گزارش کن.
+
 ---
 
 ## ۷) خطوط قرمز ایمنی (غیرقابل مذاکره)
@@ -273,6 +280,7 @@ curl -s -H "X-Dev-Token: $PARASTOO_DEV_TOKEN" -H "Content-Type: application/json
 - ✓ هارنس کاربر-محور دائمی: `tests/e2e_user.py` — L0 خواندنی همیشه؛ L1 نوشتاری فقط حالت dev با پاکسازی خودکار.
 - ✓ حالت توسعه روی نصب زنده روشن شده (مالک — 2026-11-05: `dev_mode=true` در `/api/version` تأیید شد).
 - ✓ **نیم‌سرور اختصاصی v0.3.9:** سرویس `dns` (PowerDNS 4.9.18) در compose + `services/dnsops.py` (کلاینت REST، بدون shell — قاعدهٔ طلایی) + UI `/admin/dns` + API `/api/dns/*` (گارد: نشست ادمین در هر حالتی | X-Dev-Token فقط dev؛ ثبت audit) — عامل از این پس زون/رکورد دامنهٔ مالک و مشتری‌ها را خودگردان می‌سازد؛ چک‌های زندهٔ `dev-dns-status/roundtrip` به هارنس اضافه شد (SKIP تمیز تا استقرار). راهنمای کامل مالک: `docs/DOMAIN_DNS_GUIDE.fa.md`.
+- ✓ **ایجنت دسترسی مستقل v0.1.0 (2026-11-05، به درخواست مالک برای شکستن تک‌نقطهٔ شکست):** مخزن جدید `SelfEvolvingNetwork/access-agent` — سرویس پایتون-استاندارد + systemd بدون داکر، exec پل با سقف سخت، افشای نشست‌محور پات مالک با رکورد grant، audit فقط‌افزایشی، CLI مالک، bootstrap یک‌فرمانی با ارتقای حفظ-اسرار؛ smoke ۵۲ چک + e2e نصب/ارتقا/حذف ۳۱ چک، همه سبز. اقدام مالک: نصب یک‌فرمانی (README) و دادن URL/اثرانگشت گواهی/توکن عامل به عامل.
 
 **شکاف‌ها / گام‌های اصولی بعدی ✗ (اولویت‌دار):**
 
