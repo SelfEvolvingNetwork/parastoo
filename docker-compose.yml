@@ -158,27 +158,58 @@ services:
       - traefik.http.routers.parastoo-panel.tls.certresolver=le
       - traefik.http.services.parastoo-panel.loadbalancer.server.port=8000
 
-  # ---------- نیم‌سرور اختصاصی (v0.3.9) — PowerDNS Authoritative ----------
-  # دامنه‌های مشتری + دامنهٔ اصلی پرستو را همین‌جا جواب می‌دهیم (پورت ۵۳ TCP+UDP).
+  # ---------- نیم‌سرور اختصاصی (v0.3.9؛ تعمیر میدانی v0.3.12) — PowerDNS Authoritative ----------
+  # دامنه‌های مشتری + دامنهٔ اصلی پرستو را همین‌جا جواب می‌دهند (پورت ۵۳ TCP+UDP).
   # نکتهٔ نسخهٔ ۴۹: متغیرهای PDNS_* این ایمیج به کانفیگ ترجمه نمی‌شوند (issue #14951)
   # → همهٔ تنظیمات را صریح با فلگ خط فرمان می‌دهیم. کلید API: اگر .env مقدار
   # PARASTOO_DNS_API_KEY داشته باشد همان، وگرنه اولین اجرا تولید و در volume مشترک
   # dns_meta می‌نویسد که هسته از همان می‌خواند (صفر-پیکربندی برای مالک).
   # API فقط روی شبکهٔ داخلی در دسترس است (۸۰۸۱ پابلیش نمی‌شود).
+  #
+  # سه درس میدانی v0.3.12 (هر سه فقط روی نصب واقعی آشکار شدند؛ تست محلی compose را
+  # واقعاً بالا نمی‌آورد):
+  # (۱) interpolation کمپوز: هر $WORD داخل command با متغیر compose جایگزین می‌شود؛
+  #     متغیرهای shell باید $$ باشند — وگرنه $KEY → "" و کلید API تهی ثبت می‌شد و
+  #     pdns بی‌کلید بالا می‌آمد (هر درخواست 401). متغیرهای واقعی compose تک-$ می‌مانند.
+  # (۲) مالکیت volume: ایمیج با کاربر pdns اجرا می‌شود ولی volume نام‌دار root-owned
+  #     ساخته می‌شود → سرویس یک‌بارهٔ dns-init مالکیت را به uid کاربر pdns ایمیج می‌دهد.
+  # (۳) پورت ۵۳: systemd-resolved روی 127.0.0.53:53 گوش می‌دهد و بایند TCP
+  #     0.0.0.0:53 در سطح کرنل EADDRINUSE می‌گیرد → اگر سرور resolved داشت، در .env
+  #     سرور PARASTOO_DNS_BIND_IP=<IPv4-عمومی> بگذارید (پیش‌فرض 0.0.0.0). همچنین نام
+  #     تنظیم master در PDNS≥4.8 حذف شده → --primary=yes (Fatal: unknown setting).
+  dns-init:
+    image: powerdns/pdns-auth-49:4.9.18
+    container_name: parastoo-dns-init
+    user: "0:0"
+    restart: "no"
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        chown -R "$$(id -u pdns):$$(id -g pdns)" /var/lib/powerdns /meta
+    volumes:
+      - dns_data:/var/lib/powerdns
+      - dns_meta:/meta
+    networks:
+      - internal
+
   dns:
     image: powerdns/pdns-auth-49:4.9.18
     container_name: parastoo-dns
     restart: unless-stopped
     entrypoint: /bin/sh
+    depends_on:
+      dns-init:
+        condition: service_completed_successfully
     command:
       - -c
       - |
         set -e
         mkdir -p /var/lib/powerdns /meta
         KEY="${PARASTOO_DNS_API_KEY:-}"
-        if [ -z "$KEY" ] && [ -s /meta/api-key ]; then KEY="$(cat /meta/api-key)"; fi
-        if [ -z "$KEY" ]; then KEY="$(tr -dc a-f0-9 < /dev/urandom | head -c 48)"; fi
-        printf '%s' "$KEY" > /meta/api-key
+        if [ -z "$$KEY" ] && [ -s /meta/api-key ]; then KEY="$$(cat /meta/api-key)"; fi
+        if [ -z "$$KEY" ]; then KEY="$$(tr -dc a-f0-9 < /dev/urandom | head -c 48)"; fi
+        printf '%s' "$$KEY" > /meta/api-key
         chmod 600 /meta/api-key
         [ -s /var/lib/powerdns/pdns.sqlite3 ] || pdnsutil create-schema \
           --launch=gsqlite3 --gsqlite3-database=/var/lib/powerdns/pdns.sqlite3
@@ -187,26 +218,29 @@ services:
           --gsqlite3-database=/var/lib/powerdns/pdns.sqlite3 \
           --local-address=0.0.0.0 \
           --local-port=53 \
-          --master=yes \
+          --primary=yes \
           --allow-axfr-ips=${PARASTOO_DNS_ALLOW_AXFR:-127.0.0.0/8,::1} \
           --api=yes \
           --webserver=yes \
           --webserver-address=0.0.0.0 \
           --webserver-port=8081 \
           --webserver-allow-from=0.0.0.0/0,::/0 \
-          --api-key="$KEY" \
+          --api-key="$$KEY" \
           --default-soa-content='ns1.@ hostmaster.@ 0 10800 3600 604800 3600' \
           --version-string=parastoo
     environment:
       PARASTOO_DNS_API_KEY: ${PARASTOO_DNS_API_KEY:-}
     ports:
-      - "53:53"
-      - "53:53/udp"
+      - "${PARASTOO_DNS_BIND_IP:-0.0.0.0}:53:53"
+      - "${PARASTOO_DNS_BIND_IP:-0.0.0.0}:53:53/udp"
     volumes:
       - dns_data:/var/lib/powerdns
       - dns_meta:/meta
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- --header=\"X-API-Key: $$(cat /meta/api-key)\" http://127.0.0.1:8081/api/v1/servers/localhost > /dev/null 2>&1 || exit 1"]
+      # ایمیج pdns هیچ کلاینت HTTP/دستگاه DNS ندارد (wget/curl/dig نیست) و dash
+      # /dev/tcp هم ندارد؛ مطمئن‌ترین سیگنال زنده‌بودن: controlsocket که فقط
+      # pdns_serverِ واقعاً اجراشده می‌سازد (exit-code pdns خودش با restart policy پوشش داده می‌شود).
+      test: ["CMD-SHELL", "test -S /var/run/pdns/pdns.controlsocket || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5

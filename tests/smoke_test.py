@@ -578,6 +578,25 @@ try:
     check("report با توکن dev → 200 (بقیهٔ پل‌ها پابرجا)", r.status_code == 200
           and "app" in (r.json() if r.status_code == 200 else {}))
 
+    print("— نیم‌سرور DNS: درس‌های میدانی v0.3.12 (ترکیب compose) —")
+    _dns_block = compose_src[compose_src.index("  dns-init:"):]
+    _dns_svc = _dns_block[_dns_block.index("  dns:\n"):]
+    _dns_svc = _dns_svc[:_dns_svc.index("  # ----------")]
+    check("متغیرهای shell در اسکریپت dns دوباره-دلار شده‌اند ($$KEY — وگرنه interpolate خالی)",
+          "$$KEY" in _dns_svc and '"$KEY"' not in _dns_svc)
+    check("متغیرهای واقعی compose تک-$ مانده‌اند (KEY از PARASTOO_DNS_API_KEY)",
+          'KEY="${PARASTOO_DNS_API_KEY:-}"' in _dns_svc)
+    check("نام تنظیم master در PDNS 4.9 → primary اصلاح شده (Fatal: unknown setting)",
+          "--primary=yes" in _dns_svc and "--master=yes" not in _dns_svc)
+    check("بایند ۵۳ برای سرورهای systemd-resolved قابل تنظیم است (PARASTOO_DNS_BIND_IP)",
+          "${PARASTOO_DNS_BIND_IP:-0.0.0.0}:53:53" in _dns_svc
+          and "${PARASTOO_DNS_BIND_IP:-0.0.0.0}:53:53/udp" in _dns_svc)
+    check("healthcheck با controlsocket است (wget/curl در ایمیج pdns وجود ندارد)",
+          'test: ["CMD-SHELL", "test -S /var/run/pdns/pdns.controlsocket || exit 1"]' in _dns_svc)
+    check("dns-init مالکیت volumeها را به uid کاربر pdns می‌دهد و dns پس از تکمیلش بالا می‌آید",
+          'user: "0:0"' in _dns_block and "$$(id -u pdns)" in _dns_block
+          and "condition: service_completed_successfully" in _dns_svc)
+
     print("— پل دسترسی عامل: گارد توکن —")
     r = c.get("/api/dev/netcheck?url=ftp://x.example", headers=DEVH)
     check("netcheck با scheme نامعتبر → 400", r.status_code == 400)

@@ -83,6 +83,15 @@ dig @127.0.0.1 version.bind CH TXT   # یا: docker logs parastoo-dns --tail 20
 
 کلید API خودکار ساخته می‌شود (volume مشترک `dns_meta`)؛ هیچ تنظیمی لازم نیست. اگر خواستید دستی تعیین کنید: در `.env` سرور `PARASTOO_DNS_API_KEY="یک-رشتهٔ-تصادفی"` بگذارید و `docker compose up -d dns core` بزنید.
 
+**نکتهٔ سرورهای اوبونتو (systemd-resolved):** اگر کانتینر `dns` بالا نمی‌آمد و لاگش `failed to bind host port 0.0.0.0:53/tcp: address already in use` بود، علت این است که systemd-resolved روی `127.0.0.53:53` گوش می‌دهد و بایند TCP روی `0.0.0.0:53` تداخل می‌کند. نیازی به دست‌زدن به resolved نیست — فقط در `.env` سرور بگذارید و کانتینر را بازسازی کنید:
+
+```bash
+echo 'PARASTOO_DNS_BIND_IP="<IPv4-عمومی-سرور>"' | sudo tee -a /opt/parastoo/.env
+cd /opt/parastoo && sudo docker compose up -d --force-recreate dns
+```
+
+در این حالت فقط پورت ۵۳ روی IP عمومی بایند می‌شود — دقیقاً همان چیزی که کلاینت‌های بیرونی و رکوردهای ns1/ns2 ایرنیک لازم دارند.
+
 ---
 
 ## بخش ۳ — وصل کردن `zeolitecenter.ir` به پرستو
@@ -240,7 +249,7 @@ dig panel.zeolitecenter.ir @8.8.8.8 A     # باید IP سرور را بدهد
 | `dig @8.8.8.8` جواب می‌دهد ولی سایت باز نمی‌شود | ترافیک/ویزارد هنوز روی دامنهٔ جدید نیست | پنل → دامنه‌ها → اعمال دامنه (گام ۶ بخش ۳) |
 | گواهی HTTPS نمی‌آید | Let's Encrypt هنوز نمی‌تواند به `panel.دامنه` برسد | اول `dig panel.دامنه @8.8.8.8 A` درست شود، بعد دوباره فعال‌سازی |
 | صفحهٔ DNS پنل: «در دسترس نیست» | کانتینر `dns` پایین است | سرور: `docker compose up -d dns`؛ لاگ: `docker logs parastoo-dns --tail 50` |
-| پورت ۵۳ اشغال بود در استقرار | سرویس DNS دیگرِ هاست (مثلاً bind/systemd-resolved شبکه‌ای) | `ss -lntup \| grep :53` روی هاست؛ حلقه‌اش با `systemctl disable --now <سرویس>` |
+| کانتینر dns با `EADDRINUSE` پورت ۵۳ بالا نمی‌آید | systemd-resolved روی 127.0.0.53 گوش می‌دهد؛ بایند TCP 0.0.0.0 تداخل می‌کند | راه‌حل بخش ۲ بالا: `PARASTOO_DNS_BIND_IP=<IPv4-عمومی>` در `.env` + `up -d --force-recreate dns` (بدون دست‌زدن به resolved) |
 | تغییر رکورد اعمال نمی‌شود | کش TTL | صبر به اندازهٔ TTL رکورد قبلی؛ یا TTL را موقتاً ۶۰ بگذارید |
 | زون مشتری ساخته نمی‌شود: «از قبل وجود دارد» | ۴۰۹ از PowerDNS | صفحهٔ همان زون را باز کنید و رکوردهایش را ویرایش کنید |
 
