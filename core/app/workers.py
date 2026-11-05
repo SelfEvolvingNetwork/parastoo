@@ -234,6 +234,10 @@ def domain_once() -> None:
     """
     db = SessionLocal()
     try:
+        # v0.3.16 — نظافت دوره‌ای پوشهٔ داینامیک: فایل پنهانِ جا مانده
+        # کل فایل‌پروایدر ترافیک را می‌شکند (درس میدانی؛ LESSONS)
+        for gone in traefik_ops.clean_dynamic_dir():
+            print(f"[parastoo] dynamic dir: removed legacy {gone}")
         if not db.query(User).filter(User.is_admin.is_(True)).first():
             return  # ویزارد هنوز کامل نشده
         p = domains.pending_get(db)

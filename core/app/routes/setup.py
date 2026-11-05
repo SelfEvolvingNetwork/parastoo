@@ -16,7 +16,7 @@ from ..deps import (admin_guard, ctx, get_current_user, redirect, render,
 from ..db import get_db
 from ..models import User
 from ..security import (check_setup_token, hash_password, make_gate, read_gate)
-from ..validation import valid_domain
+from ..validation import acme_email_error, valid_domain
 
 router = APIRouter()
 
@@ -168,12 +168,14 @@ def domain_apply(
             # v0.3.14 — بن‌بست نیست؛ فعال‌سازی زمان‌بندی می‌شود و ورکر هسته
             # هر ۶۰ ثانیه چک می‌کند تا پس از انتشار DNS خودش اعمال کند
             # (دستور مالک: «فرایندها را انجام بده و منتظر نباش؛ خودش درست می‌شود»).
-            if "@" not in acme_email.strip():
-                return redirect("/setup/domain?m=domain_invalid")
+            err = acme_email_error(acme_email)
+            if err:
+                return redirect(f"/setup/domain?m={err}")
             domains.pending_set(base_domain, acme_email.strip(), True)
             return redirect("/setup/domain?m=domain_scheduled")
-        if "@" not in acme_email.strip():
-            return redirect("/setup/domain?m=domain_invalid")
+        err = acme_email_error(acme_email)
+        if err:
+            return redirect(f"/setup/domain?m={err}")
     result = traefik_ops.apply_domain(db, base_domain,
                                       acme_email.strip(), want_tls)
     if not result["files"]:

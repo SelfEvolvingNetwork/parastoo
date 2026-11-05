@@ -785,6 +785,39 @@ try:
 finally:
     _settings.DEV_MODE, _settings.DEV_TOKEN = _old_dev, _old_token
 
+print("— درس میدانی v0.3.16: ایمیل ACME + نظافت پوشهٔ داینامیک —")
+import tempfile as _tmpmod  # noqa: E402
+
+from app.config import settings as _cfg  # noqa: E402
+from app.validation import acme_email_error  # noqa: E402
+from app.traefik_ops import clean_dynamic_dir  # noqa: E402
+
+check("ایمیل عمومی سالم → None", acme_email_error("rulingcode@gmail.com") is None)
+check("ایمیل بدون @ → email_invalid", acme_email_error("mohsen") == "email_invalid")
+check("ایمیل دامنهٔ .local → email_nonpublic_domain",
+      acme_email_error("mohsen@parastoo.local") == "email_nonpublic_domain")
+check("ایمیل دامنهٔ .localhost → email_nonpublic_domain",
+      acme_email_error("a@b.localhost") == "email_nonpublic_domain")
+
+_dyn = Path(_tmpmod.mkdtemp(prefix="parastoo-dyn-")) / "dynamic"
+_dyn.mkdir(parents=True)
+(_dyn / "routers.yml").write_text("http: {}")
+(_dyn / ".parastoo-sync.yml").write_text("junk")
+(_dyn / "w.tmp").write_text("junk")
+(_dyn / "custom.yml").write_text("http:\n  routers: {}\n")
+_old_cfg = _cfg.CONFIG_DIR
+try:
+    _cfg.CONFIG_DIR = str(_dyn.parent)
+    check("فایل پنهان و موقت حذف شد",
+          sorted(clean_dynamic_dir()) == [".parastoo-sync.yml", "w.tmp"])
+    check("routers.yml دست‌نخورده ماند", (_dyn / "routers.yml").is_file())
+    check("yml آشکارِ مالک حذف نشد", (_dyn / "custom.yml").is_file())
+    check("دور دوم چیزی برای حذف ندارد", clean_dynamic_dir() == [])
+    _cfg.CONFIG_DIR = "/tmp/parastoo-no-such-dir-xyz"
+    check("پوشهٔ ناموجود → بدون خطا", clean_dynamic_dir() == [])
+finally:
+    _cfg.CONFIG_DIR = _old_cfg
+
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

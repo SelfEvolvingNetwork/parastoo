@@ -202,6 +202,31 @@ def sync_base_zone(db, base_domain: str) -> str:
 
 # ---------- اعمال تغییر دامنه ----------
 
+def clean_dynamic_dir() -> list[str]:
+    """حذف فایل‌های پنهان/موقت از پوشهٔ داینامیک ترافیک — خودترمیمی v0.3.16.
+
+    درس میدانی: فایل‌پروایدر ترافیک همهٔ فایل‌های پوشه را می‌خواند و یک
+    فایل جا مانده از نسخه‌های اولیه (.parastoo-sync.yml — نشانگر sync
+    طرح قدیمی) کل بیلد کانفیگ را می‌شکند: «routers cannot be a standalone
+    element» → نه روتری ساخته می‌شود (حتی با routers.yml سالم) و نه
+    گواهی‌ای صادر می‌شود؛ تنها علامت، خطای ERR در لاگ ترافیک است.
+    فایل‌های آشکار .yml (احتمالاً پیکربندی دستی مالک) حذف نمی‌شوند.
+    """
+    removed: list[str] = []
+    dyn = Path(settings.CONFIG_DIR) / "dynamic"
+    if not dyn.is_dir():
+        return removed
+    for f in sorted(dyn.iterdir()):
+        if f.is_file() and (f.name.startswith(".")
+                            or f.name.endswith((".tmp", ".bak", "~"))):
+            try:
+                f.unlink()
+                removed.append(f.name)
+            except OSError:
+                continue  # یک فایل مقاوم نباید بقیه یا فراخوان را ببندد
+    return removed
+
+
 def apply_domain(db, base_domain: str, acme_email: str, tls_enabled: bool) -> dict:
     """اعمال دامنه جدید: فایل‌ها + دیتابیس + ترافیک + سایت‌های موجود."""
     from . import dockerops, domains
@@ -218,6 +243,7 @@ def apply_domain(db, base_domain: str, acme_email: str, tls_enabled: bool) -> di
     dyn_dir = cfg_dir / "dynamic"
     try:
         dyn_dir.mkdir(parents=True, exist_ok=True)
+        result["dynamic_cleaned"] = clean_dynamic_dir()  # v0.3.16 — پیش از نوشتن
         static_path = cfg_dir / "traefik.yml"
         old_static = static_path.read_text() if static_path.exists() else ""
         new_static = render_static(tls_enabled, acme_email)

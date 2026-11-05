@@ -34,3 +34,8 @@
 - **مالکیت volume:** ایمیج pdns با کاربر 953 اجرا می‌شود ولی volume نام‌دار root-owned است → سرویس یک‌بارهٔ `dns-init` با chown به uid کاربر pdns و `depends_on: service_completed_successfully`.
 - **بایند TCP 0.0.0.0:53 با loopbackِ systemd-resolved در سطح کرنل تداخل می‌کند** (EADDRINUSE واقعی) → `PARASTOO_DNS_BIND_IP` در compose + مستند راه‌حل بدون دست‌زدن به resolved.
 - **ایمیج pdns هیچ wget/curl/dig ندارد و `pdns_control ping` ندارد** → healthcheck فقط با تست controlsocket ممکن است.
+
+## دامنه و HTTPS — درس میدانی زندهٔ v0.3.16
+
+- **فایل پنهانِ جا مانده در `config/dynamic/` کل فایل‌پروایدر ترافیک را می‌شکند.** نشانگر sync نسخه‌های اولیه (`.parastoo-sync.yml`) در پوشه ماند؛ ترافیک همهٔ فایل‌های پوشه را می‌خواند و «routers cannot be a standalone element» می‌دهد — نتیجه: حتی با `routers.yml` سالم هیچ روتری ساخته نمی‌شود و هیچ گواهی‌ای صادر نمی‌شود؛ تنها علامت، خطای ERR در لاگ ترافیک است (پنل/گیت روی همهٔ hostها 404 یا گواهی پیش‌فرض). دفاع: `clean_dynamic_dir()` — نظافت فایل‌های پنهان/موقت در هر تیک ورکر دامنه + پیش از نوشتن در `apply_domain`؛ فایل‌های آشکار `.yml` (پیکربندی دستی مالک) دست‌نخورده می‌مانند. چک رگرسیون smoke.
+- **ایمیل contact بدون پسوند عمومی، صدور همهٔ گواهی‌ها را بلاک می‌کند.** «mohsen@parastoo.local» از ویزارد (فقط چک @) گذشت، در traefik.yml نشست و Let's Encrypt ثبت حساب ACME را با `invalidContact: contact email has invalid domain` رد کرد؛ `acme.json` خالی می‌ماند و هیچ دامنه‌ای گواهی نمی‌گیرد — در حالی که دامنه فعال و روترها سالم‌اند (بلاکِ خاموش). دفاع: `acme_email_error()` در ویزارد (هر دو شاخهٔ فوری و زمان‌بندی‌شده) پسوند عمومی را الزام می‌کند.

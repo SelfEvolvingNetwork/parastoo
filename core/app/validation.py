@@ -33,6 +33,32 @@ def valid_domain(s: str) -> bool:
     return bool(DOMAIN_RE.match(s))
 
 
+# پسوندهای غیرعمومی — Let's Encrypt از ۲۰۲۵ دامنهٔ ایمیل contact را اعتبارسنجی
+# می‌کند و دامنهٔ بدون پسوند عمومی را با invalidContact رد می‌کند؛ ردشدنِ ثبت
+# حساب ACME یعنی هیچ گواهی‌ای صادر نمی‌شود (بلاکِ خاموش — خطا فقط در لاگ ترافیک).
+NONPUBLIC_TLDS = frozenset((
+    "local", "localhost", "internal", "invalid", "test", "example",
+    "lan", "home", "corp", "priv", "private", "arpa",
+))
+
+
+def acme_email_error(s: str) -> str | None:
+    """خطای ایمیل contact گواهی Let's Encrypt — یا None یعنی سالم (v0.3.16).
+
+    فراتر از valid_email: دامنهٔ ایمیل باید پسوند عمومی داشته باشد.
+    درس میدانی: «mohsen@parastoo.local» از ویزارد گذشت، apply_domain آن را
+    در traefik.yml نوشت و Let's Encrypt ثبت حساب ACME را رد کرد — دامنه
+    فعال بود ولی HTTPS تا اصلاح دستی ایمیل بالا نمی‌آمد.
+    """
+    email = (s or "").strip()
+    if not valid_email(email):
+        return "email_invalid"
+    tld = email.rsplit("@", 1)[1].lower().rstrip(".").rsplit(".", 1)[-1]
+    if tld in NONPUBLIC_TLDS:
+        return "email_nonpublic_domain"
+    return None
+
+
 def site_slug_error(s: str) -> str | None:
     """خطای شناسهٔ سایت برای انتشار/فعال‌سازی مارکت — یا None یعنی سالم.
 

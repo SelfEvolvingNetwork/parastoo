@@ -280,10 +280,10 @@ curl -s -H "X-Dev-Token: $PARASTOO_DEV_TOKEN" -H "Content-Type: application/json
 **فعال و مستقر ✓ (وضعیت جاری، بدون تاریخچه):**
 
 - پل انتشار: push به main → تایمر systemd + `scripts/auto-update.sh` (فلاک، بکاپ کد، جایگزینی فقط-کد، گیت سلامت، تاریخچهٔ `updates.jsonl`)؛ تأیید استقرار با `commit` در `/api/version`.
-- چک‌های محلی: ۵ سوئیت دودی (۳۴۰ چک) + CI گیت‌هاب‌اکشنز + ruff F + `bash -n`.
+- چک‌های محلی: ۵ سوئیت دودی (۳۴۹ چک) + CI گیت‌هاب‌اکشنز + ruff F + `bash -n`.
 - هارنس‌های زنده: `tests/e2e_live.py` (عمومی، ۱۲ چک + ۳ چک dev که بدون توکن dev SKIP تمیز می‌دهند) و `tests/e2e_user.py` (نوشتاری، فقط حالت dev، با پاکسازی خودکار).
 - پل‌های عامل در حالت dev: `netcheck` + `sql` با audit JSONL؛ پل exec حذف‌شده (§۶/§۷) و تنها مسیر اجرای دستور، access-agent مستقل (v0.1.3، systemd بدون داکر؛ قرارداد: `docs/AGENT_PROTOCOL.fa.md` همان مخزن؛ مقادیر در `.secrets/access-agent.env`).
-- نیم‌سرور اختصاصی: PowerDNS در compose + `services/dnsops.py` + UI/API `/api/dns/*` + راهنمای مالک (`docs/DOMAIN_DNS_GUIDE.fa.md`) + فعال‌سازی خودگردان دامنهٔ معلق (ورکر ۶۰ثانیه‌ای v0.3.14) + خودترمیمی زون پایه و پروب HTTPS (v0.3.15).
+- نیم‌سرور اختصاصی: PowerDNS در compose + `services/dnsops.py` + UI/API `/api/dns/*` + راهنمای مالک (`docs/DOMAIN_DNS_GUIDE.fa.md`) + فعال‌سازی خودگردان دامنهٔ معلق (ورکر ۶۰ثانیه‌ای v0.3.14) + خودترمیمی زون پایه و پروب HTTPS (v0.3.15) + نظافت خودکار پوشهٔ داینامیک ترافیک و اعتبارسنجی پسوند عمومی ایمیل ACME (v0.3.16 — درس میدانی زندهٔ دامنه).
 - شروع سرد استاندارد شد: بلوک handoff در access-agent (v0.1.3) + §۰ این سند — مسیر «سیستم‌عامل نو → یک دستور → عامل بی‌خبر» قراردادِ نوشته دارد.
 - حالت توسعه روی نصب زنده روشن است (`dev_mode=true` از `/api/version` قابل تشخیص).
 - اسناد: DEVELOPMENT.md (نقشهٔ معماری) · این سند (پروتکل) · WORKLOG.md (شاخص رخدادها) · LESSONS.md (دام‌های ماندگار).
