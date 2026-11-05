@@ -15,3 +15,7 @@ __pycache__/
 
 # اطلاعات محرمانه گیت‌هاب (توکن) — هرگز کامیت نشود
 .secrets/
+
+# GitHub credentials (local only — never commit/push)
+.github-credentials.env
+.git-cred-helper.sh
