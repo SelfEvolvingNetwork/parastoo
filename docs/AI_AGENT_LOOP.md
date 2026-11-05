@@ -11,6 +11,29 @@
 
 ---
 
+## ۰) شروع سرد — عاملِ از-همه-جا-بی‌خبر (سرور نو / بازیابی)
+
+این بخش برای عاملی است که هیچ حافظه و کلونی ندارد و فقط یک **بلوک تحویل (handoff)** از مالک گرفته است — خروجی پایانی نصب access-agent یا خروجی `sudo access-agent handoff` روی سرور. ورودی فقط سه خط است: `ACCESS_URL`، `CERT_SHA256`، `AGENT_TOKEN` (توکن ادمین هرگز در بلوک نیست). ترتیب کار:
+
+1. **کلون قراردادها:** مخزن‌ها عمومی‌اند — اول این سند را از گیت‌هاب بگیر، بعد دست بزن:
+   ```bash
+   git clone https://github.com/SelfEvolvingNetwork/parastoo /home/z/my-project/parastoo
+   ```
+   اگر کلون از قبل هست: `git pull --ff-only`. سپس این سند + `WORKLOG.md` + `docs/LESSONS.md` را بخوان.
+2. **ذخیرهٔ امن سه مقدار:** `parastoo/.secrets/access-agent.env` با همین سه کلید بساز (chmod 600، gitignored). قرارداد کامل اتصال: `docs/AGENT_PROTOCOL.fa.md` در مخزن access-agent.
+3. **اتصال پین‌شده و سلامت:** الگوی پین در §۲ همان پروتکل — هش گواهیِ دریافتی باید == `CERT_SHA256` شود (در تولید هرگز اعتماد کورکورانه `-k` نه). سپس `GET /healthz` → `GET /api/status`؛ فیلد `parastoo_install_path` می‌گوید پرستو کجای سرور است.
+4. **نصب پرستو اگر نیست (سرور نو):** از همان پل access-agent:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash
+   ```
+   در ایران اگر گیت‌هاب باز نشد، همان دستور با پیشوند پروکسی (gh-proxy). نصب‌کننده صفر-سؤال است (IP عمومی، دامنهٔ nip.io، secrets، Traefik، آپدیتر خودکار). معیار پایان: `/api/version` پنل پاسخ دهد.
+5. **توکن پوش گیت‌هاب:** پات مالک روی سرور در access-agent است — با هدف ثبت‌شده از broker بگیر (`POST /api/github/token`، purpose ≥ ۸ کاراکتر)، در `.secrets/github.env` (chmod 600، خارج از گیت) بنویس تا credential-helper پوش بخواند؛ هرگز در کد/کامیت/لاگ/گزارش نمی‌آید (§۷).
+6. **ادامه:** از این‌جا M0 همین سند است. به مالک گزارش شروع بده (نسخهٔ مستقر، وضعیت دامنه/DNS، نکته‌های باز) و منتظر فرمان بمان.
+
+> بلوک تحویل خودِ access-agent تولید می‌شود (v0.1.3) — عامل آن را نمی‌سازد؛ مالک فقط کپی می‌کند.
+
+---
+
 ## ۱) نقشهٔ اتصال — همهٔ آدرس‌ها یک‌جا
 
 | مورد | مقدار |
@@ -22,7 +45,7 @@
 | الگوی سایت‌های کاربران | `http://<slug>.apps.193.151.142.128.nip.io` |
 | دامنهٔ پایهٔ سرور (BASE_DOMAIN) | `193.151.142.128.nip.io` — انتقال به `zeolitecenter.ir` در جریان است (زون ساخته‌شده، NS در ایرنیک؛ ورکر v0.3.14 پس از انتشار خودش اعمال می‌کند) |
 | فایل امن محلی (توکن‌ها) | `/home/z/my-project/parastoo/.secrets/github.env` — chmod 600، gitignored، مستثنا از rsync انتشار |
-| **ایجنت دسترسی مستقل (access-agent)** | مخزن `https://github.com/SelfEvolvingNetwork/access-agent` (v0.1.2)؛ کلون محلی `/home/z/my-project/access-agent`؛ **روی سرور نصب و راستی‌آزمایی شده (2026-11-05)** — سرویس systemd مستقل از پرستو و داکر؛ مقادیر اتصال (URL + اثرانگشت گواهی + توکن عامل) در `.secrets/access-agent.env`؛ تنها مسیر اجرای دستور عامل روی سرور از همین پس |
+| **ایجنت دسترسی مستقل (access-agent)** | مخزن `https://github.com/SelfEvolvingNetwork/access-agent` (v0.1.3)؛ کلون محلی `/home/z/my-project/access-agent`؛ **روی سرور نصب و راستی‌آزمایی شده (2026-11-05)** — سرویس systemd مستقل از پرستو و داکر؛ مقادیر اتصال (URL + اثرانگشت گواهی + توکن عامل) در `.secrets/access-agent.env` — بلوک آمادهٔ این سه مقدار: `sudo access-agent handoff` روی سرور؛ تنها مسیر اجرای دستور عامل از همین پس |
 | CI مخزن | `.github/workflows/ci.yml` (۴ سوئیت دودی + سینتکس شل، روی هر push به main) |
 | هارنس راستی‌آزمایی زندهٔ عمومی | `tests/e2e_live.py` (لایهٔ الف/ب گام M6؛ فقط خواندنی) |
 | هارنس کاربر-محور زنده | `tests/e2e_user.py` (لایهٔ جِ M6؛ نوشتاری فقط در حالت dev، با پاکسازی خودکار) |
@@ -257,10 +280,11 @@ curl -s -H "X-Dev-Token: $PARASTOO_DEV_TOKEN" -H "Content-Type: application/json
 **فعال و مستقر ✓ (وضعیت جاری، بدون تاریخچه):**
 
 - پل انتشار: push به main → تایمر systemd + `scripts/auto-update.sh` (فلاک، بکاپ کد، جایگزینی فقط-کد، گیت سلامت، تاریخچهٔ `updates.jsonl`)؛ تأیید استقرار با `commit` در `/api/version`.
-- چک‌های محلی: ۵ سوئیت دودی (۳۲۹ چک) + CI گیت‌هاب‌اکشنز + ruff F + `bash -n`.
+- چک‌های محلی: ۵ سوئیت دودی (۳۴۰ چک) + CI گیت‌هاب‌اکشنز + ruff F + `bash -n`.
 - هارنس‌های زنده: `tests/e2e_live.py` (عمومی، ۱۲ چک + ۳ چک dev که بدون توکن dev SKIP تمیز می‌دهند) و `tests/e2e_user.py` (نوشتاری، فقط حالت dev، با پاکسازی خودکار).
-- پل‌های عامل در حالت dev: `netcheck` + `sql` با audit JSONL؛ پل exec حذف‌شده (§۶/§۷) و تنها مسیر اجرای دستور، access-agent مستقل (v0.1.2، systemd بدون داکر؛ قرارداد: `docs/AGENT_PROTOCOL.fa.md` همان مخزن؛ مقادیر در `.secrets/access-agent.env`).
+- پل‌های عامل در حالت dev: `netcheck` + `sql` با audit JSONL؛ پل exec حذف‌شده (§۶/§۷) و تنها مسیر اجرای دستور، access-agent مستقل (v0.1.3، systemd بدون داکر؛ قرارداد: `docs/AGENT_PROTOCOL.fa.md` همان مخزن؛ مقادیر در `.secrets/access-agent.env`).
 - نیم‌سرور اختصاصی: PowerDNS در compose + `services/dnsops.py` + UI/API `/api/dns/*` + راهنمای مالک (`docs/DOMAIN_DNS_GUIDE.fa.md`) + فعال‌سازی خودگردان دامنهٔ معلق (ورکر ۶۰ثانیه‌ای v0.3.14) + خودترمیمی زون پایه و پروب HTTPS (v0.3.15).
+- شروع سرد استاندارد شد: بلوک handoff در access-agent (v0.1.3) + §۰ این سند — مسیر «سیستم‌عامل نو → یک دستور → عامل بی‌خبر» قراردادِ نوشته دارد.
 - حالت توسعه روی نصب زنده روشن است (`dev_mode=true` از `/api/version` قابل تشخیص).
 - اسناد: DEVELOPMENT.md (نقشهٔ معماری) · این سند (پروتکل) · WORKLOG.md (شاخص رخدادها) · LESSONS.md (دام‌های ماندگار).
 
