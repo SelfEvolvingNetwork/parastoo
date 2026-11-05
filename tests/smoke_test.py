@@ -12,9 +12,12 @@ os.environ.update(
     BASE_DOMAIN="127.0.0.1.nip.io",
     TLS_ENABLED="false",
     REGISTER_OPEN="true",
+    DATA_DIR="/tmp/parastoo-smoke-audit",  # پل عامل: فایل audit اینجا نوشته می‌شود
 )
 if os.path.exists("/tmp/parastoo-test.db"):
     os.remove("/tmp/parastoo-test.db")
+if os.path.exists("/tmp/parastoo-smoke-audit/dev/agent-audit.jsonl"):
+    os.remove("/tmp/parastoo-smoke-audit/dev/agent-audit.jsonl")
 
 sys.path.insert(0, str(ROOT / "core"))
 
@@ -541,6 +544,90 @@ with tempfile.TemporaryDirectory() as _td:
 workers_src = (ROOT / "core/app/workers.py").read_text()
 check("مسیر pending (ورکر) هم اسکفولد می‌کارد", "seed_scaffold" in workers_src)
 check("بیلد قبل از ساخت قالب، پیش‌بازرسی استک می‌کند", "missing_marker" in workers_src)
+
+# ---------------- پل دسترسی عامل (v0.3.7): exec/netcheck/sql — فقط حالت توسعه ----------------
+from app.config import settings as _settings  # noqa: E402
+from app.services import agentops as _agentops  # noqa: E402
+
+print("— پل دسترسی عامل: گارد در حالت تجاری (dev خاموش) —")
+r = c.post("/api/dev/exec", json={"cmd": "echo hi"})
+check("exec با dev خاموش → 404", r.status_code == 404)
+r = c.get("/api/dev/netcheck")
+check("netcheck با dev خاموش → 404", r.status_code == 404)
+r = c.post("/api/dev/sql", json={"sql": "SELECT 1"})
+check("sql با dev خاموش → 404", r.status_code == 404)
+
+_old_dev, _old_token = _settings.DEV_MODE, _settings.DEV_TOKEN
+_settings.DEV_MODE, _settings.DEV_TOKEN = True, "smoke-dev-token"
+DEVH = {"X-Dev-Token": "smoke-dev-token"}
+try:
+    print("— پل دسترسی عامل: گارد توکن —")
+    r = c.post("/api/dev/exec", json={"cmd": "echo hi"})
+    check("exec بدون توکن → 404", r.status_code == 404)
+    r = c.post("/api/dev/exec", json={"cmd": "echo hi"}, headers={"X-Dev-Token": "wrong"})
+    check("exec با توکن غلط → 404", r.status_code == 404)
+    r = c.post("/api/dev/exec", json={"cmd": ""}, headers=DEVH)
+    check("exec با دستور خالی → 400", r.status_code == 400)
+    r = c.post("/api/dev/exec", json={"cmd": "echo hi", "where": "kernel"}, headers=DEVH)
+    check("exec با where نامعتبر → 400", r.status_code == 400)
+    r = c.get("/api/dev/netcheck?url=ftp://x.example", headers=DEVH)
+    check("netcheck با scheme نامعتبر → 400", r.status_code == 400)
+    r = c.get("/api/dev/netcheck?groups=nogroup", headers=DEVH)
+    check("netcheck با گروه ناشناخته → 400", r.status_code == 400)
+
+    print("— پل دسترسی عامل: exec با داکر ماک‌شده —")
+    _fake_host = {"where": "host", "cmd_len": 7, "exit_code": 0, "timed_out": False,
+                  "stdout": "hi\n", "stderr": "", "duration_ms": 12}
+    _orig_run_host, _orig_run_core = _agentops.run_host, _agentops.run_in_core
+    _agentops.run_host = lambda cmd, timeout_s=120: dict(_fake_host, cmd_len=len(cmd))
+    _agentops.run_in_core = lambda cmd: dict(_fake_host, where="core")
+    try:
+        r = c.post("/api/dev/exec", json={"cmd": "echo hi"}, headers=DEVH)
+        check("exec روی هاست → 200 + خروجی", r.status_code == 200 and r.json()["stdout"] == "hi\n"
+              and r.json()["exit_code"] == 0)
+        r = c.post("/api/dev/exec", json={"cmd": "echo hi", "where": "core"}, headers=DEVH)
+        check("exec داخل هسته → 200", r.status_code == 200 and r.json()["where"] == "core")
+    finally:
+        _agentops.run_host, _agentops.run_in_core = _orig_run_host, _orig_run_core
+
+    print("— پل دسترسی عامل: netcheck با probe ماک‌شده —")
+    _orig_probe = _agentops.probe_url
+    _agentops.probe_url = lambda url, timeout_s=8.0: {
+        "url": url, "ok": True, "status": 200, "latency_ms": 11, "ip": "1.2.3.4", "error": None}
+    try:
+        r = c.get("/api/dev/netcheck?groups=pip", headers=DEVH)
+        d = r.json() if r.status_code == 200 else {}
+        check("netcheck گروه pip → 2 هدف زنده", r.status_code == 200
+              and d.get("n_total") == 2 and d.get("n_ok") == 2)
+        r = c.get("/api/dev/netcheck?url=https://example.com", headers=DEVH)
+        d = r.json() if r.status_code == 200 else {}
+        check("netcheck url دلخواه → هدف تکی", r.status_code == 200
+              and d.get("n_total") == 1 and d["targets"][0]["url"] == "https://example.com")
+    finally:
+        _agentops.probe_url = _orig_probe
+
+    print("— پل دسترسی عامل: SQL فقط‌خواندنی —")
+    r = c.post("/api/dev/sql", json={"sql": "SELECT 1 AS one"}, headers=DEVH)
+    d = r.json() if r.status_code == 200 else {}
+    check("SELECT ساده → 200 + ردیف", r.status_code == 200 and d.get("rows") == [[1]])
+    r = c.post("/api/dev/sql", json={"sql": "SELECT count(*) AS n FROM users"}, headers=DEVH)
+    check("SELECT شمارش کاربران → 200", r.status_code == 200
+          and r.json()["rows"][0][0] >= 1)
+    for bad, why in [("DELETE FROM users", "DELETE رد شد"),
+                     ("SELECT 1; DROP TABLE users", "چنددستوری رد شد"),
+                     ("WITH x AS (SELECT 1) INSERT INTO users(id) SELECT * FROM x", "WITH+INSERT رد شد"),
+                     ("UPDATE users SET name='x'", "UPDATE رد شد"),
+                     ("DROP TABLE users", "DROP رد شد")]:
+        r = c.post("/api/dev/sql", json={"sql": bad}, headers=DEVH)
+        check(f"sql: {why}", r.status_code == 400)
+
+    print("— پل دسترسی عامل: audit —")
+    import json as _json
+    _audit = Path("/tmp/parastoo-smoke-audit/dev/agent-audit.jsonl")
+    check("فایل audit ساخته شد و رکورد exec دارد", _audit.is_file()
+          and any(_json.loads(l)["kind"] == "exec" for l in _audit.read_text().splitlines() if l.strip()))
+finally:
+    _settings.DEV_MODE, _settings.DEV_TOKEN = _old_dev, _old_token
 
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")

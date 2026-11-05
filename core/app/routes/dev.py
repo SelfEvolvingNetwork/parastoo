@@ -1,4 +1,5 @@
-"""حالت توسعه‌دهنده (v0.2.12): گزارش زنده، لاگ در حافظه، تاریخچهٔ آپدیت خودکار.
+"""حالت توسعه‌دهنده (v0.2.12) + پل دسترسی عامل (v0.3.7): گزارش زنده، لاگ در حافظه،
+تاریخچهٔ آپدیت خودکار، و سه ابزار «دست باز» برای عامل هوشمند (exec/netcheck/sql).
 
 قواعد دسترسی:
 - وقتی PARASTOO_DEV_MODE=false (حالت استفاده): همهٔ مسیرهای /dev و /api/dev/*
@@ -6,16 +7,25 @@
 - وقتی روشن است: اگر PARASTOO_DEV_TOKEN در .env ست شده باشد، هدر X-Dev-Token
   (یا ?token=) کافی است؛ در غیر این صورت فقط ادمینِ واردشده به پنل.
 
+پل دسترسی عامل (v0.3.7 — فقط در همین حالت توسعه؛ در حالت تجاری 404):
+- POST /api/dev/exec     اجرای دستور روی هاست (معادل SSH) یا داخل کانتینر هسته
+- GET  /api/dev/netcheck بررسی واقعی دسترسی سرور به سرویس‌های جهانی (بدون حدس)
+- POST /api/dev/sql      پرس‌وجوی فقط‌خواندنی (SELECT/WITH) روی دیتابیس
+منطق هر سه در services/agentops.py است؛ اینجا فقط ورودی/خروجی وب + گارد.
+
 زیرساخت رینگ‌بافر لاگ از v0.3.0 در devlog.py است (main.py هم برای لاگ خطاهای
 ۵۰۰ همان را استفاده می‌کند).
 """
 import json
+import logging
 import shutil
+import threading
 import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
+from pydantic import BaseModel
 from sqlalchemy import text
 
 from .. import devlog, dockerops, gitea
@@ -23,6 +33,7 @@ from ..config import settings
 from ..db import SessionLocal
 from ..models import Build, Project, Site, User
 from ..deps import ctx, render, resolve_user
+from ..services import agentops
 
 router = APIRouter()
 
@@ -191,3 +202,77 @@ def dev_page(request: Request):
     _dev_guard(request)
     user = _session_user(request)
     return render("dev.html", ctx(request, user, report=collect_report()))
+
+
+# ---------- پل دسترسی عامل (v0.3.7 — فقط حالت توسعه؛ همان گارد بالا) ----------
+
+# اجرای هم‌زمان دستورها سری نمی‌شوند — یک دستورِ سنگین نباید صف را ببندد، اما
+# اجرای موازیِ نامحدود هم روی سرور توسعه بی‌معناست؛ هم‌پوشانی ۲ کافی است.
+_EXEC_SEM = threading.Semaphore(2)
+
+
+class ExecIn(BaseModel):
+    cmd: str
+    where: str = "host"      # host = خودِ سرور (معادل SSH) | core = داخل کانتینر هسته
+    timeout_s: int = 120
+
+
+class SqlIn(BaseModel):
+    sql: str
+    limit: int = 100
+
+
+@router.post("/api/dev/exec")
+def dev_exec(request: Request, body: ExecIn):
+    _dev_guard(request)
+    cmd = (body.cmd or "").strip()
+    if not cmd:
+        raise HTTPException(status_code=400, detail="دستور خالی است")
+    if len(cmd) > agentops.MAX_CMD_LEN:
+        raise HTTPException(status_code=400,
+                            detail=f"دستور بلندتر از {agentops.MAX_CMD_LEN} کاراکتر است")
+    if body.where not in ("host", "core"):
+        raise HTTPException(status_code=400, detail="where باید host یا core باشد")
+    timeout_s = max(1, min(int(body.timeout_s or 120), agentops.MAX_TIMEOUT_S))
+    if not _EXEC_SEM.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="اجراهای دیگری در جریان‌اند؛ بعداً تلاش کنید")
+    try:
+        try:
+            res = (agentops.run_host(cmd, timeout_s) if body.where == "host"
+                   else agentops.run_in_core(cmd))
+        except dockerops.DockerUnavailable as e:
+            agentops.audit("exec", {"cmd": cmd[:200], "where": body.where, "error": str(e)})
+            raise HTTPException(status_code=503, detail=str(e))
+        agentops.audit("exec", {"cmd": cmd[:200], "where": body.where,
+                                "exit_code": res.get("exit_code"),
+                                "duration_ms": res.get("duration_ms")})
+        logging.getLogger("parastoo").info(
+            "agent-exec where=%s rc=%s %sms cmd=%.120r",
+            body.where, res.get("exit_code"), res.get("duration_ms"), cmd)
+        return JSONResponse({"ok": True, **res})
+    finally:
+        _EXEC_SEM.release()
+
+
+@router.get("/api/dev/netcheck")
+def dev_netcheck(request: Request, url: str = "", groups: str = ""):
+    _dev_guard(request)
+    grp = [g.strip() for g in groups.split(",") if g.strip()] if groups else None
+    try:
+        res = agentops.netcheck(groups=grp, url=url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    agentops.audit("netcheck", {"url": url[:200], "groups": groups[:200],
+                                "n_ok": res.get("n_ok"), "n_total": res.get("n_total")})
+    return JSONResponse(res)
+
+
+@router.post("/api/dev/sql")
+def dev_sql(request: Request, body: SqlIn):
+    _dev_guard(request)
+    try:
+        res = agentops.readonly_sql(body.sql, limit=body.limit)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    agentops.audit("sql", {"sql": (body.sql or "")[:200], "n_rows": res.get("n_rows")})
+    return JSONResponse({"ok": True, **res})
