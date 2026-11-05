@@ -818,6 +818,30 @@ try:
 finally:
     _cfg.CONFIG_DIR = _old_cfg
 
+print("— درس میدانی v0.3.17: ریشه/www بی‌روتر مانده بودند —")
+import yaml as _yaml  # noqa: E402
+
+from app.traefik_ops import render_dynamic as _rd  # noqa: E402
+
+_y = _rd("panel.example.com", "git.example.com", True, base_domain="example.com")
+check("روتر ریشه با گواهی اختصاصی (۴ روتر، ۴ گواهی)",
+      "Host(`example.com`)" in _y and _y.count("certResolver: le") == 4)
+check("روتر www جدا — گواهی مستقل از ریشه", "Host(`www.example.com`)" in _y)
+check("ری‌دایرکت به پنل با حفظ مسیر", "https://panel.example.com/$2" in _y
+      and "noop@internal" in _y and "(www\\.)?example\\.com" in _y)
+_d = _yaml.safe_load(_y)
+check("خروجی YAML سالم — ساختار روتر/میدل‌ویر",
+      len(_d["http"]["routers"]) == 4
+      and _d["http"]["routers"]["base-redir"]["middlewares"] == ["base-redir-mw"]
+      and _d["http"]["routers"]["base-redir"]["service"] == "noop@internal"
+      and _d["http"]["middlewares"]["base-redir-mw"]["redirectRegex"]["permanent"] is False)
+_y2 = _rd("panel.example.com", "git.example.com", False, base_domain="example.com")
+check("بدون TLS: هدف http و بدون گواهی",
+      _yaml.safe_load(_y2)["http"]["middlewares"]["base-redir-mw"]["redirectRegex"]
+      ["replacement"] == "http://panel.example.com/$2" and "certResolver" not in _y2)
+check("بدون دامنهٔ پایه: روتر ریشه ساخته نمی‌شود",
+      "noop@internal" not in _rd("panel.example.com", "git.example.com", True))
+
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

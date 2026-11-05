@@ -70,12 +70,11 @@ def render_static(tls_enabled: bool, acme_email: str) -> str:
     return out.replace("__ACME_EMAIL__", acme_email or "admin@example.com")
 
 
-def render_dynamic(panel_domain: str, git_domain: str, tls_enabled: bool) -> str:
+def render_dynamic(panel_domain: str, git_domain: str, tls_enabled: bool,
+                   base_domain: str = "") -> str:
     eps = "      - web\n      - websecure" if tls_enabled else "      - web"
     tls_block = "      tls:\n        certResolver: le\n" if tls_enabled else ""
-    return (
-        "http:\n"
-        "  routers:\n"
+    routers = (
         "    panel-dyn:\n"
         f"      rule: \"Host(`{panel_domain}`)\"\n"
         "      entryPoints:\n"
@@ -87,7 +86,48 @@ def render_dynamic(panel_domain: str, git_domain: str, tls_enabled: bool) -> str
         "      entryPoints:\n"
         f"{eps}\n"
         "      service: gitea-svc\n"
-        + tls_block +
+        + tls_block
+    )
+    # v0.3.17 — ریشه/www روتر گرفتند: sync_base_zone رکورد A ریشه/www را نگه
+    # می‌دارد و راهنمای DNS «وب‌سایت ریشه» را قول می‌دهد، ولی روتری برای آن‌ها
+    # نبود → https://دامنهٔ ریشه گواهی پیش‌فرض ترافیک می‌گرفت. دو روتر جدا =
+    # دو گواهی مستقل؛ خرابی www صدور گواهی ریشه را نمی‌بندد.
+    base = (base_domain or "").strip().lower().rstrip(".")
+    middlewares = ""
+    if base and panel_domain == f"panel.{base}":
+        esc = base.replace(".", r"\.")
+        target = (f"https://{panel_domain}" if tls_enabled
+                  else f"http://{panel_domain}")
+        routers += (
+            "    base-redir:\n"
+            f"      rule: \"Host(`{base}`)\"\n"
+            "      entryPoints:\n"
+            f"{eps}\n"
+            "      middlewares:\n"
+            "      - base-redir-mw\n"
+            "      service: noop@internal\n"
+            + tls_block +
+            "    www-redir:\n"
+            f"      rule: \"Host(`www.{base}`)\"\n"
+            "      entryPoints:\n"
+            f"{eps}\n"
+            "      middlewares:\n"
+            "      - base-redir-mw\n"
+            "      service: noop@internal\n"
+            + tls_block
+        )
+        middlewares = (
+            "  middlewares:\n"
+            "    base-redir-mw:\n"
+            "      redirectRegex:\n"
+            f"        regex: '^https?://(www\\.)?{esc}/(.*)'\n"
+            f"        replacement: '{target}/$2'\n"
+            "        permanent: false\n"
+        )
+    return (
+        "http:\n"
+        "  routers:\n"
+        + routers +
         "  services:\n"
         "    panel-svc:\n"
         "      loadBalancer:\n"
@@ -97,6 +137,7 @@ def render_dynamic(panel_domain: str, git_domain: str, tls_enabled: bool) -> str
         "      loadBalancer:\n"
         "        servers:\n"
         "          - url: \"http://gitea:3000\"\n"
+        + middlewares
     )
 
 
@@ -249,7 +290,7 @@ def apply_domain(db, base_domain: str, acme_email: str, tls_enabled: bool) -> di
         new_static = render_static(tls_enabled, acme_email)
         static_path.write_text(new_static)
         (dyn_dir / "routers.yml").write_text(
-            render_dynamic(panel_d, git_d, tls_enabled))
+            render_dynamic(panel_d, git_d, tls_enabled, base_domain=base_domain))
         result["files"] = True
         result["static_changed"] = old_static != new_static
     except Exception as e:
