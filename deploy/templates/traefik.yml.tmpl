@@ -30,3 +30,12 @@ __ACME_CASERVER__
 __ACME_EAB__
       httpChallenge:
         entryPoint: web
+  wild:
+    # v0.3.33 — الگوی ساب‌دامنهٔ بی‌نهایت: گواهی وایلدکارد *.apps.<دامنه> با چالش
+    # DNS-01 روی PDNS خودمان (ارائه‌دهندهٔ pdns lego، کلید از dns_meta) — همیشه
+    # لت‌انکریپت، چون زروسsl شناسهٔ .ir را رد می‌کند و HTTP-01 اصلاً wildcard نمی‌پذیرد
+    acme:
+      email: "__ACME_EMAIL__"
+      storage: /letsencrypt/acme.json
+      dnsChallenge:
+        provider: pdns

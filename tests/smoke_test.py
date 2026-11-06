@@ -878,14 +878,14 @@ import yaml as _yaml  # noqa: E402
 from app.traefik_ops import render_dynamic as _rd  # noqa: E402
 
 _y = _rd("panel.example.com", "git.example.com", True, base_domain="example.com")
-check("روتر ریشه با گواهی اختصاصی (۴ روتر، ۴ گواهی)",
-      "Host(`example.com`)" in _y and _y.count("certResolver: le") == 4)
+check("روترهای ریشه/www با گواهی اختصاصی (۴ گواهی le) + دام‌الگوی وایلدکارد (v0.3.33)",
+      "Host(`example.com`" in _y and _y.count("certResolver: le") == 4)
 check("روتر www جدا — گواهی مستقل از ریشه", "Host(`www.example.com`)" in _y)
 check("ری‌دایرکت به پنل با حفظ مسیر", "https://panel.example.com/$2" in _y
       and "noop@internal" in _y and "(www\\.)?example\\.com" in _y)
 _d = _yaml.safe_load(_y)
 check("خروجی YAML سالم — ساختار روتر/میدل‌ویر",
-      len(_d["http"]["routers"]) == 4
+      len(_d["http"]["routers"]) == 5
       and _d["http"]["routers"]["base-redir"]["middlewares"] == ["base-redir-mw"]
       and _d["http"]["routers"]["base-redir"]["service"] == "noop@internal"
       and _d["http"]["middlewares"]["base-redir-mw"]["redirectRegex"]["permanent"] is False)
@@ -895,6 +895,64 @@ check("بدون TLS: هدف http و بدون گواهی",
       ["replacement"] == "http://panel.example.com/$2" and "certResolver" not in _y2)
 check("بدون دامنهٔ پایه: روتر ریشه ساخته نمی‌شود",
       "noop@internal" not in _rd("panel.example.com", "git.example.com", True))
+
+print("— الگوی ساب‌دامنهٔ بی‌نهایت (v0.3.33): وایلدکارد DNS-01 روی PDNS خودمان —")
+from app.traefik_ops import render_static as _rs  # noqa: E402
+from app import dockerops as _ddo  # noqa: E402
+from app.config import settings as _st  # noqa: E402
+_s = _rs(True, "a@b.ir")
+check("رزولور wild با چالش DNS-01 در استاتیک هسته",
+      "dnsChallenge" in _s and "provider: pdns" in _s)
+_wild = _s.split("  wild:")[1]
+check("رزولور wild همیشه لت‌انکریپت است (زروسsl شناسهٔ .ir را رد می‌کند)",
+      "caServer" not in _wild and "eab" not in _wild and "zerossl" not in _wild)
+check("رزولور le با HTTP-01 باقی است — خرابی DNS-01 زیرساخت را نمی‌بندد",
+      "httpChallenge" in _s.split("  wild:")[0])
+_o_ca, _o_kid, _o_h = _st.ACME_CA, _st.ACME_EAB_KID, _st.ACME_EAB_HMAC
+_st.ACME_CA, _st.ACME_EAB_KID, _st.ACME_EAB_HMAC = "zerossl", "kid-1", "hmac-1"
+_z = _rs(True, "a@b.ir")
+_st.ACME_CA, _st.ACME_EAB_KID, _st.ACME_EAB_HMAC = _o_ca, _o_kid, _o_h
+check("ویزارد دیگر EAB زروسsl را نمی‌بُرد (گپ v0.3.30)",
+      'caServer: "https://acme.zerossl.com/v2/DV90"' in _z
+      and 'kid: "kid-1"' in _z and 'hmacEncoded: "hmac-1"' in _z)
+check("وایلدکارد در حالت زروسsl هم لت‌انکریپت می‌ماند",
+      "caServer" not in _z.split("  wild:")[1]
+      and "kid:" not in _z.split("  wild:")[1])
+_y3 = _rd("panel.example.com", "git.example.com", True, base_domain="example.com")
+_d3 = _yaml.safe_load(_y3)
+_aw = _d3["http"]["routers"].get("apps-wild", {})
+check("دام‌الگوی وایلدکارد: قاعده + دامنهٔ main + رزولور wild",
+      _aw.get("rule") == "HostRegexp(`{any:.+}.apps.example.com`)"
+      and _aw.get("tls", {}).get("domains", [{}])[0].get("main") == "*.apps.example.com"
+      and _aw.get("tls", {}).get("certResolver") == "wild")
+check("دام‌الگو اولویت ۱ دارد و ترافیک سایت‌ها را نمی‌رباید",
+      _aw.get("priority") == 1)
+check("بدون TLS دام‌الگو هم نیست", "HostRegexp" not in _y2)
+_oltls = _ddo.tls_enabled_now
+_ddo.tls_enabled_now = lambda: True
+_l = _ddo._site_labels("shop", "shop.apps.example.com", 8080)
+_ddo.tls_enabled_now = _oltls
+_r = "traefik.http.routers.parastoo-site-shop"
+check("لیبل سایت: رزولور wild + وایلدکارد مشتق‌شده از خود subdomain",
+      _l.get(f"{_r}.tls.certresolver") == "wild"
+      and _l.get(f"{_r}.tls.domains[0].main") == "*.apps.example.com")
+_ddo.tls_enabled_now = lambda: False
+_l2 = _ddo._site_labels("shop", "shop.apps.example.com", 8080)
+_ddo.tls_enabled_now = _oltls
+check("بدون TLS: بدون certresolver (رفتار قدیمی)",
+      not any("certresolver" in k for k in _l2))
+_c = (ROOT / "docker-compose.yml").read_text()
+check("ترافیک: DNS-01 روی PDNS خودمان با کلید از dns_meta (پسوند _FILE)",
+      "PDNS_API_URL: http://dns:8081" in _c
+      and "PDNS_API_KEY_FILE: /meta/api-key" in _c and "dns_meta:/meta:ro" in _c)
+check("ترافیک پس از سالم‌بودن dns بالا می‌آید (فایل کلید آماده)",
+      "condition: service_healthy" in _c)
+check("هسته: CA/EAB از .env به هسته می‌رسد",
+      "PARASTOO_ACME_CA: ${PARASTOO_ACME_CA:-}" in _c
+      and "PARASTOO_ACME_EAB_KID" in _c and "PARASTOO_ACME_EAB_HMAC" in _c)
+_t = (ROOT / "deploy" / "templates" / "traefik.yml.tmpl").read_text()
+check("قالب نصب‌کننده هم رزولور wild دارد (همگام با هسته)",
+      "dnsChallenge" in _t and "provider: pdns" in _t and "  wild:" in _t)
 
 print("— درس میدانی v0.3.18: EADDRINUSE پورت ۵۳ در نصب تازه —")
 _ins = (ROOT / "install.sh").read_text()

@@ -9,7 +9,7 @@ def _bool(name: str, default: str = "false") -> bool:
 class Settings:
     # --- پایه ---
     APP_NAME: str = "پرستو"
-    VERSION: str = "0.3.32"
+    VERSION: str = "0.3.33"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me")
 
     # --- دیتابیس ---
@@ -23,6 +23,12 @@ class Settings:
     GIT_DOMAIN: str = os.environ.get("GIT_DOMAIN", f"git.{BASE_DOMAIN}")
     APPS_DOMAIN: str = os.environ.get("APPS_DOMAIN", f"apps.{BASE_DOMAIN}")
     TLS_ENABLED: bool = _bool("TLS_ENABLED")
+
+    # --- CA گواهی (v0.3.33) — همان‌ها که install.sh در .env می‌نویسد؛
+    # بازنویسی استاتیک ترافیک در ویزارد دیگر EAB زروسsl را بی‌صدا نمی‌بُرد
+    ACME_CA: str = os.environ.get("PARASTOO_ACME_CA", "").strip().lower()
+    ACME_EAB_KID: str = os.environ.get("PARASTOO_ACME_EAB_KID", "").strip()
+    ACME_EAB_HMAC: str = os.environ.get("PARASTOO_ACME_EAB_HMAC", "").strip()
 
     # --- ویزارد نصب (v0.2) ---
     # توکن یک‌بارمصرف نصب — فقط در خروجی install.sh چاپ می‌شود و گیتِ ویزارد وب است

@@ -113,6 +113,11 @@ services:
       GIT_DOMAIN: ${GIT_DOMAIN}
       APPS_DOMAIN: ${APPS_DOMAIN}
       TLS_ENABLED: ${TLS_ENABLED}
+      # v0.3.33 — انتخاب CA و EAB به هسته هم می‌رسد تا بازنویسی استاتیک ترافیک
+      # در ویزارد، EAB زروسsl را بی‌صدا نبُرد (قبلاً فقط نصب‌کننده می‌شناخت)
+      PARASTOO_ACME_CA: ${PARASTOO_ACME_CA:-}
+      PARASTOO_ACME_EAB_KID: ${PARASTOO_ACME_EAB_KID:-}
+      PARASTOO_ACME_EAB_HMAC: ${PARASTOO_ACME_EAB_HMAC:-}
       GITEA_INTERNAL_URL: http://gitea:3000
       GITEA_CONTAINER: parastoo-gitea
       GITEA_ADMIN_USER: ${GITEA_ADMIN_USER}
@@ -260,6 +265,17 @@ services:
     image: traefik:v3.6.6
     container_name: parastoo-traefik
     restart: unless-stopped
+    # v0.3.33 — الگوی ساب‌دامنهٔ بی‌نهایت: گواهی وایلدکارد *.apps.<دامنه> با چالش
+    # DNS-01 مستقیماً روی PDNS خودمان (ارائه‌دهندهٔ pdns lego). کلید API از همان
+    # فایل مشترک dns_meta خوانده می‌شود که خود dns می‌نویسد (پسوند _FILE lego؛
+    # dns همیشه مقدار مؤثر را همان‌جا می‌نویسد، چه دستی چه خودکار — صفر-پیکربندی).
+    # depends_on تضمین می‌کند فایل کلید پیش از اولین سفارش ACME موجود است.
+    depends_on:
+      dns:
+        condition: service_healthy
+    environment:
+      PDNS_API_URL: http://dns:8081
+      PDNS_API_KEY_FILE: /meta/api-key
     command:
       - --configFile=/etc/traefik/traefik.yml
     ports:
@@ -270,6 +286,7 @@ services:
       - ./config/dynamic:/etc/traefik/dynamic:ro
       - traefik_certs:/letsencrypt
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - dns_meta:/meta:ro
     networks:
       - internal
       - apps

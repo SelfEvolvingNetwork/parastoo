@@ -135,6 +135,9 @@ with TestClient(app, follow_redirects=False) as c:
     s_on = traefik_ops.render_static(True, "a@b.ir")
     check("استاتیک TLS روشن: ریدایرکت + ایمیل",
           "redirections" in s_on and "a@b.ir" in s_on)
+    check("استاتیک: رزولور وایلدکارد DNS-01 روی PDNS (v0.3.33)",
+          "dnsChallenge" in s_on and "provider: pdns" in s_on
+          and "  wild:" in s_on)
     try:
         import yaml
         yaml.safe_load(s_on)

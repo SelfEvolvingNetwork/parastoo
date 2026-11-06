@@ -8,6 +8,16 @@
 
 روترهای لیبلیِ اولیه (دامنه nip.io هنگام نصب) باقی می‌مانند و روتینگ داینامیک
 دامنه جدید را اضافه می‌کند؛ پس هیچ لحظه‌ای پنل از دسترس خارج نمی‌شود.
+
+الگوی ساب‌دامنهٔ بی‌نهایت (v0.3.33): به‌جای «یک گواهی برای هر سایت» (که هر نصب
+یک سفارش ACME تازه می‌گشود و میدان با سقف نرخ ۴۲۹ لت‌انکریپت بسته می‌شد)،
+یک گواهی وایلدکارد `*.apps.<دامنه>` با چالش DNS-01 روی نیم‌سرور خودمان
+(پاوردی‌ان‌اس؛ ارائه‌دهندهٔ pdns lego) یک‌بار صادر می‌شود و بی‌نهایت ساب‌دامنهٔ
+سایت را می‌پوشاند — ساخت سایت صدومین هم دیگر هیچ سفارش ACME‌ای نمی‌خواهد.
+رزولور وایلدکارد جدا (wild) است و همیشه لت‌انکریپت: زروسsl شناسهٔ .ir را
+رد می‌کند (v0.3.31) و چالش HTTP-01 اصلاً wildcard نمی‌پذیرد. پنل/گیت/ریشه/www
+روی رزولور le (HTTP-01 با CA انتخابی مالک) می‌مانند — خرابی DNS-01 هرگز
+زیرساخت را نمی‌بندد.
 """
 import secrets
 import socket
@@ -52,8 +62,17 @@ certificatesResolvers:
     acme:
       email: "__ACME_EMAIL__"
       storage: /letsencrypt/acme.json
+__ACME_CASERVER__
+__ACME_EAB__
       httpChallenge:
         entryPoint: web
+  wild:
+    # v0.3.33 — وایلدکارد سایت‌ها: چالش DNS-01 روی PDNS خودمان، همیشه لت‌انکریپت
+    acme:
+      email: "__ACME_EMAIL__"
+      storage: /letsencrypt/acme.json
+      dnsChallenge:
+        provider: pdns
 """
 
 _REDIRECT_BLOCK = """\
@@ -65,10 +84,33 @@ _REDIRECT_BLOCK = """\
 """
 
 
+# CAهای ACME پشتیبانی‌شده — فقط همان‌هایی که install.sh هم می‌شناسد (v0.3.30)
+_ACME_CA_DIRS = {
+    "zerossl": "https://acme.zerossl.com/v2/DV90",
+}
+
+
 def render_static(tls_enabled: bool, acme_email: str) -> str:
+    """قالب استاتیک ترافیک — v0.3.33: علاوه بر ریدایرکت/ایمیل، انتخاب CA و EAB
+    را هم از env هسته (همان‌ها که install.sh در .env نوشته) داخل بلوک le رندر
+    می‌کند. درس میدانی: پیش از این، هر اعمال دامنه در ویزارد استاتیک را از نو
+    می‌نوشت و EAB زروسsl را بی‌صدا می‌بُرد — حساب لِهِ ACME بعدی به ثبت
+    ناکام می‌خورد و هیچ چیز علت را نمی‌گفت. بلوک wild هیچ‌وقت caServer/EAB
+    نمی‌گیرد: وایلدکارد همیشه لت‌انکریپت است (زروسsl شناسهٔ .ir را رد می‌کند)."""
     out = _STATIC_TEMPLATE.replace(
         "__WEB_REDIRECT__", _REDIRECT_BLOCK if tls_enabled else "")
-    return out.replace("__ACME_EMAIL__", acme_email or "admin@example.com")
+    out = out.replace("__ACME_EMAIL__", acme_email or "admin@example.com")
+    ca = (getattr(settings, "ACME_CA", "") or "").strip().lower()
+    kid = (getattr(settings, "ACME_EAB_KID", "") or "").strip()
+    hmac_s = (getattr(settings, "ACME_EAB_HMAC", "") or "").strip()
+    ca_block = ""
+    eab_block = ""
+    if ca in _ACME_CA_DIRS and kid and hmac_s:
+        ca_block = f'      caServer: "{_ACME_CA_DIRS[ca]}"'
+        eab_block = (f'      eab:\n        kid: "{kid}"\n'
+                     f'        hmacEncoded: "{hmac_s}"')
+    return (out.replace("__ACME_CASERVER__", ca_block)
+               .replace("__ACME_EAB__", eab_block))
 
 
 def render_dynamic(panel_domain: str, git_domain: str, tls_enabled: bool,
@@ -124,6 +166,25 @@ def render_dynamic(panel_domain: str, git_domain: str, tls_enabled: bool,
             f"        regex: '^https?://(www\\.)?{esc}/(.*)'\n"
             f"        replacement: '{target}/$2'\n"
             "        permanent: false\n"
+        )
+    # v0.3.33 — روترِ اعلام وایلدکارد: تنها وظیفه‌اش رساندن `*.apps.<دامنه>` به
+    # رزولور wild است تا گواهی یک‌بار صادر/تمدید شود — حتی وقتی هنوز هیچ سایتی
+    # ساخته نشده. priority: 1 حیاتی است: اولویت پیش‌فرض ترافیک «طول قاعده» است و
+    # HostRegexp بلندتر از Host دقیق سایت‌ها درمی‌آمد → دام‌الگو ترافیک همهٔ
+    # سایت‌ها را به panel-svc می‌ربود؛ با ۱ همهٔ روترهای دقیق برنده‌اند و دام‌الگو
+    # فقط پشتیبانِ زیردامنه‌های بدون روتر است.
+    if base and tls_enabled:
+        routers += (
+            "    apps-wild:\n"
+            f"      rule: \"HostRegexp(`{{any:.+}}.apps.{base}`)\"\n"
+            "      priority: 1\n"
+            "      entryPoints:\n"
+            "        - websecure\n"
+            "      service: panel-svc\n"
+            "      tls:\n"
+            "        certResolver: wild\n"
+            "        domains:\n"
+            f"          - main: \"*.apps.{base}\"\n"
         )
     return (
         "http:\n"
