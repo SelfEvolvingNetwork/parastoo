@@ -9,7 +9,7 @@ def _bool(name: str, default: str = "false") -> bool:
 class Settings:
     # --- پایه ---
     APP_NAME: str = "پرستو"
-    VERSION: str = "0.3.34"
+    VERSION: str = "0.3.35"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me")
 
     # --- دیتابیس ---
@@ -41,6 +41,7 @@ class Settings:
     # پوشه پیکربندی ترافیک روی هاست که داخل کانتینر سوار شده — ویزارد دامنه آن را بازنویسی می‌کند
     CONFIG_DIR: str = os.environ.get("PARASTOO_CONFIG_DIR", "/app/host-config")
     TRAEFIK_CONTAINER: str = os.environ.get("PARASTOO_TRAEFIK_CONTAINER", "parastoo-traefik")
+    DNS_CONTAINER: str = os.environ.get("PARASTOO_DNS_CONTAINER", "parastoo-dns")
     # (v0.3.22) .env هاست (سوار در /app/host-env/.env): تغییر دامنه، GITEA_ROOT_URL و
     # دامنه‌ها را اینجا همگام می‌کند تا اجرای بعدی docker compose مقدار کهنه را پس نزند.
     # خالی = غیرفعال (محیط توسعه).

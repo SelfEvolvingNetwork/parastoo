@@ -688,7 +688,8 @@ fi
 awk -v block="$REDIRECT_BLOCK" -v email="$ACME_EMAIL" \
     -v ca="${ACME_CASERVER_BLOCK:-}" -v eab="${ACME_EAB_BLOCK:-}" '
   { gsub(/__WEB_REDIRECT__/, block); gsub(/__ACME_EMAIL__/, email);
-    gsub(/__ACME_CASERVER__/, ca); gsub(/__ACME_EAB__/, eab) }
+    gsub(/__ACME_CASERVER__/, ca); gsub(/__ACME_EAB__/, eab);
+    gsub(/__ACME_RESOLVERS__/, "") }
   { print }
 ' deploy/templates/traefik.yml.tmpl > config/traefik.yml
 

@@ -73,6 +73,7 @@ __ACME_EAB__
       storage: /letsencrypt/acme.json
       dnsChallenge:
         provider: pdns
+__ACME_RESOLVERS__
 """
 
 _REDIRECT_BLOCK = """\
@@ -88,6 +89,28 @@ _REDIRECT_BLOCK = """\
 _ACME_CA_DIRS = {
     "zerossl": "https://acme.zerossl.com/v2/DV90",
 }
+
+
+def pdns_resolver() -> str:
+    """«IP:53» کانتینر dns برای کشف زون lego (v0.3.35) — یا رشتهٔ خالی.
+
+    درس میدانی: lego پیش از هر چیز زون را با کوئری SOA از رزولور سیستم پیدا
+    می‌کند؛ از ایران همان کوئری به رزولورهای عمومی گاهی SERVFAIL می‌دهد و
+    سفارش وایلدکارد می‌میرد — در حالی که زون روی PDNS خودمان است و خودمان
+    همیشه‌جواب‌دهیم. خطا نیست: بدون داکر/کانتینر فقط خالی برمی‌گردد (رفتار
+    پیش‌فرض lego) و چرخهٔ بعدی همگام‌ساز دوباره می‌سنجد.
+    """
+    try:
+        from . import dockerops
+        t = dockerops.client().containers.get(settings.DNS_CONTAINER)
+        nets = (t.attrs.get("NetworkSettings") or {}).get("Networks") or {}
+        for net in nets.values():
+            ip = net.get("IPAddress") or ""
+            if ip:
+                return f"{ip}:53"
+    except Exception:
+        pass
+    return ""
 
 
 def render_static(tls_enabled: bool, acme_email: str) -> str:
@@ -109,8 +132,11 @@ def render_static(tls_enabled: bool, acme_email: str) -> str:
         ca_block = f'      caServer: "{_ACME_CA_DIRS[ca]}"'
         eab_block = (f'      eab:\n        kid: "{kid}"\n'
                      f'        hmacEncoded: "{hmac_s}"')
+    r = pdns_resolver()
+    resolvers_block = f'        resolvers:\n          - "{r}"\n' if r else ""
     return (out.replace("__ACME_CASERVER__", ca_block)
-               .replace("__ACME_EAB__", eab_block))
+               .replace("__ACME_EAB__", eab_block)
+               .replace("__ACME_RESOLVERS__", resolvers_block))
 
 
 def render_dynamic(panel_domain: str, git_domain: str, tls_enabled: bool,

@@ -981,6 +981,30 @@ _t = (ROOT / "deploy" / "templates" / "traefik.yml.tmpl").read_text()
 check("قالب نصب‌کننده هم رزولور wild دارد (همگام با هسته)",
       "dnsChallenge" in _t and "provider: pdns" in _t and "  wild:" in _t)
 
+print("— کشف زون lego روی PDNS خودمان (v0.3.35) —")
+from app import traefik_ops  # noqa: E402
+_ins2 = (ROOT / "install.sh").read_text()
+check("رندر نصب‌کننده جای‌نگهدار رزولورها را خالی می‌کند (تا اولین ensure)",
+      "gsub(/__ACME_RESOLVERS__/, \"\")" in _ins2)
+_ores = dockerops.client
+class _FakeContainers:
+    def get(self, name):
+        assert name == "parastoo-dns", name
+        class T:
+            attrs = {"NetworkSettings": {"Networks": {"internal": {"IPAddress": "172.29.99.7"}}}}
+        return T()
+class _FakeApi:
+    containers = property(lambda self: _FakeContainers())
+dockerops.client = lambda: _FakeApi()
+_sr = traefik_ops.render_static(True, "a@b.ir")
+dockerops.client = _ores
+check("کشف زون lego به PDNS خودمان قفل می‌شود (نه رزولور ناپایدار عمومی)",
+      'resolvers:' in _sr and '- "172.29.99.7:53"' in _sr.split("  wild:")[1]
+      and "172.29.99.7" not in _sr.split("  wild:")[0])
+check("بدون داکر: رندر بدون خط رزولورها (رفتار پیش‌فرض lego، بدون باقی‌مانده)",
+      "resolvers:" not in traefik_ops.render_static(True, "a@b.ir")
+      and "__ACME_RESOLVERS__" not in traefik_ops.render_static(True, "a@b.ir"))
+
 print("— همگام‌ساز پیکربندی ترافیک: استقرار بدون نصب مجدد (v0.3.33) —")
 import tempfile as _tf  # noqa: E402
 _ensure_dir = Path(_tf.mkdtemp()) / "config"
