@@ -338,6 +338,9 @@ check("پیشرفت زندهٔ پروب PyPI/npm (یک خط برای هر میز
 check("آزمون مسیر واقعی کاربر: پنل از پشت ترافیک در پایان نصب",
       'mark "6b) panel via traefik"' in inst and '-H "Host: $PANEL_DOMAIN"' in inst
       and "docker logs parastoo-traefik" in inst)
+check("گارد زروسsl روی دامنهٔ .ir در نصب‌کننده (درس میدانی دور ششم)",
+      "ZeroSSL does not issue certificates for .ir domains" in inst
+      and "DNS identifier is disallowed" in inst and "(^|\\.)ir$" in inst)
 bs = (ROOT / "bootstrap.sh").read_text()
 _ver = ""
 for _line in (ROOT / "core/app/config.py").read_text().splitlines():

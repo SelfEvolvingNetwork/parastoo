@@ -476,10 +476,21 @@ GITEA_ROOT_URL_SCHEME="http"; [ "$TLS_ENABLED" = "true" ] && GITEA_ROOT_URL_SCHE
 
 # --- CA گواهی (v0.3.30): letsencrypt (پیش‌فرض) | zerossl — برای نصب‌هایی که
 # سقف نرخ لت‌انکریپت (۵ گواهی در ۷ روز برای هر مجموعه هاست) آنها را می‌بندد
-# (میدان 2026-11-06: پنجمین نصب تازهٔ همان دامنه). ZeroSSL از ایران سبز و
-# سریع است؛ BuyPass/Actalis مسدودند. EAB یک‌بار گرفته می‌شود و در .env
-# می‌ماند (طبق مستندات ZeroSSL قابل استفادهٔ مجدد است).
+# (میدان 2026-11-06: پنجمین نصب تازهٔ همان دامنه). پروتکل ACME زروسsl از ایران
+# سبز و سریع است؛ BuyPass/Actalis مسدودند؛ ولی زروسsl برای دامنهٔ .ir گواهی
+# صادر نمی‌کند (v0.3.31 — فهرست TLDهای محدود). EAB یک‌بار گرفته می‌شود و در
+# .env می‌ماند (طبق مستندات ZeroSSL قابل استفادهٔ مجدد است).
 ACME_CA="${PARASTOO_ACME_CA:-letsencrypt}"
+# v0.3.31 — درس میدانی دور ششم (نصب زنده): حساب ACME و EAB زروسsl سبز است
+# (newAccount 201) ولی هر newOrder برای شناسهٔ .ir با rejectedIdentifier رد
+# می‌شود («DNS identifier is disallowed») — فهرست TLDهای محدود زروسsl
+# (تحریم صادراتی آمریکا/اروپا؛ help.zerossl.com → Restricted Countries) .ir
+# را صراحتاً ممنوع کرده؛ در مقابل LE رسماً .ir صادر می‌کند. شکست صادقانه
+# باید همین‌جا باشد نه لحظهٔ صدور گواهی.
+if [ "$TLS_ENABLED" = "true" ] && [ "$ACME_CA" = "zerossl" ] \
+   && printf '%s' "$BASE_DOMAIN" | grep -qiE '(^|\.)ir$'; then
+  die "ZeroSSL does not issue certificates for .ir domains (restricted TLD — US/EU export laws; see docs/SANCTIONS.md). Re-run without PARASTOO_ACME_CA (default letsencrypt — LE does issue .ir certificates)."
+fi
 ACME_CA_URL="https://acme-v02.api.letsencrypt.org/directory"
 ACME_EAB_BLOCK=""
 if [ "$TLS_ENABLED" = "true" ] && [ "$ACME_CA" = "zerossl" ]; then

@@ -11,7 +11,9 @@
 | مخازن اوبونتو | `archive.ubuntu.com` و آینه‌های داخلی | باز — فقط کند |
 | PyPI (نصب پکیج پایتون) | `pypi.org` ، `files.pythonhosted.org` | **روی بعضی ISPها DNS-بلاک** — لایهٔ ۴ خودکار |
 | npm | `registry.npmjs.org` | روی بعضی ISPها مسدود — لایهٔ ۴ خودکار |
-| Let's Encrypt (گواهی HTTPS) | `acme-v02.api.letsencrypt.org` | باز |
+| Let's Encrypt (گواهی HTTPS) | `acme-v02.api.letsencrypt.org` | باز — دامنهٔ `.ir` را صادر می‌کند |
+| پروتکل ACME زروسsl | `acme.zerossl.com` | باز (میدان 2026-11-06) — ولی برای دامنهٔ `.ir` گواهی صادر **نمی‌کند** (فهرست TLDهای محدود) |
+| API زروسsl | `api.zerossl.com` | **403 از ایران** (geo-fence)؛ اندپوینت eab-credentials هم بتا-قفل است — EAB را از داشبورد بگیرید |
 | GitHub | `github.com` | باز (فقط کند/ناپایدار گاهی) |
 | `nip.io` (دامنهٔ موقت) | DNS | باز |
 
@@ -145,6 +147,7 @@ parastoo update
 | بیلد نود خطای npm می‌دهد | registry مسدود | لایهٔ ۴ خودکار؛ دستی: `PARASTOO_NPM_REGISTRY` در .env + `parastoo update` |
 | `docker info` آینه‌ها را نشان نمی‌دهد | JSON خراب یا ری‌استارت نشده | `sudo systemctl restart docker` و اعتبار JSON |
 | ویزارد دامنه گواهی نگرفت | نادر است؛ LE از ایران باز است | لاگ: `parastoo logs traefik` |
+| زروسsl: `rejectedIdentifier — DNS identifier is disallowed` | سیاست تحریمی CA است نه شبکه — ZeroSSL دامنهٔ `.ir` را نمی‌پذیرد (فهرست TLDهای محدود) | از CA پیش‌فرض (LE) استفاده کنید؛ نصب‌کننده v0.3.31 ترکیب zerossl+ir را خودش با پیام صریح متوقف می‌کند |
 
 ## ۷) چک‌لیست نصب در ایران (خلاصه)
 
