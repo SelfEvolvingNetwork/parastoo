@@ -914,6 +914,54 @@ _bk = (ROOT / "bin" / "parastoo").read_text()
 check("parastoo backup گواهی‌ها (acme.json) را هم پشتیبان می‌گیرد",
       'backups/acme-${TS}.json' in _bk and "letsencrypt/acme.json" in _bk)
 
+print("— میدان v0.3.22: خودترمیم گیتا (realm کهنهٔ رجیستری) + دستورهای push —")
+_tpl = (ROOT / "core" / "app" / "web" / "templates" / "project_detail.html").read_text()
+check("دستور مخزن کلون‌محور است (مخزن seed شده؛ git init کاربر را به تعارض و fetch-first می‌اندازد)",
+      "git clone " in _tpl and "git remote add origin" not in _tpl and "git init" not in _tpl)
+check("آدرس ریموت با TLS فعال https می‌شود (git بعد از ۳۰۱ http→https هدر Auth را حذف می‌کند)",
+      "http{{ 's' if domains.tls() else '' }}://" in _tpl
+      and "http://{{ user.gitea_username }}" not in _tpl)
+_g = (ROOT / "core" / "app" / "gitea.py").read_text()
+check("seed گروهی گیتا پیام کامیت فارسی می‌فرستد (پیام پیش‌فرض انگلیسی «Add …» نباشد)",
+      'json={"message": message,' in _g)
+_d = (ROOT / "core" / "app" / "dockerops.py").read_text()
+check("gitea_stale env کانتینر را با دامنهٔ فعال می‌سنجد؛ داکر ناموجود → کاری ندارد",
+      "def gitea_stale" in _d and 'return (False, "")' in _d)
+check("recreate_gitea همهٔ ویژگی‌ها را از inspect حفظ می‌کند (لیبل‌های compose، healthcheck، alias شبکه)",
+      "com.docker.compose" in _d and "create_host_config" in _d
+      and "create_endpoint_config" in _d
+      and "GITEA__server__ROOT_URL={gitea_root_url()}" in _d)
+check("شکست رجیستری پیام فارسی گویا دارد + ریشهٔ رایج (ROOT_URL کهنه) را می‌گوید",
+      "انتشار ایمیج در رجیستری داخلی ناموفق بود" in _d and "404" in _d)
+import tempfile  # noqa: E402
+from app.config import settings as _settings  # noqa: E402
+_henv = Path(tempfile.mkdtemp()) / ".env"
+_henv.write_text("A=1\nGITEA_ROOT_URL=http://git.old-nip.nip.io/\nB=2\n", encoding="utf-8")
+_old_henv = _settings.HOST_ENV_FILE
+_settings.HOST_ENV_FILE = str(_henv)
+_ok = dockerops.update_host_env({"GITEA_ROOT_URL": "https://git.example.ir/"})
+_txt = _henv.read_text(encoding="utf-8")
+check("update_host_env کلید موجود را همان‌جا جایگزین می‌کند (بقیهٔ خط‌ها دست‌نخورده)",
+      _ok and "GITEA_ROOT_URL=https://git.example.ir/" in _txt
+      and "A=1" in _txt and "B=2" in _txt and "old-nip" not in _txt)
+_ok2 = dockerops.update_host_env({"NEW_KEY": "v1"})
+check("update_host_env کلید غایب را به انتها اضافه می‌کند",
+      _ok2 and "NEW_KEY=v1" in _henv.read_text(encoding="utf-8")
+      and "GITEA_ROOT_URL=https://git.example.ir/" in _henv.read_text(encoding="utf-8"))
+_settings.HOST_ENV_FILE = _old_henv
+check("update_host_env بدون فایل ساکت False می‌دهد (هرگز استثنا نمی‌دهد)",
+      dockerops.update_host_env({"X": "y"}) is False)
+_w = (ROOT / "core" / "app" / "workers.py").read_text()
+check("ورکر heal هر ۱۲۰ ثانیه گیتای ناهم‌خوان با دامنه را بازسازی می‌کند",
+      "HEAL_INTERVAL = 120" in _w and "def heal_once" in _w
+      and "args=(heal_once, HEAL_INTERVAL)" in _w and "sync_host_env" in _w)
+_t = (ROOT / "core" / "app" / "traefik_ops.py").read_text()
+check("apply_domain خودش هم .env و هم گیتا را هم‌خوان می‌کند",
+      "sync_host_env" in _t and "recreate_gitea" in _t and "gitea_stale" in _t)
+_cm = (ROOT / "docker-compose.yml").read_text()
+check(".env هاست داخل هسته سوار می‌شود (همگام‌سازی ماندگار برای up بعدی compose)",
+      "- ./.env:/app/host-env/.env" in _cm)
+
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

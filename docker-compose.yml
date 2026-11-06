@@ -143,6 +143,10 @@ services:
       - parastoo_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
       - ./config:/app/host-config
+      # (v0.3.22) .env هاست داخل هسته: تغییر دامنه بتواند GITEA_ROOT_URL و
+      # دامنه‌ها را برای اجرای بعدی compose همگام کند — وگرنه پس از یک up،
+      # interpolation به مقدار کهنهٔ نصب اول برمی‌گشت (ریشهٔ باگ 404 رجیستری)
+      - ./.env:/app/host-env/.env
       # تاریخچهٔ آپدیت خودکار (logs/updates.jsonl روی هاست) برای گزارش /api/dev/updates
       - ./logs:/app/host-logs:ro
       # کلید API تولیدشدهٔ خودکار توسط کانتینر dns (وقتی .env مقداری نداشته باشد)

@@ -131,7 +131,8 @@ class GiteaClient:
 
         r = self.client.post(
             f"/api/v1/repos/{owner}/{repo}/contents",
-            json={"files": [{"operation": "create", "path": p, "content": b64(c)}
+            json={"message": message,  # (v0.3.22) بدون این، گیتا پیام پیش‌فرض انگلیسی «Add …» می‌گذارد
+                  "files": [{"operation": "create", "path": p, "content": b64(c)}
                             for p, c in sorted(files.items())]},
         )
         if r.status_code in (200, 201):

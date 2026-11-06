@@ -8,6 +8,10 @@
 4) domain_loop    : فعال‌سازی خودگردان دامنهٔ زمان‌بندی‌شده (v0.3.14) — هر ۶۰
    ثانیه چک DNS برای درخواست معلق ویزارد؛ پس از نشستن رکوردها همان مسیر
    apply_domain اجرا می‌شود (مالک نیازی به بازگشت به ویزارد ندارد).
+5) heal_loop      : خودترمیم ناهم‌خوانی گیتا با دامنهٔ فعال (v0.3.22) — نصب‌هایی
+   که دامنه‌شان عوض شده ولی env گیتا روی نصب اول مانده (میدان 2026-11-06:
+   realm کهنهٔ رجیستری → 404 روی docker login → هیچ بیلدی سبز نمی‌شد)
+   بدون دخالت مالک بازسازی می‌شوند.
 """
 import subprocess
 import threading
@@ -26,6 +30,7 @@ BUILD_ROOT = Path(settings.DATA_DIR) / "builds"
 LOG_TAIL = 60_000  # حداکثر کاراکترهای نگه‌داری‌شده در لاگ بیلد
 DOMAIN_INTERVAL = 60          # ثانیه بین چک‌های DNS
 PENDING_DEADLINE_S = 72 * 3600  # سقف تلاش برای فعال‌سازی معلق (۷۲ ساعت)
+HEAL_INTERVAL = 120           # ثانیه بین چک‌های خودترمیم گیتا (v0.3.22)
 
 
 def start_workers() -> None:
@@ -36,7 +41,8 @@ def start_workers() -> None:
     threading.Thread(target=_loop, args=(build_once, 5), daemon=True, name="builder").start()
     threading.Thread(target=_loop, args=(billing_once, 60), daemon=True, name="billing").start()
     threading.Thread(target=_loop, args=(domain_once, DOMAIN_INTERVAL), daemon=True, name="domain").start()
-    print("[parastoo] workers started (bootstrap / builder / billing / domain)")
+    threading.Thread(target=_loop, args=(heal_once, HEAL_INTERVAL), daemon=True, name="heal").start()
+    print("[parastoo] workers started (bootstrap / builder / billing / domain / heal)")
 
 
 def _loop(fn, interval: int) -> None:
@@ -209,6 +215,44 @@ def _run_build(db, job: Build) -> None:
         job.finished_at = db_now()
         db.commit()
         dockerops.cleanup_build_dir(build_dir)
+
+
+# ---------------------------------------------------------------- heal
+
+def heal_once() -> None:
+    """خودترمیم گیتا با دامنهٔ فعال (v0.3.22) — هر ۱۲۰ ثانیه.
+
+    برای نصب‌هایی که دامنه‌شان تغییر کرده و env گیتا هنوز دامنهٔ نصب اول است:
+    چالش رجیستری داکر (Www-Authenticate realm) از ROOT_URL گیتا می‌آید؛ با
+    دامنهٔ کهنه، docker login دنبال realm کهنه می‌رود، ترافیک روتری برای آن
+    Host ندارد و هر بیلد در مرحلهٔ push به «404 page not found» می‌میرد.
+    بازسازی کانتینر گیتا (dockerops.recreate_gitea) و همگام‌سازی .env هاست
+    (sync_host_env — تا یک up بعدی compose مقدار کهنه را پس نزند) هر دو
+    best-effort است؛ شکست فقط لاگ می‌شود و سیکل بعدی دوباره تلاش می‌کند.
+    """
+    db = SessionLocal()
+    try:
+        if not db.query(User).filter(User.is_admin.is_(True)).first():
+            return  # ویزارد هنوز کامل نشده — دامنهٔ فعلی هنوز معنا ندارد
+    finally:
+        db.close()
+    if not dockerops.available():
+        return
+    try:
+        stale, cur = dockerops.gitea_stale()
+    except Exception:
+        return
+    if not stale:
+        return
+    print(f"[parastoo] gitea ROOT_URL stale ({cur or 'unset'}) — recreating "
+          f"with active domain {dockerops.gitea_root_url()}")
+    try:
+        dockerops.recreate_gitea()
+        env_ok = dockerops.sync_host_env()
+        print(f"[parastoo] gitea recreated with active domain "
+              f"(host .env synced={env_ok})")
+    except Exception as e:
+        print(f"[parastoo] gitea self-heal failed: {e}")
 
 
 # ---------------------------------------------------------------- billing

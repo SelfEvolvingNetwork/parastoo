@@ -15,18 +15,17 @@
 <section class="card">
   <h2>مخزن گیت و توکن دسترسی</h2>
   {% if git_ready %}
-  <p>مخزن خصوصی شما آماده است. کدتان را مثل گیت‌هاب push کنید:</p>
-  <pre class="code" dir="ltr">git init
-git add .
-git commit -m "first commit"
-git remote add origin http://{{ user.gitea_username }}:YOUR_TOKEN@{{ clone_url }}
-git push -u origin main</pre>
+  <p>مخزن خصوصی شما آماده است — با یک کامیت اولیهٔ استاندارد (README و ساختار پایه) سبز شروع شده. کدتان را این‌طور بفرستید:</p>
+  <pre class="code" dir="ltr">git clone http{{ 's' if domains.tls() else '' }}://{{ user.gitea_username }}:YOUR_TOKEN@{{ clone_url }} {{ p.slug }}
+cd {{ p.slug }}
+# ... فایل‌ها را تغییر دهید ...
+git add -A && git commit -m "تغییرات" && git push</pre>
   <details>
     <summary>نمایش توکن دسترسی و آدرس کامل (محرمانه)</summary>
-    <pre class="code" dir="ltr">REMOTE=http://{{ user.gitea_username }}:{{ user.gitea_token }}@{{ clone_url }}</pre>
+    <pre class="code" dir="ltr">REMOTE=http{{ 's' if domains.tls() else '' }}://{{ user.gitea_username }}:{{ user.gitea_token }}@{{ clone_url }}</pre>
     <p class="muted small">این توکن مثل رمز عبور است؛ با آن می‌توان به مخزن‌های شما push و pull کرد.</p>
   </details>
-  <p class="muted small">با هر push به شاخه <b>main</b>، بیلد خودکار شروع می‌شود و ایمیج بروزرسانی می‌گردد.</p>
+  <p class="muted small">با هر push به شاخهٔ <b>main</b>، بیلد خودکار شروع می‌شود و ایمیج بروزرسانی می‌گردد.</p>
   {% else %}
   <p class="muted">{{ FLASHES.git_pending }}</p>
   {% endif %}

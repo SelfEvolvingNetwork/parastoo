@@ -323,6 +323,23 @@ def apply_domain(db, base_domain: str, acme_email: str, tls_enabled: bool) -> di
     except Exception:
         result["zone_sync"] = "error"
 
+    # ۳.۶) هم‌خوانی گیتا و .env هاست با دامنهٔ تازه (v0.3.22) — اگر گیتا با env
+    # نصب اول بماند، چالش رجیستری داکر (realm) به دامنهٔ کهنه برمی‌گردد و
+    # docker login هر بیلد به 404 می‌خورد؛ .env هم باید تازه شود تا یک up
+    # بعدی compose همه‌چیز را به نصب اول پس نزند.
+    try:
+        result["host_env"] = dockerops.sync_host_env()
+    except Exception as e:
+        result["errors"].append(f"همگام‌سازی .env هاست: {e}")
+    try:
+        stale, cur = dockerops.gitea_stale()
+        if stale:
+            dockerops.recreate_gitea()
+            result["gitea_recreated"] = True
+            result["gitea_old_root_url"] = cur
+    except Exception as e:
+        result["errors"].append(f"بازسازی گیتا: {e}")
+
     # ۴) سایت‌های موجود: زیردامنه جدید + بازسازی کانتینر با لیبل‌های جدید
     if Site is not None and dockerops.available():
         for site in db.query(Site).all():
