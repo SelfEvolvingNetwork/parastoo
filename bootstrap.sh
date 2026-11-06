@@ -18,6 +18,10 @@
 #    PARASTOO_ZIP_NAME=...      release zip filename (default: parastoo-v0.3.24.zip)
 #    All other PARASTOO_* variables (BASE_DOMAIN, ...) pass through to install.sh.
 #
+#  CRITICAL (v0.3.24): pass variables with `sudo env VAR=x bash` — the shorter
+#  `sudo VAR=x bash` form is silently stripped by default sudoers (env_reset),
+#  and the install then runs with the default nip.io domain instead of yours.
+#
 #  If you already cloned the repo, from inside that folder just run:
 #    sudo bash bootstrap.sh
 #

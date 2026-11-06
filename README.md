@@ -30,11 +30,12 @@ curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/b
 
 `bootstrap.sh` بسته را از گیت‌هاب می‌گیرد (ترتیب تلاش: **ریلیز zip ← تاربال مخزن ← git clone**)، در `/opt/parastoo` می‌ریزد و `install.sh` را اجرا می‌کند — داکر، عبور از تحریم، توکن نصب و کل استک، همه خودکار.
 
-- **نسخهٔ پایدار به‌جای main:**  `PARASTOO_REF=v0.2.12 curl -fsSL https://raw.githubusercontent.com/... | sudo bash`
+- **نسخهٔ پایدار به‌جای main:**  `curl -fsSL https://raw.githubusercontent.com/... | sudo env PARASTOO_REF=v0.2.12 bash`
 - **زبان خروجی نصب:** ترمینال هنگام نصب کاملاً انگلیسی است — متن فارسی/RTL در SSH به‌هم می‌ریزد. پنل وب و مستندات همچنان فارسی‌اند.
 - **اگر در ایران گیت‌هاب کند بود:**  `curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash`  (همان دستور، از طریق پروکسی دانلود — این تنها روشِ جایگزینِ همان یک مسیر است)
-- **سرورهای پشت NAT/تانل (IP خروجی ≠ IP ورودی):** نصب‌کننده IP را از سرویس‌های «IP خروجی» می‌خواند؛ اگر ترافیک خروجی سرور از مسیر دیگری خارج شود، دامنهٔ خودکار `panel.<IP>.nip.io` به سرور اشاره نمی‌کند (حادثهٔ 2026-11-04، اصلاح‌شده در v0.2.18/v0.2.19). اگر بعد از نصب پنل باز نشد، با IP واقعی دوباره اجرا کنید:  `curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo PARASTOO_PUBLIC_IP=<IP واقعی سرور> bash`
+- **سرورهای پشت NAT/تانل (IP خروجی ≠ IP ورودی):** نصب‌کننده IP را از سرویس‌های «IP خروجی» می‌خواند؛ اگر ترافیک خروجی سرور از مسیر دیگری خارج شود، دامنهٔ خودکار `panel.<IP>.nip.io` به سرور اشاره نمی‌کند (حادثهٔ 2026-11-04، اصلاح‌شده در v0.2.18/v0.2.19). اگر بعد از نصب پنل باز نشد، با IP واقعی دوباره اجرا کنید:  `curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo env PARASTOO_PUBLIC_IP=<IP واقعی سرور> bash`
 - **اولویت دامنه در اجرای مجدد (v0.2.19):** اگر `PARASTOO_BASE_DOMAIN` یا `PARASTOO_PUBLIC_IP` را صریح بدهید، مقدار صریحِ همین اجرا بر دامنهٔ کهنهٔ داخل `.env` غلبه می‌کند و `.env`/لیبل روتر ترافیک/URL چاپ‌شده همگی با مقدار جدید بازنویسی می‌شوند (باگ «آدرس کهنه در خروجی» — حادثهٔ 2026-11-04). بدون env صریح، دامنهٔ قبلی حفظ می‌شود.
+- **متغیرها همیشه با `sudo env` بدهید (v0.3.24):** فرم `sudo VAR=x bash` روی پیکربندی پیش‌فرض sudo بی‌سروصدا متغیر را حذف می‌کند (میدان: 2026-11-06 — نصب با `PARASTOO_BASE_DOMAIN` اجرا شد ولی دامنهٔ nip.io ساخت)؛ فرم درست: `curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo env PARASTOO_BASE_DOMAIN=example.com bash`
 - **توجه:** ریست فکتوری (دستور ۲) `.env` را عمداً نگه می‌دارد؛ پس این باگ با ریست فکتوری هم برطرف نمی‌شد — اصلاح در خود نصب‌کننده انجام شد.
 - **اجرای مجدد = آپدیت امن:** همان دستور را دوباره بزنید؛ کد به‌روز می‌شود ولی `.env`، پیکربندی ترافیک، بستهٔ آفلاین، پشتیبان‌ها و داده‌ها (ولیوم‌های داکر) دست‌نخورده می‌مانند.
 
@@ -57,7 +58,7 @@ curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/b
 ### نصب با دامنه آماده (اختیاری، بدون سوال)
 
 ```bash
-sudo PARASTOO_BASE_DOMAIN=example.com bash install.sh
+sudo env PARASTOO_BASE_DOMAIN=example.com bash install.sh
 ```
 
 این سه رکورد DNS (A) را به IP سرور اشاره دهید:
