@@ -202,6 +202,14 @@ if docker compose up -d --build >>"$LOG" 2>&1; then
     sleep 3
   done
   if [ "$OK" = "1" ]; then
+    # v0.3.21+2 — خودآزمایی: کانتینرِ تازه باید متادیتای همین کامیت را ببیند.
+    # (درس همان باگ export: اگر روزی مسیر env عوض شود، این هشدار در log/update.log
+    # فوراً پیدایش می‌کند، نه چند چرخه بعد)
+    _hz="$(docker compose exec -T core curl -fsS http://localhost:8000/healthz 2>/dev/null || true)"
+    case "$_hz" in
+      *"\"commit\":\"$REMOTE\""*) ;;
+      *) log "WARN: healthz metadata mismatch — container may carry stale env: $(printf '%s' "$_hz" | head -c 200)" ;;
+    esac
     record "ok" "deployed ${REMOTE:0:12} (v${NEW_VER:-?})"
     log "update complete: v${NEW_VER:-?} (${REMOTE:0:12})"
     exit 0
