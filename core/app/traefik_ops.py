@@ -425,29 +425,73 @@ def _ns_delegation_ip_hits(zone: str, server_ip: str) -> int:
         return ns_hosts, a_map
 
     zone_l = zone.lower()
+
+    def _referral_hits(ns_hosts: set[str], a_map: dict[str, str]) -> int:
+        return sum(1 for h in ns_hosts if a_map.get(h) == server_ip)
+
+    # مسیر ارزان: رزولور بازگشتی عمومی — وقتی زون/NS در کشش زنده باشد جواب
+    # کامل (NS + glue) می‌دهد؛ وقتی زون ما مرده است معمولاً SERVFAIL خالی.
     for r in resolvers:
-        try:
-            out = _query(zone, 2, r)  # NS زون
-        except Exception:
-            out = None
+        out = _query(zone, 2, r)
         if not out:
             continue
         ns_hosts, a_map = out
-        # اگر glue برای بعضی NSها در پاسخ نبود، A مستقل هر NS را بپرس
-        for h in list(ns_hosts):
+        for h in list(ns_hosts):  # glue ناقص → A مستقل هر NS را بپرس
             if h in a_map:
                 continue
-            try:
-                out2 = _query(h, 1, r)  # A میزبان NS
-            except Exception:
-                out2 = None
+            out2 = _query(h, 1, r)
             if out2 and h in out2[1]:
                 a_map[h] = out2[1][h]
-        hits = sum(1 for h, a in a_map.items()
-                   if a == server_ip and (h in ns_hosts or h == f"ns1.{zone_l}"
-                                          or h == f"ns2.{zone_l}"))
-        return hits  # پاسخ معتبرResolver → «می‌دانم» (حتی اگر صفر باشد)
-    return -1  # هیچ رزولوری پاسخ نداد → «نمی‌دانم»
+        hits = _referral_hits(ns_hosts, a_map)
+        if hits >= 1:
+            return hits
+        if ns_hosts and not any(h.endswith("." + zone_l) for h in ns_hosts):
+            return 0  # NSهای out-of-bailiwick با IP غیر از ما → قطعی «نه»
+        break  # پاسخ خالی/بازگشتیِ بی‌ثمر → به پیوند تکراری برو
+
+    # مسیر iterative (درس میدانی: وقتی زون خودمان REFUSE می‌کند، رزولور
+    # بازگشتی SERVFAIL می‌دهد و glue فقط در referral از سرورهای TLD هست —
+    # پس مستقیم از root به TLD می‌رویم و referral را می‌خوانیم).
+    roots: list[str] = []
+    for rn in ("a.root-servers.net", "b.root-servers.net"):
+        try:
+            infos = socket.getaddrinfo(rn, 53, family=socket.AF_INET)
+        except Exception:
+            continue
+        roots.append(infos[0][4][0])
+    if not roots:
+        roots = ["198.41.0.4"]  # hint کلاسیک a.root — بهتر از «نمی‌دانم»
+    cur = roots
+    for _depth in range(4):  # root → tld → (گلوی زون در همان referral)
+        out = None
+        for srv in cur:
+            out = _query(zone, 2, srv)
+            if out and (out[0] or out[1]):
+                break
+            out = None
+        if not out:
+            return -1  # زنجیره پاسخ نداد → «نمی‌دانم»
+        ns_hosts, a_map = out
+        hits = _referral_hits({h for h in ns_hosts}, a_map)
+        if hits >= 1:
+            return hits
+        if not ns_hosts:
+            return 0  # پاسخ صاحب‌دار بدون NS → قطعی «نه»
+        # NSهای بعدی زنجیره: IP از glue همین referral یا رزولور محلی
+        nxt: list[str] = list({a_map[h] for h in ns_hosts if h in a_map})
+        if not nxt:
+            for h in list(ns_hosts)[:2]:
+                infos = None
+                try:
+                    infos = socket.getaddrinfo(h, 53, family=socket.AF_INET)
+                except Exception:
+                    pass
+                if infos:
+                    nxt.append(infos[0][4][0])
+        if not nxt:
+            return 0  # NSها شناخته شدند ولی IP ندارند → نمی‌تواند ما باشیم
+        cur = nxt
+    return 0  # زنجیره تمام شد و هیچ NSای به ما نرسید → قطعی «نه»
 
 
 # ---------- اعمال تغییر دامنه ----------
