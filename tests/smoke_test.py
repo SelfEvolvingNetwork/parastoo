@@ -962,6 +962,27 @@ _cm = (ROOT / "docker-compose.yml").read_text()
 check(".env هاست داخل هسته سوار می‌شود (همگام‌سازی ماندگار برای up بعدی compose)",
       "- ./.env:/app/host-env/.env" in _cm)
 
+print("— میدان v0.3.23: خودترمیم گواهی سایت‌ها + صداقت انتشار + خروج ویزارد —")
+_to = (ROOT / "core" / "app" / "traefik_ops.py").read_text()
+check("site_cert_ok دست‌دادن کامل TLS با SNI هاست می‌سنجد؛ خطای تأیید یعنی گواهی نیست",
+      "def site_cert_ok" in _to and "server_hostname=h" in _to
+      and "SSLCertVerificationError" in _to)
+check("site_cert_ok ورودی خالی و ترافیکِ در-دسترس-نیست را «قابل تصمیم‌گیری نیست» می‌دهد",
+      "return None" in _to and _to.count("return None") >= 3)
+_w = (ROOT / "core" / "app" / "workers.py").read_text()
+check("ورکر heal فاز گواهی دارد: DNS گارد + فاصلهٔ حداقل ری‌استارت ترافیک",
+      "_tls_certs_heal" in _w and "TLS_RESTART_GAP = 600" in _w
+      and "resolve_a(site.subdomain) != ip" in _w
+      and "Site.status == \"running\"" in _w)
+_r = (ROOT / "core" / "app" / "routes" / "projects.py").read_text()
+check("انتشار وقتی گواهی آماده نیست پیام صادقانه می‌دهد نه سبزِ دروغین",
+      "published_cert_pending" in _r and "site_cert_ok(site.subdomain) is False" in _r)
+check("پیام published_cert_pending در FLASHES ثبت است",
+      '"published_cert_pending":' in (ROOT / "core" / "app" / "tpl.py").read_text())
+_sd = (ROOT / "core" / "app" / "web" / "templates" / "setup_domain.html").read_text()
+check("ویزارد پس از فعال‌سازی موفق دامنه خروج به داشبورد دارد",
+      "domain_applied" in _sd and "برو به داشبورد" in _sd and 'href="/dashboard"' in _sd)
+
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

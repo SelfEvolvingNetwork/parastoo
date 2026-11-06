@@ -8,10 +8,16 @@
 4) domain_loop    : فعال‌سازی خودگردان دامنهٔ زمان‌بندی‌شده (v0.3.14) — هر ۶۰
    ثانیه چک DNS برای درخواست معلق ویزارد؛ پس از نشستن رکوردها همان مسیر
    apply_domain اجرا می‌شود (مالک نیازی به بازگشت به ویزارد ندارد).
-5) heal_loop      : خودترمیم ناهم‌خوانی گیتا با دامنهٔ فعال (v0.3.22) — نصب‌هایی
-   که دامنه‌شان عوض شده ولی env گیتا روی نصب اول مانده (میدان 2026-11-06:
-   realm کهنهٔ رجیستری → 404 روی docker login → هیچ بیلدی سبز نمی‌شد)
-   بدون دخالت مالک بازسازی می‌شوند.
+5) heal_loop      : خودترمیم‌های بی‌سر و صدا (هر ۱۲۰ ثانیه):
+   a) ناهم‌خوانی گیتا با دامنهٔ فعال (v0.3.22) — نصب‌هایی که دامنه‌شان عوض
+      شده ولی env گیتا روی نصب اول مانده (میدان 2026-11-06: realm کهنهٔ
+      رجیستری → 404 روی docker login → هیچ بیلدی سبز نمی‌شد) بدون دخالت
+      مالک بازسازی می‌شوند.
+   b) گواهی جاافتادهٔ سایت‌ها (v0.3.23) — ترافیک پس از یک شکست ACME دیگر
+      خودش تلاش نمی‌کند؛ اگر DNS درست نشسته باشد ولی گواهی سایتی نباشد
+      (میدان همان روز: my-shop.apps… ساعت‌ها روی HTTPS باز نمی‌شد در حالی
+      که پنل «running» می‌گفت)، ترافیک با فاصلهٔ حداقل ۱۰ دقیقه ری‌استارت
+      می‌شود تا چرخهٔ صدور از نو اجرا شود.
 """
 import subprocess
 import threading
@@ -31,6 +37,9 @@ LOG_TAIL = 60_000  # حداکثر کاراکترهای نگه‌داری‌شد�
 DOMAIN_INTERVAL = 60          # ثانیه بین چک‌های DNS
 PENDING_DEADLINE_S = 72 * 3600  # سقف تلاش برای فعال‌سازی معلق (۷۲ ساعت)
 HEAL_INTERVAL = 120           # ثانیه بین چک‌های خودترمیم گیتا (v0.3.22)
+TLS_RESTART_GAP = 600         # حداقل فاصلهٔ ری‌استارت ترافیک برای تلاش مجدد ACME (v0.3.23)
+
+_last_tls_restart = 0.0  # زمان آخرین ری‌استارت ترافیک در این فرایند
 
 
 def start_workers() -> None:
@@ -220,15 +229,24 @@ def _run_build(db, job: Build) -> None:
 # ---------------------------------------------------------------- heal
 
 def heal_once() -> None:
-    """خودترمیم گیتا با دامنهٔ فعال (v0.3.22) — هر ۱۲۰ ثانیه.
+    """خودترمیم‌های بی‌سر و صدا — هر ۱۲۰ ثانیه.
 
-    برای نصب‌هایی که دامنه‌شان تغییر کرده و env گیتا هنوز دامنهٔ نصب اول است:
-    چالش رجیستری داکر (Www-Authenticate realm) از ROOT_URL گیتا می‌آید؛ با
-    دامنهٔ کهنه، docker login دنبال realm کهنه می‌رود، ترافیک روتری برای آن
-    Host ندارد و هر بیلد در مرحلهٔ push به «404 page not found» می‌میرد.
-    بازسازی کانتینر گیتا (dockerops.recreate_gitea) و همگام‌سازی .env هاست
-    (sync_host_env — تا یک up بعدی compose مقدار کهنه را پس نزند) هر دو
-    best-effort است؛ شکست فقط لاگ می‌شود و سیکل بعدی دوباره تلاش می‌کند.
+    الف) گیتا (v0.3.22): برای نصب‌هایی که دامنه‌شان تغییر کرده و env گیتا
+    هنوز دامنهٔ نصب اول است: چالش رجیستری داکر (Www-Authenticate realm) از
+    ROOT_URL گیتا می‌آید؛ با دامنهٔ کهنه، docker login دنبال realm کهنه
+    می‌رود، ترافیک روتری برای آن Host ندارد و هر بیلد در مرحلهٔ push به
+    «404 page not found» می‌میرد. بازسازی کانتینر گیتا
+    (dockerops.recreate_gitea) و همگام‌سازی .env هاست (sync_host_env — تا یک
+    up بعدی compose مقدار کهنه را پس نزند) هر دو best-effort است؛ شکست فقط
+    لاگ می‌شود و سیکل بعدی دوباره تلاش می‌کند.
+
+    ب) گواهی سایت‌ها (v0.3.23): اگر صدور گواهی یک سایت در لحظهٔ انتشار به
+    SERVFAIL گذرای DNS بخورد، ترافیک دیگر هرگز خودش تلاش نمی‌کند و سایت
+    بی‌گواهی می‌ماند در حالی که پنل «running» می‌گوید. اینجا فقط وقتی که
+    DNS عمومی زیردامنه درست نشسته ولی گواهی معتبر نیست، ترافیک ری‌استارت
+    می‌شود (با فاصلهٔ حداقل ۱۰ دقیقه) تا چرخهٔ ACME از نو اجرا شود؛ گارد DNS
+    جلوی ری‌استارت بی‌پایان برای دامنه‌هایی که اصلاً به سرور اشاره نمی‌کنند
+    را می‌گیرد.
     """
     db = SessionLocal()
     try:
@@ -242,17 +260,44 @@ def heal_once() -> None:
         stale, cur = dockerops.gitea_stale()
     except Exception:
         return
-    if not stale:
-        return
-    print(f"[parastoo] gitea ROOT_URL stale ({cur or 'unset'}) — recreating "
-          f"with active domain {dockerops.gitea_root_url()}")
+    if stale:
+        print(f"[parastoo] gitea ROOT_URL stale ({cur or 'unset'}) — recreating "
+              f"with active domain {dockerops.gitea_root_url()}")
+        try:
+            dockerops.recreate_gitea()
+            env_ok = dockerops.sync_host_env()
+            print(f"[parastoo] gitea recreated with active domain "
+                  f"(host .env synced={env_ok})")
+        except Exception as e:
+            print(f"[parastoo] gitea self-heal failed: {e}")
+    _tls_certs_heal(db)
+
+
+def _tls_certs_heal(db) -> None:
+    """فاز ب) خودترمیم گواهی — جزئیات در heal_once (v0.3.23). best-effort:
+    هر استثنایی فقط لاگ می‌شود و هرگز بقیهٔ چرخهٔ heal را نمی‌بندد."""
+    global _last_tls_restart
     try:
-        dockerops.recreate_gitea()
-        env_ok = dockerops.sync_host_env()
-        print(f"[parastoo] gitea recreated with active domain "
-              f"(host .env synced={env_ok})")
+        if not domains.tls(db):
+            return  # TLS خاموش است — گواهی در کار نیست
+        ip = domains.server_ip(db)
+        if not ip:
+            return
+        broken = []
+        for site in db.query(Site).filter(Site.status == "running").all():
+            if traefik_ops.resolve_a(site.subdomain) != ip:
+                continue  # DNS هنوز به این سرور اشاره ندارد — دست نزنیم
+            if traefik_ops.site_cert_ok(site.subdomain) is False:
+                broken.append(site.subdomain)
+        if not broken or time.time() - _last_tls_restart < TLS_RESTART_GAP:
+            return
+        _last_tls_restart = time.time()
+        print(f"[parastoo] cert missing for {', '.join(broken)} — "
+              f"restarting traefik to retry ACME")
+        c = dockerops.client()
+        c.containers.get(settings.TRAEFIK_CONTAINER).restart(timeout=10)
     except Exception as e:
-        print(f"[parastoo] gitea self-heal failed: {e}")
+        print(f"[parastoo] cert self-heal failed: {e}")
 
 
 # ---------------------------------------------------------------- billing

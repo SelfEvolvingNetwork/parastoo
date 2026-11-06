@@ -6,7 +6,7 @@ services/sites.py است.
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.orm import Session
 
-from .. import domains
+from .. import domains, traefik_ops
 from ..db import get_db
 from ..deps import ctx, csrf_guard, redirect, render
 from ..models import Build, Project, Site
@@ -130,7 +130,14 @@ def project_publish(
     project = projects_svc.project_for(db, user, slug)
     if project is None:
         return redirect("/projects?m=not_found")
-    _, flash = sites_svc.publish_from_project(db, user, project, site_slug, tier, port)
+    site, flash = sites_svc.publish_from_project(db, user, project, site_slug, tier, port)
     if flash:
         return redirect(f"/projects/{slug}?m={flash}")
+    # صداقت انتشار (v0.3.23): اگر ترافیک هنوز گواهی HTTPS این سایت را ندارد،
+    # همین‌جا بگوییم — نباید «منتشر شد» سبزی بدهیم و سایت روی HTTPS باز نشود
+    # (میدان 2026-11-06: شکست ACME به‌خاطر SERVFAIL گذرا، ساعت‌ها پنهان ماند).
+    # ورکر heal خودش تلاش مجدد می‌کند؛ کاربر فقط باید بداند چند دقیقه‌ای طول می‌کشد.
+    if site is not None and domains.tls() and \
+            traefik_ops.site_cert_ok(site.subdomain) is False:
+        return redirect(f"/projects/{slug}?m=published_cert_pending")
     return redirect(f"/projects/{slug}?m=published")

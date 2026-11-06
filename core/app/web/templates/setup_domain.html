@@ -12,6 +12,17 @@
 <div class="flash">فعلاً روی دامنه موقت (nip.io) هستید؛ این حالت HTTPS ندارد. با دامنه واقعی، گواهی Let's Encrypt خودکار صادر می‌شود.</div>
 {% endif %}
 
+{% if m == 'domain_applied' %}
+<section class="card">
+  <h2>دامنه فعال شد</h2>
+  <p>
+    دامنه و HTTPS با موفقیت اعمال شد؛ پنل، گیت و سایت‌ها از این به بعد روی دامنهٔ رسمی سرو می‌شوند.
+    صدور گواهی HTTPS ممکن است چند دقیقه اول طول بکشد.
+  </p>
+  <a class="btn btn-primary" href="/dashboard">برو به داشبورد</a>
+</section>
+{% endif %}
+
 {% if pending %}
 <section class="card">
   <h2>فعال‌سازی خودکار در انتظار DNS</h2>

@@ -14,7 +14,7 @@
 | ایجنت دسترسی مستقل | `SelfEvolvingNetwork/access-agent` (v0.1.3؛ systemd، مستقل از پرستو/داکر) — **تنها مسیر اجرای دستور عامل روی سرور**؛ بلوک تحویل: `sudo access-agent handoff` |
 | فایل امن محلی | `.secrets/github.env` و `.secrets/access-agent.env` — chmod 600، gitignored، مستثنا از rsync |
 | کلون محلی کاری | `/home/z/my-project/parastoo` (sandbox؛ بین جلسات حفظ می‌شود) |
-| نسخهٔ فعلی | `v0.3.22` (`core/app/config.py`) |
+| نسخهٔ فعلی | `v0.3.23` (`core/app/config.py`) |
 | استک | FastAPI + Gitea + Traefik + PowerDNS + PostgreSQL |
 
 ## ۲) احراز هویت و قرارداد توکن‌ها

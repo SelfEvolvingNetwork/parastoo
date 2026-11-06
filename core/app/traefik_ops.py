@@ -11,6 +11,7 @@
 """
 import secrets
 import socket
+import ssl
 from pathlib import Path
 
 import httpx
@@ -167,7 +168,52 @@ def probe_https(host: str) -> str:
         return "pending"
 
 
+# ---------- وضعیت گواهی سایت‌ها (v0.3.23) ----------
+
+def site_cert_ok(subdomain: str) -> bool | None:
+    """آیا ترافیک برای این هاست گواهی معتبر و منطبق دارد؟
+
+    اتصال مستقیم به کانتینر ترافیک روی شبکهٔ داکر (بدون DNS عمومی و بدون
+    وابستگی به hairpin) با SNI همان زیردامنه و اعتبارسنجی کامل زنجیره:
+    True  = دست‌دادن TLS سالم بود — گواهی صادر شده و برای همین هاست است
+    False = خطای تأیید گواهی — هنوز صادر نشده یا ناهم‌خوان است
+    None  = قابل بررسی نبود (ترافیک/شبکه در دسترس نیست) — تصمیم نگیر
+    بدون استثنا — فراخواننده فقط وضعیت می‌خواهد، نه ردیابی خطا.
+    """
+    h = (subdomain or "").strip().lower().rstrip(".")
+    if not h:
+        return None
+    try:
+        from . import dockerops  # واردسازی دیرهنگام — دورِ تست بدون داکر
+        c = dockerops.client()
+        t = c.containers.get(settings.TRAEFIK_CONTAINER)
+        nets = (t.attrs.get("NetworkSettings") or {}).get("Networks") or {}
+        ip = ""
+        for net in nets.values():
+            ip = net.get("IPAddress") or ""
+            if ip:
+                break
+        if not ip:
+            return None
+    except Exception:
+        return None
+    try:
+        ctx = ssl.create_default_context()
+        with socket.create_connection((ip, 443), timeout=6.0) as raw:
+            with ctx.wrap_socket(raw, server_hostname=h):
+                return True
+    except ssl.SSLCertVerificationError:
+        return False  # گواهی پیش‌فرض/ناهم‌خوان — یعنی هنوز صادر نشده
+    except Exception:
+        return None
+
+
 # ---------- بررسی DNS ----------
+
+def resolve_a(host: str) -> str | None:
+    """A رکورد عمومی یک هاست — برای گارد خودترمیم گواهی (v0.3.23)."""
+    return _resolve_a(host)
+
 
 def _resolve_a(host: str) -> str | None:
     try:
