@@ -98,11 +98,16 @@ case "${1:-help}" in
     # alpine:3.20 is pinned so sanction-less servers never need a latest pull from Docker Hub — deploy/images.txt
     docker run --rm -v parastoo_gitea_data:/data -v "$APP_DIR/backups":/backup alpine:3.20 \
       tar czf "/backup/gitea-${TS}.tar.gz" /data
-    echo "Backing up TLS certificates (acme.json)..."
-    if [ -s "$APP_DIR/config/letsencrypt/acme.json" ]; then
+    echo "Backing up TLS certificates (live volume -> persistent store -> backups/)..."
+    # v0.3.32 law: the persistent store /var/lib/parastoo/tls is the canonical
+    # copy — sync it from the live volume first, then archive it
+    bash "$APP_DIR/scripts/tls-store.sh" save >/dev/null 2>&1 || true
+    if [ -s "/var/lib/parastoo/tls/acme.json" ]; then
+      cp -a "/var/lib/parastoo/tls/acme.json" "backups/acme-${TS}.json"
+    elif [ -s "$APP_DIR/config/letsencrypt/acme.json" ]; then
       cp -a "$APP_DIR/config/letsencrypt/acme.json" "backups/acme-${TS}.json"
     else
-      echo "  (no acme.json yet — skipped)"
+      echo "  (no certificates yet — skipped)"
     fi
     echo "Backup complete: backups/db-${TS}.sql.gz, backups/gitea-${TS}.tar.gz, backups/acme-${TS}.json (if present)"
     ;;

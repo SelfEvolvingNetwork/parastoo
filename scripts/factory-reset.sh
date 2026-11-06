@@ -109,6 +109,14 @@ else
   warn "postgres container is not running — no pre-reset dump possible"
 fi
 
+# ---------- 0b) TLS store — the certificate law (v0.3.32) ----------
+# The certificates are NEVER deleted — not even by a factory reset. Right
+# before the wipe, the live volume is mirrored into the persistent store
+# (/var/lib/parastoo/tls) so the fresh volume gets seeded after rebuild and
+# the CA is never asked to re-issue what it already issued (LE rate limits).
+mark "0b/5) syncing certificates into the persistent TLS store"
+bash "$APP_DIR/scripts/tls-store.sh" save || true
+
 # ---------- 1/5) teardown: every container Parastoo owns ----------
 mark "1/5) stopping and removing everything Parastoo owns"
 # site containers live OUTSIDE the compose stack (created via Docker SDK,
@@ -145,6 +153,9 @@ if [ -n "${VOL_LEFT:-}" ]; then
   die "cannot wipe volumes: $VOL_LEFT — remove the blockers above, then re-run the reset."
 fi
 ok "all parastoo_* volumes are gone (verified)"
+# v0.3.32 law: the persistent TLS store survives every reset on purpose
+ok "persistent TLS store untouched — certificates survive resets (never wiped by design)"
+bash "$APP_DIR/scripts/tls-store.sh" status 2>/dev/null || true
 
 # ---------- 3/5) networks + user-project images ----------
 mark "3/5) cleaning networks and user-project images"
@@ -163,6 +174,14 @@ if ! docker compose up -d --build >"$RUN_LOG.up" 2>&1; then
   die "docker compose failed. Manual recovery:
   cd $APP_DIR && sudo bash scripts/db-reconcile.sh && sudo docker compose up -d --build"
 fi
+
+# ---------- 4b) seed the fresh volume from the TLS store (v0.3.32) ----------
+# The brand-new traefik_certs volume is empty; ensure() copies the persistent
+# store into it and restarts Traefik so it SERVES those certificates instead
+# of re-requesting every hostname from the CA (the exact 429 that closed
+# installs 4-6 of this domain after repeated resets).
+mark "4b/5) restoring certificates from the persistent TLS store"
+bash "$APP_DIR/scripts/tls-store.sh" ensure || true
 
 # ---------- 5/5) health gate — reset is done ONLY when the core answers ----------
 mark "5/5) waiting for the core to become healthy (up to ~3 min after build)"

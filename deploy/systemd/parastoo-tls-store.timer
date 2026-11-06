@@ -1,0 +1,11 @@
+[Unit]
+Description=Sync Parastoo certificates into the persistent store every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+AccuracySec=30s
+Unit=parastoo-tls-store.service
+
+[Install]
+WantedBy=timers.target

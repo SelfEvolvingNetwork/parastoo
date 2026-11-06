@@ -481,6 +481,11 @@ GITEA_ROOT_URL_SCHEME="http"; [ "$TLS_ENABLED" = "true" ] && GITEA_ROOT_URL_SCHE
 # صادر نمی‌کند (v0.3.31 — فهرست TLDهای محدود). EAB یک‌بار گرفته می‌شود و در
 # .env می‌ماند (طبق مستندات ZeroSSL قابل استفادهٔ مجدد است).
 ACME_CA="${PARASTOO_ACME_CA:-letsencrypt}"
+# v0.3.32 — heredoc-safety (install_env_test): EAB is filled conditionally in
+# the zerossl branch below; initialize unconditionally so the .env heredoc
+# can never hit an unbound variable (set -u kills install.sh before compose up)
+PARASTOO_ACME_EAB_KID="${PARASTOO_ACME_EAB_KID:-}"
+PARASTOO_ACME_EAB_HMAC="${PARASTOO_ACME_EAB_HMAC:-}"
 # v0.3.31 — درس میدانی دور ششم (نصب زنده): حساب ACME و EAB زروسsl سبز است
 # (newAccount 201) ولی هر newOrder برای شناسهٔ .ir با rejectedIdentifier رد
 # می‌شود («DNS identifier is disallowed») — فهرست TLDهای محدود زروسsl
@@ -714,7 +719,8 @@ ok "parastoo CLI installed (status/logs/update/autoupdate/backup)."
 if [ "${PARASTOO_AUTO_UPDATE:-true}" = "true" ] && command -v systemctl >/dev/null 2>&1; then
   say "Installing the auto-update timer (checks GitHub every ${PARASTOO_AUTO_UPDATE_INTERVAL}s)..."
   mkdir -p /etc/systemd/system
-  for _u in parastoo-autoupdate.service parastoo-autoupdate.timer; do
+  for _u in parastoo-autoupdate.service parastoo-autoupdate.timer \
+            parastoo-tls-store.service parastoo-tls-store.timer; do
     sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" "deploy/systemd/$_u" > "/etc/systemd/system/$_u" 2>/dev/null || true
   done
   systemctl daemon-reload 2>/dev/null || true
@@ -723,6 +729,9 @@ if [ "${PARASTOO_AUTO_UPDATE:-true}" = "true" ] && command -v systemctl >/dev/nu
   else
     warn "Could not enable the timer; check: systemctl status parastoo-autoupdate.timer"
   fi
+  systemctl enable --now parastoo-tls-store.timer 2>/dev/null \
+    && ok "TLS store sync timer enabled (certificates mirror to /var/lib/parastoo/tls every 10 min)." \
+    || warn "Could not enable parastoo-tls-store.timer (certificates still saved at install time)."
 elif [ "${PARASTOO_AUTO_UPDATE:-true}" = "true" ]; then
   warn "systemd not available; add to cron instead:"
   warn "  * * * * * root bash $INSTALL_DIR/scripts/auto-update.sh"
@@ -730,18 +739,27 @@ else
   warn "Auto-update disabled (PARASTOO_AUTO_UPDATE=false in .env) — update manually: sudo parastoo update"
 fi
 
-# ---------- 4c) certificate insurance (v0.3.20) ----------
-# Field lesson (2026-11-05 server rebuild): acme.json IS the server's TLS
-# identity — losing it means re-issuing every cert from Let's Encrypt (rate
-# limits, and on a sanctioned network the CA may be unreachable). Keep a
-# timestamped copy before touching the stack; `parastoo backup` archives it
-# too, but that lives on the same disk — off-server copies are the agent's
-# job (docs/AI_AGENT_LOOP.md §0).
-mark "4c) certificate insurance"
-ACME_FILE="$INSTALL_DIR/config/letsencrypt/acme.json"
-if [ -s "$ACME_FILE" ]; then
-  cp -a "$ACME_FILE" "$ACME_FILE.preinstall-$(date +%Y%m%d-%H%M%S)"
-  ok "Backed up existing acme.json (Let's Encrypt accounts/certs) next to the original."
+# ---------- 4c) persistent TLS store — the certificate law (v0.3.32) ----------
+# Owner decree (2026-11-07): the server's certificates live at a FIXED address
+# (/var/lib/parastoo/tls) and are NEVER deleted — not by reinstalls, not by
+# factory reset, not by tests. BEFORE requesting anything, the app checks that
+# address: valid certificates there are reused as-is (restored into the
+# traefik_certs volume so Traefik serves them); only genuinely missing ones
+# are requested from the CA. This is what keeps repeated fresh installs from
+# burning Let's Encrypt rate limits (50 certs/7d per registered domain; 5 per
+# exact name set — every reinstall used to re-request everything and hit 429).
+# Replaces the v0.3.20 insurance that backed up a dead path (config/letsencrypt
+# — the real storage is the volume); the store now mirrors the volume every
+# 10 min (parastoo-tls-store.timer) plus right here at install time. Off-server
+# copies remain the agent's job (docs/AI_AGENT_LOOP.md §0).
+mark "4c) persistent TLS store (restore -> save)"
+bash "$INSTALL_DIR/scripts/tls-store.sh" ensure || true
+bash "$INSTALL_DIR/scripts/tls-store.sh" save || true
+# legacy adoption: installs older than the volume design kept acme.json here
+if [ -s "$INSTALL_DIR/config/letsencrypt/acme.json" ]; then
+  PARASTOO_TLS_LIVE="$INSTALL_DIR/config/letsencrypt/acme.json" \
+    bash "$INSTALL_DIR/scripts/tls-store.sh" save \
+    && ok "Legacy acme.json adopted into the persistent store."
 fi
 
 # ---------- 5) bring up the stack ----------
@@ -921,6 +939,14 @@ finally:
     esac
     ;;
 esac
+
+# ---------- 6e) TLS store — seed a fresh volume, then sync (v0.3.32) ----------
+# After a factory-reset the volume is brand-new and empty: ensure() restores
+# the store into it and restarts Traefik BEFORE/instead of ACME re-requesting
+# every hostname (the exact 429 that closed installs 4–6 of this domain).
+mark "6e) tls store sync"
+bash "$INSTALL_DIR/scripts/tls-store.sh" ensure || true
+bash "$INSTALL_DIR/scripts/tls-store.sh" save || true
 
 SCHEME="http"; [ "$TLS_ENABLED" = "true" ] && SCHEME="https"
 mark "done"

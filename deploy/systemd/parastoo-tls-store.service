@@ -1,0 +1,13 @@
+[Unit]
+Description=Parastoo TLS store — sync acme.json into the persistent store (the certificate law, v0.3.32)
+Documentation=https://github.com/SelfEvolvingNetwork/parastoo
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=/bin/bash __INSTALL_DIR__/scripts/tls-store.sh save
+TimeoutStartSec=120
+Nice=5
+# قانون گواهی ماندگار (v0.3.32): فروشگاه /var/lib/parastoo/tls هرگز پاک نمی‌شود؛
+# این واحد فقط live -> store همگام می‌کند. بازیابی در install.sh و factory-reset است.

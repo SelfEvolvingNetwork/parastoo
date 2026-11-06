@@ -924,13 +924,13 @@ check("شکست compose up قبل از die، پروب واقعی سلامت می
       and "core does not answer /healthz" in _ins)
 check("در مسیر پروب، up بدون build یک‌بار تکرار می‌شود (خطاهای گذرا)",
       "docker compose up -d >/dev/null 2>&1 || true" in _ins)
-check("نصب‌کننده پیش از استقرار از acme.json موجود نسخهٔ زمان‌دار می‌سازد",
-      "certificate insurance" in _ins
-      and 'cp -a "$ACME_FILE"' in _ins
-      and "ACME_FILE.preinstall-$(date +%Y%m%d-%H%M%S)" in _ins)
+check("نصب‌کننده پیش از استقرار گواهی را از فروشگاه ماندگار بازیابی می‌کند (قانون v0.3.32)",
+      "persistent TLS store" in _ins
+      and "tls-store.sh\" ensure" in _ins
+      and _ins.index("tls-store.sh") < _ins.index('mark "5) docker compose up"'))
 _bk = (ROOT / "bin" / "parastoo").read_text()
-check("parastoo backup گواهی‌ها (acme.json) را هم پشتیبان می‌گیرد",
-      'backups/acme-${TS}.json' in _bk and "letsencrypt/acme.json" in _bk)
+check("parastoo backup گواهی‌ها را از فروشگاه ماندگار پشتیبان می‌گیرد (نه مسیر مردهٔ قدیمی)",
+      'backups/acme-${TS}.json' in _bk and "/var/lib/parastoo/tls/acme.json" in _bk)
 
 print("— میدان v0.3.22: خودترمیم گیتا (realm کهنهٔ رجیستری) + دستورهای push —")
 _tpl = (ROOT / "core" / "app" / "web" / "templates" / "project_detail.html").read_text()
@@ -1035,6 +1035,44 @@ check("پیام published_cert_pending در FLASHES ثبت است",
 _sd = (ROOT / "core" / "app" / "web" / "templates" / "setup_domain.html").read_text()
 check("ویزارد پس از فعال‌سازی موفق دامنه خروج به داشبورد دارد",
       "domain_applied" in _sd and "برو به داشبورد" in _sd and 'href="/dashboard"' in _sd)
+
+print()
+print("— قانون گواهی ماندگار (v0.3.32) —")
+_i32 = (ROOT / "install.sh").read_text()
+_r32 = (ROOT / "scripts" / "factory-reset.sh").read_text()
+_t32 = (ROOT / "scripts" / "tls-store.sh").read_text()
+_u32 = (ROOT / "uninstall.sh").read_text()
+_c32 = (ROOT / "bin" / "parastoo").read_text()
+check("فروشگاه ماندگار با مسیر قانونی /var/lib/parastoo/tls و دستورهای save/restore/ensure/status وجود دارد",
+      "/var/lib/parastoo/tls" in _t32 and "acme.json" in _t32
+      and "cmd_save" in _t32 and "cmd_restore" in _t32 and "cmd_ensure" in _t32 and "cmd_status" in _t32)
+check("نصب‌کننده پیش از آوردن استک از فروشگاه ensure می‌کند (هرگز درخواست تکراری به CA)",
+      _i32.count("tls-store.sh") >= 3
+      and _i32.index("tls-store.sh") < _i32.index('mark "5) docker compose up"'))
+check("پس از استقرار هم فروشگاه دوباره ensure+save می‌شود (ولوم تازهٔ پس از ریست)",
+      _i32.rfind("tls-store.sh") > _i32.rindex('mark "6d'))
+check("نصب‌کننده acme.json قدیمی مسیر مرده را هم به فروشگاه می‌پذیرد (legacy adoption)",
+      "config/letsencrypt/acme.json" in _i32 and "PARASTOO_TLS_LIVE=" in _i32)
+check("factory-reset پیش از پاک‌کردن ولوم‌ها گواهی را در فروشگاه ذخیره می‌کند",
+      _r32.index("tls-store.sh") < _r32.index("down -v"))
+check("factory-reset پس از استقرار، گواهی را در ولوم تازه بازیابی می‌کند (ensure)",
+      "tls-store.sh\" ensure" in _r32
+      and _r32.index("tls-store.sh\" ensure") > _r32.index("down -v"))
+check("factory-reset فروشگاه را پاک نمی‌کند و وضعیتش را گزارش می‌دهد (قانون: هرگز)",
+      "never wiped" in _r32 and "tls-store.sh\" status" in _r32)
+check("uninstall فروشگاه را عمداً نگه می‌دارد و تایمر همگام‌سازی را جمع می‌کند",
+      "/var/lib/parastoo/tls" in _u32 and "parastoo-tls-store.timer" in _u32)
+check("تایمر همگام‌سازی گواهی (هر ۱۰ دقیقه) نصب و فعال می‌شود",
+      "parastoo-tls-store.timer" in _i32
+      and "enable --now parastoo-tls-store.timer" in _i32
+      and (ROOT / "deploy/systemd/parastoo-tls-store.timer").exists()
+      and (ROOT / "deploy/systemd/parastoo-tls-store.service").exists())
+check("پشتیبان CLI اول فروشگاه را همگام و بعد آرشیو می‌کند",
+      "tls-store.sh" in _c32 and "/var/lib/parastoo/tls/acme.json" in _c32)
+check("فروشگاه هرگز فروشگاه سالم را با فایل خراب نمی‌پوشاند و JSON را اعتبارسنجی می‌کند",
+      "_json_valid" in _t32 and "refusing to archive garbage" in _t32)
+check("قانون در قرارداد حلقهٔ ایجنت ثبت است (AI_AGENT_LOOP §3 و §0)",
+      "قانون گواهی ماندگار" in (ROOT / "docs/AI_AGENT_LOOP.md").read_text())
 
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")

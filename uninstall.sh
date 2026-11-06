@@ -32,7 +32,12 @@ rm -f /usr/local/bin/parastoo "$DIR_FILE"
 # آپدیت خودکار (v0.2.12) — تایمر و واحد systemd هم پاک شود
 if command -v systemctl >/dev/null 2>&1; then
   systemctl disable --now parastoo-autoupdate.timer 2>/dev/null || true
-  rm -f /etc/systemd/system/parastoo-autoupdate.service /etc/systemd/system/parastoo-autoupdate.timer
+  systemctl disable --now parastoo-tls-store.timer 2>/dev/null || true
+  rm -f /etc/systemd/system/parastoo-autoupdate.service /etc/systemd/system/parastoo-autoupdate.timer \
+        /etc/systemd/system/parastoo-tls-store.service /etc/systemd/system/parastoo-tls-store.timer
   systemctl daemon-reload 2>/dev/null || true
 fi
 echo -e "${GREEN}Parastoo removed. The install folder remains at $APP_DIR (files and .env).${NC}"
+# قانون گواهی ماندگار (v0.3.32): فروشگاه گواهی عمداً حفظ می‌شود تا نصب بعدی
+# چیزی از CA دوباره نخواهد؛ حذفش فقط دستی و با آگاهی کامل.
+echo -e "${GREEN}TLS certificate store kept at /var/lib/parastoo/tls (the certificate law — delete manually only if you truly mean it).${NC}"
