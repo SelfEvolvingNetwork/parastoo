@@ -19,6 +19,10 @@ VER="$(sed -n 's/^ *VERSION: *str *= *"\([^"]*\)".*/\1/p' "$HERE/core/app/config
 [ -n "$VER" ] || { echo "ERROR: VERSION not found in core/app/config.py"; exit 1; }
 ZIP="${1:-$HERE/../parastoo-v${VER}.zip}"
 [ -f "$ZIP" ] || { echo "ERROR: zip not found: $ZIP"; exit 1; }
+# v0.3.27: resolve BEFORE the step-2 `cd "$TMP/repo"` — a relative path died
+# there with "curl: option --data-binary: error encountered when reading a file"
+# and the release was left without its asset (field, 2026-11-06)
+ZIP="$(cd "$(dirname "$ZIP")" && pwd)/$(basename "$ZIP")"
 echo "repo=$REPO  version=$VER  zip=$ZIP"
 
 # 1) auth smoke test
