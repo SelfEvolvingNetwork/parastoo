@@ -49,6 +49,41 @@ trap on_interrupt INT TERM HUP
 # reports — so an interrupted install can be diagnosed without access to the server
 mark() { echo "$(date '+%F %T')  $*" > "$INSTALL_DIR/.install-state" 2>/dev/null || true; }
 
+# ---------- Docker daemon health gate (v0.3.24) ----------
+# Real-world failure (fresh Ubuntu 24.04, 2026-11-06): Ubuntu's docker.io 29.x
+# ships docker.service with Requires=docker.socket but NO After= ordering — on
+# the very first start dockerd can race the socket unit, die with
+# "failed to load listeners: no sockets found via socket activation", and trip
+# systemd's start-rate-limit. Every later `systemctl start docker` then fails
+# instantly and was silently swallowed by `|| true`, so the installer kept
+# going and died minutes later with the misleading "core does not answer
+# /healthz". Fix: actually verify `docker info`; if the daemon is wedged, run
+# the exact recovery sequence (reset-failed -> socket -> service -> wait)
+# before continuing; if it still cannot come up, fail HERE with the journal.
+wait_docker_info() {
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    docker info >/dev/null 2>&1 && return 0
+    sleep 2
+  done
+  return 1
+}
+ensure_docker_daemon() {
+  if wait_docker_info; then return 0; fi
+  warn "Docker daemon is not answering — trying the socket-activation recovery..."
+  systemctl reset-failed docker.service docker.socket 2>/dev/null || true
+  systemctl start docker.socket 2>/dev/null || true
+  sleep 1
+  systemctl start docker.service 2>/dev/null || true
+  if wait_docker_info; then
+    ok "Docker daemon recovered."
+    return 0
+  fi
+  echo "        --- last journal lines (docker.service / docker.socket): ---" >&2
+  journalctl -u docker.service -u docker.socket --no-pager -n 12 2>/dev/null | sed 's/^/        /' >&2
+  die "Docker daemon did not come up — a host problem, not a network problem. See the journal above; docs/SANCTIONS.md, section 'Docker install'."
+}
+
 # ---------- 1) prerequisites ----------
 mark "1) prerequisites"
 say "Checking prerequisites..."
@@ -98,6 +133,7 @@ else
   ok "Docker present: $(docker --version)"
 fi
 systemctl enable --now docker >/dev/null 2>&1 || true
+ensure_docker_daemon
 
 if ! docker compose version >/dev/null 2>&1; then
   die "docker compose plugin not found. Install docker-compose-v2 (docs/SANCTIONS.md)."
@@ -146,6 +182,9 @@ apply_mirrors() {
     python3 scripts/merge-docker-mirrors.py /etc/docker/daemon.json $mirrors || return 1
     systemctl restart docker >/dev/null 2>&1 || service docker restart >/dev/null 2>&1 || true
     sleep 2
+    # a restart that silently failed used to surface much later as
+    # "core does not answer /healthz"; verify the daemon really came back
+    ensure_docker_daemon
     return 0
   fi
   return 1
@@ -182,6 +221,9 @@ else
     # final verification: a small real pull (same image the backup command needs)
     if timeout 90 docker pull -q alpine:3.20 >/dev/null 2>&1; then
       ok "Final check: pull through the mirror works."
+    elif ! docker info >/dev/null 2>&1; then
+      # a pull can never test the mirrors when the daemon itself is down — say so
+      warn "Test pull failed because the Docker daemon is down (not a mirror problem) — see journalctl -u docker, then re-run install.sh."
     else
       warn "Test pull also failed. Reliable route: bash scripts/fetch-images.sh on an unsanctioned machine -> offline-images/ folder -> run install.sh again"
     fi

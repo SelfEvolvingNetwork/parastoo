@@ -20,7 +20,10 @@ if [ "${DEL_VOLS:-n}" = "y" ]; then
   docker ps -aq --filter name=parastoo-site- | xargs -r docker rm -f
   docker compose down -v --remove-orphans
   echo "Removing project images..."
-  docker images -q --filter label=parastoo.slug | xargs -r docker rmi -f
+  # -n1 + tolerate failure: layered images may already be gone as dependencies
+  # of an earlier removal — a hard error here aborted nothing important but
+  # scared the user with "No such image" (v0.3.24)
+  docker images -q --filter label=parastoo.slug | xargs -r -n1 docker rmi -f 2>/dev/null || true
 else
   docker compose down --remove-orphans
 fi
