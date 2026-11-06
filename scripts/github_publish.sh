@@ -38,6 +38,11 @@ rsync -a --delete --exclude '.git' --exclude '.env' --exclude 'backups/' \
       --exclude 'offline-images/' --exclude '__pycache__/' --exclude '*.pyc' \
       --exclude '.secrets/' \
       "$HERE/" "$TMP/repo/"
+# v0.3.27: the bootstrap default zip name must always match the release being
+# cut — the smoke check "نام zip پیش‌فرض بوت‌استرپ هم‌نسخهٔ جاری است" caught a
+# forgotten manual update (2026-11-06). Stamp it here so no release ships a
+# stale default again.
+sed -i -E "s/parastoo-v[0-9]+\.[0-9]+\.[0-9]+\.zip/parastoo-v${VER}.zip/g" "$TMP/repo/bootstrap.sh"
 cd "$TMP/repo"
 if git diff --quiet && git diff --cached --quiet && [ -z "$(git status --porcelain)" ]; then
   echo "[2/5] repo already identical to the local package"
