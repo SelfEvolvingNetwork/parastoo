@@ -32,7 +32,11 @@ if ! touch "$REPORT" 2>/dev/null; then
   REPORT="/tmp/parastoo-doctor-report-${TS}.txt"
 fi
 
-VER="$(grep -m1 -o 'v[0-9][0-9.]*' "$APP_DIR/README.md" 2>/dev/null || echo 'unknown')"
+# v0.3.29 — مهر استقرار منبع حقیقت نسخه است (install.sh می‌نویسد، auto-update
+# به‌روز می‌کند). grep روی README اولین «v۰.x» قدیمیِ متن را می‌گرفت (میدان:
+# روی نصب v0.3.29 گزارش v0.3.16 می‌داد).
+VER="$(sed -n 's/^version=//p' "$APP_DIR/.parastoo-deploy" 2>/dev/null | head -1)"
+[ -n "$VER" ] || VER="$(grep -m1 -o 'v[0-9][0-9.]*' "$APP_DIR/README.md" 2>/dev/null || echo 'unknown')"
 PHASE="$(cat "$APP_DIR/.install-state" 2>/dev/null || echo 'no installer state (install never ran, or pre-phase-marker install)')"
 PANEL="$(grep -E '^PANEL_DOMAIN=' "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)"
 TLS="$(grep -E '^TLS_ENABLED=' "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)"

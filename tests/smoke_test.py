@@ -371,6 +371,8 @@ check("doctor.sh دسترس‌پذیری Docker Hub/PyPI/npm/GitHub را می‌
       doc.count("probe \"") >= 5)
 check("doctor.sh گزارش را در backups ذخیره می‌کند",
       "doctor-report-" in doc)
+check("doctor.sh نسخه را از مهر استقرار (.parastoo-deploy) می‌خواند نه grep قدیمی README (میدان v0.3.29: روی نصب v0.3.29 گزارش v0.3.16 می‌داد)",
+      "s/^version=//p" in doc and ".parastoo-deploy" in doc)
 check("نصب‌کننده فازها را ثبت می‌کند (.install-state)",
       ".install-state" in inst and 'mark "1) prerequisites"' in inst and 'mark "done"' in inst)
 check("مسیر doctor در die() و تلهٔ وقفه و CLI هست",
