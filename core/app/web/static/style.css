@@ -46,6 +46,14 @@ h3 { font-size: 1rem; margin: 0 0 .5rem; }
   position: sticky; top: 0; z-index: 50;
 }
 .topbar-inner { display: flex; align-items: center; gap: 1.2rem; }
+
+/* نوار بالا sticky است (z-50)؛ بدون scroll-margin، مرورگر هر عنصری را که
+   به‌وسیلهٔ scrollIntoView/anchor به لبهٔ بالایی می‌آورد دقیقاً زیر این نوار
+   می‌گذارد — کلیک/فوکوس روی خود نوار می‌نشیند (میدان 2026-11-06: چک‌باکس
+   ویزارد setup زیر <a.brand> پوشیده بود و کلیک عادی به لوگو می‌خورد).
+   ارتفاع نوار ≈ ۳.۳rem؛ ۵rem حاشیهٔ مطمئن برای همهٔ عناصر تعاملی است. */
+input, button, select, textarea, a, label, [tabindex] { scroll-margin-top: 5rem; }
+
 .brand { color: #fff; font-weight: 800; font-size: 1.15rem; }
 .brand:hover { text-decoration: none; }
 .brand-sub { font-size: .7rem; color: #8ea0b5; font-weight: 400; margin-inline-start: .3rem; }
