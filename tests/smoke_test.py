@@ -935,8 +935,9 @@ check("حالت وایلدکارد: پنل/گیت روی wild با اولویت 
       and _d3["http"]["routers"]["panel-dyn"]["tls"]["certResolver"] == "wild"
       and _d3["http"]["routers"]["panel-dyn"]["tls"]["domains"][0]["main"] == "*.example.com"
       and _d3["http"]["routers"]["git-dyn"]["tls"]["domains"][0]["main"] == "*.example.com")
-check("حالت وایلدکارد: ریشه گواهی apex جدا (وایلدکارد یک برچسب را می‌پوشاند)",
-      _d3["http"]["routers"]["base-redir"]["tls"]["domains"][0]["main"] == "example.com"
+check("حالت وایلدکارد: ریشه apex را به‌صورت SAN در سفارش وایلدکارد می‌خواهد (v0.3.36 — مجموعهٔ دقیق متفاوت = سهمیهٔ تازه؛ 429 نصب‌های ۳–۶)",
+      _d3["http"]["routers"]["base-redir"]["tls"]["domains"][0]["main"] == "*.example.com"
+      and _d3["http"]["routers"]["base-redir"]["tls"]["domains"][0]["sans"] == ["example.com"]
       and _d3["http"]["routers"]["base-redir"].get("priority") == 100
       and _d3["http"]["routers"]["www-redir"]["tls"]["domains"][0]["main"] == "*.example.com")
 check("حالت وایلدکارد: هیچ سفارش le باقی نمی‌ماند",
