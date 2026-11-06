@@ -258,8 +258,13 @@ def heal_once() -> None:
         return
     try:
         stale, cur = dockerops.gitea_stale()
-    except Exception:
-        return
+    except Exception as e:
+        # v0.3.29 درس میدانی: استثنای گذرای فاز گیتا (مثلاً شلوغی Docker API
+        # درست بعد از compose up) نباید فاز گواهی را هم قربانی کند — قبلاً
+        # return زودهنگام یعنی سه چرخهٔ heal پشت‌سرهم گواهی‌های غایب پنل را
+        # هرگز ندیدند. تشخیص ناموفق = «کهنه نیست» و هر دو فاز ادامه می‌یابند.
+        print(f"[parastoo] gitea staleness check failed (continuing): {e}")
+        stale = False
     if stale:
         print(f"[parastoo] gitea ROOT_URL stale ({cur or 'unset'}) — recreating "
               f"with active domain {dockerops.gitea_root_url()}")

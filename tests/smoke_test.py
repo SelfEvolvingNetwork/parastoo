@@ -990,6 +990,10 @@ check("ورکر heal فاز گواهی دارد: DNS گارد + فاصلهٔ ح�
 check("heal گواهی زیرساخت (پنل/گیت/پایه/www) را هم پوشش می‌دهد نه فقط سایت‌ها — میدان v0.3.29: پس از ۴۲۹ لایهٔ LE پنل برای همیشه روی گواهی پیش‌فرض می‌ماند",
       "settings.PANEL_DOMAIN" in _w and "settings.GIT_DOMAIN" in _w
       and 'www.{(settings.BASE_DOMAIN' in _w and "_consider(host)" in _w)
+check("استثنای فاز گیتا در heal فاز گواهی را قربانی نمی‌کند — return زودهنگام پایان یافت (میدان v0.3.29: سه چرخه پشت‌سرهم گواهی غایب پنل را ندیدند)",
+      "gitea staleness check failed (continuing)" in _w
+      and "stale = False" in _w
+      and _w.index("stale = False") < _w.index("_tls_certs_heal(db)"))
 _inst = (ROOT / "install.sh").read_text()
 check("نصب‌کننده ریدایرکت :80→:443 را مسیر سالم می‌داند — پایان آژیر کاذب ۳۰۱ روی هر نصب سالمِ TLS-دار (میدان v0.3.29)",
       "301|302|307|308)" in _inst
