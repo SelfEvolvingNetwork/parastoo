@@ -28,7 +28,7 @@
 curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash
 ```
 
-`bootstrap.sh` بسته را از گیت‌هاب می‌گیرد (ترتیب تلاش: **ریلیز zip ← تاربال مخزن ← git clone**)، در `/opt/parastoo` می‌ریزد و `install.sh` را اجرا می‌کند — داکر، عبور از تحریم، توکن نصب و کل استک، همه خودکار.
+`bootstrap.sh` بسته را از گیت‌هاب می‌گیرد (ترتیب تلاش برای `main`: **تاربال مخزن ← ریلیز zip ← git clone** — تاربال همیشه با main هم‌قدم است؛ برای تگ پین‌شده اول ریلیز zip) و استمپ commit را از خودِ بستهٔ نصب‌شده ثبت می‌کند، نه از HEAD زنده (v0.3.28)؛ در `/opt/parastoo` می‌ریزد و `install.sh` را اجرا می‌کند — داکر، عبور از تحریم، توکن نصب و کل استک، همه خودکار.
 
 - **نسخهٔ پایدار به‌جای main:**  `curl -fsSL https://raw.githubusercontent.com/... | sudo env PARASTOO_REF=v0.2.12 bash`
 - **زبان خروجی نصب:** ترمینال هنگام نصب کاملاً انگلیسی است — متن فارسی/RTL در SSH به‌هم می‌ریزد. پنل وب و مستندات همچنان فارسی‌اند.

@@ -5,7 +5,14 @@
 #    curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash
 #
 #  Fetches the package from GitHub (in order):
-#    1) release zip   2) repo tarball (codeload)   3) git clone
+#    REF=main (default): 1) repo tarball (codeload = live main)
+#                        2) release zip (fallback; may lag main)
+#                        3) git clone
+#    REF=<tag> (pinned): 1) release zip  2) repo tarball  3) git clone
+#  v0.3.28 field lesson: the v0.3.27 release zip was cut BEFORE the
+#  balance-guard commit landed on main — fresh installs silently ran old
+#  code while /api/version claimed the newest sha (release zip is only
+#  guaranteed fresh for its own tag; main installs must track main).
 #  Extracts it itself and hands the extracted folder to setup.sh,
 #  which installs to /opt/parastoo and runs install.sh.
 #  (In `curl | bash` mode nothing exists on disk; everything flows
@@ -15,7 +22,8 @@
 #    PARASTOO_REF=v0.3.22       branch or tag (default: main) — prefer a stable tag
 #    PARASTOO_GH_PROXY=URL      GitHub proxy prefix for Iran, e.g.:
 #                               https://gh-proxy.com/
-#    PARASTOO_ZIP_NAME=...      release zip filename (default: parastoo-v0.3.27.zip)
+#    PARASTOO_ZIP_NAME=...      release zip filename (default: parastoo-v0.3.28.zip; zip is
+#                               the primary source only for a pinned tag install)
 #    All other PARASTOO_* variables (BASE_DOMAIN, ...) pass through to install.sh.
 #
 #  CRITICAL (v0.3.24): pass variables with `sudo env VAR=x bash` — the shorter
@@ -34,7 +42,7 @@ ORG="${PARASTOO_GH_ORG:-SelfEvolvingNetwork}"
 REPO="${PARASTOO_GH_REPO:-parastoo}"
 REF="${PARASTOO_REF:-main}"
 PROXY="${PARASTOO_GH_PROXY:-}"
-ZIP_NAME="${PARASTOO_ZIP_NAME:-parastoo-v0.3.27.zip}"
+ZIP_NAME="${PARASTOO_ZIP_NAME:-parastoo-v0.3.28.zip}"
 RAW_URL="${PROXY}https://raw.githubusercontent.com/${ORG}/${REPO}/${REF}/bootstrap.sh"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -96,18 +104,32 @@ got_clone() {
 }
 
 MODE=""
-if got_zip; then
-  MODE="zip"; ok "Release package downloaded (${ZIP_NAME})."
-elif got_tar; then
-  MODE="tar"; ok "Repository tarball downloaded (ref: ${REF})."
-elif got_clone; then
-  MODE="git"; ok "Repository cloned (ref: ${REF})."
+# v0.3.28: for main, the tarball IS the channel (always == live main); the
+# release zip is the fallback because it may lag main (and for a pinned tag
+# the zip is the primary, stable artifact).
+if [ "$REF" = "main" ]; then
+  if got_tar; then
+    MODE="tar"; ok "Repository tarball downloaded (ref: ${REF} — live main)."
+  elif got_zip; then
+    MODE="zip"; ok "Release package downloaded (${ZIP_NAME} — may lag main)."
+  elif got_clone; then
+    MODE="git"; ok "Repository cloned (ref: ${REF})."
+  fi
 else
+  if got_zip; then
+    MODE="zip"; ok "Release package downloaded (${ZIP_NAME})."
+  elif got_tar; then
+    MODE="tar"; ok "Repository tarball downloaded (ref: ${REF})."
+  elif got_clone; then
+    MODE="git"; ok "Repository cloned (ref: ${REF})."
+  fi
+fi
+if [ -z "$MODE" ]; then
   die "Could not fetch from GitHub.
 Alternative routes:
   1) proxy (Iran):  curl -fsSL ${PROXY}https://gh-proxy.com/https://raw.githubusercontent.com/${ORG}/${REPO}/${REF}/bootstrap.sh | sudo bash
   2) manual:  git clone https://github.com/${ORG}/${REPO}.git && cd ${REPO} && sudo bash setup.sh
-  3) grab the zip from the releases page, copy it to the server, then:  sudo bash setup.sh parastoo-v0.3.27.zip"
+  3) grab the zip from the releases page, copy it to the server, then:  sudo bash setup.sh parastoo-v0.3.28.zip"
 fi
 
 # ---------- 5) extract package and hand the FOLDER to setup.sh ----------
@@ -135,14 +157,24 @@ fi
   || die "Invalid package (setup.sh/install.sh not found)."
 ok "Package verified; running installer from ${SRC_DIR}..."
 
-# ---------- 6) resolve the exact commit of REF (best effort) ----------
+# ---------- 6) resolve the exact commit OF WHAT WAS INSTALLED (best effort) ----------
 # install.sh records it in .env + .parastoo-deploy (/api/version shows it) and
-# the auto-updater compares against it — without it the first updater tick
-# after a tarball install does one redundant rebuild. git-clone mode has it
-# locally; zip/tar modes ask GitHub (short timeout, never fatal).
+# the auto-updater compares against it. v0.3.28 field lesson: zip installs must
+# NEVER claim main's live HEAD — the v0.3.27 zip was cut before the balance-guard
+# commit, yet recorded main's sha and masked the staleness. Since v0.3.28 the
+# release zip carries its own build stamp (.release-commit); tarball/clone modes
+# are live main by construction, so ls-remote is honest for them.
 COMMIT=""
 if [ "$MODE" = "git" ]; then
   COMMIT="$(git -C "$WORK/repo" rev-parse HEAD 2>/dev/null || true)"
+elif [ "$MODE" = "zip" ]; then
+  if [ -f "${SRC_DIR}/.release-commit" ]; then
+    COMMIT="$(head -c 40 "${SRC_DIR}/.release-commit" 2>/dev/null | tr -cd '0-9a-f' || true)"
+    [ -n "$COMMIT" ] && ok "Release stamp honored: ${COMMIT:0:12} (from the package itself)"
+  fi
+  if [ -z "$COMMIT" ]; then
+    warn "Zip has no .release-commit stamp — recording 'unknown'; the auto-updater will pin the real sha on its first tick."
+  fi
 else
   if command -v git >/dev/null 2>&1; then
     COMMIT="$(timeout 25 git ls-remote "${PROXY}https://github.com/${ORG}/${REPO}.git" \

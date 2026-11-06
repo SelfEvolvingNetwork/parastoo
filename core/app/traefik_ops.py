@@ -254,7 +254,12 @@ def sync_base_zone(db, base_domain: str) -> str:
     از فعال‌سازی جا می‌ماندند، check_dns برای همیشه شکست می‌خورد بی‌آنکه کسی
     بفهمد چرا. اکنون هر apply_domain اگر زون پایه روی PDNS خودمان باشد،
     ریشه/www/panel/git/apps/*.apps را با IP زنده بازنویسی می‌کند.
-    زونِ ناموجود یعنی DNS جای دیگری میزبانی می‌شود → بی‌صدا رد می‌شویم.
+    v0.3.28 — پایان lame delegation نصب تازه: اگر زون روی PDNS ما نباشد ولی
+    NS دامنه به همین سرور اشاره کند، دنیای بیرون ما را نگهبان DNS می‌داند و
+    زونِ غایب یعنی REFUSED برای کل دامنه (پنل/گیت/سایت‌ها از دسترس می‌افتند؛
+    میدان 2026-11-06: پس از نصب از صفر، وایلدکارد resolve نمی‌شد و ویزارد
+    بن‌بست می‌شد). در این حالت خودمان زون را با kind=base provision می‌کنیم.
+    اگر NS جای دیگری است، زون واقعاً جای دیگری میزبانی می‌شود → بی‌صدا رد.
     این گام بیمه است، نه پیش‌نیاز — هرگز استثنا نمی‌دهد و مسیر را نمی‌بندد.
     """
     from . import domains
@@ -269,7 +274,20 @@ def sync_base_zone(db, base_domain: str) -> str:
         try:
             dnsops.get_zone(z)
         except dnsops.DnsError as e:
-            return "no_zone" if e.status == 404 else f"zone_check_failed:{e.status}"
+            if e.status != 404:
+                return f"zone_check_failed:{e.status}"
+            # زون غایب — آیا دنیا ما را نگهبان این دامنه می‌داند؟
+            if not _delegation_points_here(z, db):
+                return "no_zone"
+            try:
+                dnsops.provision_zone(z, db=db, kind="base")
+            except dnsops.DnsError as pe:
+                if pe.status == 409:  # بین چک و ساخت، جای دیگری ساخت — بی‌خیال
+                    pass
+                else:
+                    return f"zone_provision_failed:{pe.status}"
+            except dnsops.DnsUnavailable:
+                return "dns_unavailable"
         except dnsops.DnsUnavailable:
             return "dns_unavailable"
         ip = domains.server_ip(db)
@@ -285,6 +303,36 @@ def sync_base_zone(db, base_domain: str) -> str:
         return f"updated:{n}/6"
     except Exception as e:
         return f"error:{type(e).__name__}"
+
+
+def _delegation_points_here(zone: str, db) -> bool:
+    """آیا دنیا این سرور را نگهبان DNS این دامنه می‌داند؟ (گارد provision v0.3.28)
+
+    امضای رسمی پرستو: زون‌های میزبانی‌شده روی این نیم‌سرور glue NS دارند —
+    ns1.<zone> و ns2.<zone> به IP همین سرور اشاره می‌کنند (الگوی provision_zone).
+    اگر حداقل یکی از آن‌ها با getaddrinfo (همان سازوکار check_dns) به IP سرور
+    رسید، زونِ غایب روی PDNS ما یعنی lame delegation و ساختش ترمیم است؛
+    در غیر این صورت زون جای دیگری میزبانی می‌شود → دست نمی‌زنیم.
+    """
+    import socket
+
+    from . import domains
+
+    try:
+        ip = domains.server_ip(db)
+        if not ip:
+            return False
+        hits = 0
+        for ns in (f"ns1.{zone}", f"ns2.{zone}"):
+            try:
+                infos = socket.getaddrinfo(ns, 53, family=socket.AF_INET)
+            except Exception:
+                continue
+            if any(ai[4][0] == ip for ai in infos):
+                hits += 1
+        return hits >= 1
+    except Exception:
+        return False
 
 
 # ---------- اعمال تغییر دامنه ----------

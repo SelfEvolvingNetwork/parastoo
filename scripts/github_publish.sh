@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Publish a Parastoo release to GitHub: push main + create release + upload zip asset + verify.
-# Usage:   GITHUB_TOKEN=ghp_xxx bash scripts/github_publish.sh [path/to/parastoo-vX.Y.Z.zip]
+# Publish a Parastoo release to GitHub: push main + build zip from the pushed tree + create release + upload + verify.
+# Usage:   GITHUB_TOKEN=ghp_xxx bash scripts/github_publish.sh
+# v0.3.28: the zip is ALWAYS built from exactly what was just pushed, and
+# carries its own build stamp (.release-commit). Field lesson: a pre-built zip
+# lagging main shipped v0.3.27 without the balance-guard commit — fresh
+# installs silently ran old code while /api/version claimed the newest sha.
 # Token needs: Contents = Read and write on the repo (fine-grained) or "repo" scope (classic).
 set -euo pipefail
 
@@ -17,18 +21,16 @@ AUTH=(-H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VER="$(sed -n 's/^ *VERSION: *str *= *"\([^"]*\)".*/\1/p' "$HERE/core/app/config.py" | head -1)"
 [ -n "$VER" ] || { echo "ERROR: VERSION not found in core/app/config.py"; exit 1; }
-ZIP="${1:-$HERE/../parastoo-v${VER}.zip}"
-[ -f "$ZIP" ] || { echo "ERROR: zip not found: $ZIP"; exit 1; }
-# v0.3.27: resolve BEFORE the step-2 `cd "$TMP/repo"` — a relative path died
-# there with "curl: option --data-binary: error encountered when reading a file"
-# and the release was left without its asset (field, 2026-11-06)
-ZIP="$(cd "$(dirname "$ZIP")" && pwd)/$(basename "$ZIP")"
-echo "repo=$REPO  version=$VER  zip=$ZIP"
+ZIP="$(cd "$HERE/.." && pwd)/parastoo-v${VER}.zip"
+echo "repo=$REPO  version=$VER  zip=$ZIP (built from the pushed tree by this script)"
 
 # 1) auth smoke test
 code=$(curl -s -o /tmp/gh_repo.json -w '%{http_code}' "${AUTH[@]}" "$API/repos/$REPO")
-[ "$code" = "200" ] || { echo "ERROR: token rejected by $API/repos/$REPO (HTTP $code)"; exit 1; }
-echo "[1/5] token OK"
+if [ "$code" = "200" ]; then
+  echo "[1/5] token OK"
+else
+  echo "ERROR: token rejected by $API/repos/$REPO (HTTP $code)"; exit 1
+fi
 
 # 2) sync repo tree with the local package (remote history is preserved)
 TMP="$(mktemp -d)"
@@ -54,11 +56,44 @@ else
   echo "[2/5] pushed $BRANCH"
 fi
 
+# 2.5) build the release zip from EXACTLY the tree that was just pushed
+# (v0.3.28): a pre-built zip lagging main shipped v0.3.27 without the
+# balance-guard commit — fresh installs silently ran old code. The zip also
+# carries .release-commit (its own build sha) so bootstrap records the truth.
+PUSHED_SHA="$(git -C "$TMP/repo" rev-parse HEAD)"
+echo "[2.5/5] building zip from pushed tree @ ${PUSHED_SHA:0:12}..."
+STAGE="$TMP/zipstage"
+rm -rf "$STAGE"; mkdir -p "$STAGE"
+rsync -a --delete --exclude '.git' "$TMP/repo/" "$STAGE/"
+printf '%s\n' "$PUSHED_SHA" > "$STAGE/.release-commit"
+rm -f "$ZIP"
+if command -v zip >/dev/null 2>&1; then
+  (cd "$STAGE" && zip -qr "$ZIP" .)
+else
+  (cd "$STAGE" && python3 -m zipfile -c "$ZIP" .)
+fi
+[ -s "$ZIP" ] || { echo "ERROR: zip build produced nothing: $ZIP"; exit 1; }
+if ! python3 - "$ZIP" <<'PYEOF'
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+names = z.namelist()
+stamped = any(n.endswith(".release-commit") and not n.startswith("__MACOSX") for n in names)
+sha = ""
+if stamped:
+    n = [x for x in names if x.endswith(".release-commit") and not x.startswith("__MACOSX")][0]
+    sha = z.read(n).decode().strip()[:12]
+print(f"zip entries: {len(names)}  .release-commit: {sha or 'MISSING'}")
+raise SystemExit(0 if stamped and len(names) > 50 else 1)
+PYEOF
+then
+  echo "ERROR: built zip is invalid (no .release-commit or empty)"; exit 1
+fi
+
 # 3) create or update the release (idempotent)
 REL_JSON="$TMP/release.json"
 cat > "$REL_JSON" <<EOF
 {"tag_name":"v${VER}","target_commitish":"${BRANCH}","name":"v${VER}",
- "body":"## v0.3.27 — پروب آینهٔ PyPI/npm به دانلود واقعی (حادثهٔ 402 در نصب تازهٔ پنجم، 2026-11-06)\n\n- **بیلد هسته در نصب تازه روی pip install fastapi با 402 Payment Required مرد**: ایندکس mirror-pypi.runflare.com پاسخ 200 می‌داد ولی تک‌تک فایل‌های /packages/ خطای 402 می‌دادند؛ پروب قدیمی فقط ایندکس را چک می‌کرد و حلقه را روی اولین 200 می‌شکست — liara سالم هرگز تست نمی‌شد و tuna/aliyun پشتیبان می‌ماندند.\n- پروب آینه اکنون «دانلود واقعی» است: صفحهٔ /six/ ← لینک wheel واقعی ← حل مطلق URL با urllib.parse.urljoin (عمق لینک نسبی هر آینه متفاوت است) ← دانلود فایل؛ فقط دانلود موفق = آینهٔ زنده. پروب npm هم دو مرحله‌ای شد (ping + دانلود واقعی tarball).\n- دو آینهٔ پشتیبان جدید: pypi.mirrors.ustc.edu.cn و mirrors.cloud.tencent.com؛ runflare از فهرست pip حذف شد (402 روی فایل‌ها).\n- از v0.3.26: provision زون پایه در نصب‌کننده (پایان مرغ‌وتخم‌مرغ دامنهٔ صریح) + از v0.3.24/25: گیت سلامت دیمون داکر و تصحیح NAT با دامنهٔ صریح.\n\nنصب: curl -fsSL https://raw.githubusercontent.com/${REPO}/main/bootstrap.sh | sudo bash"}"}
+ "body":"## v0.3.28 — صداقت خط انتشار و گارد موجودی در نصب تازه (تست نصب از صفر، 2026-11-06)\n\n- **نصب تازه کد قدیمی اجرا می‌کرد و ادعای جدیدترین کامیت را داشت**: bootstrap ریلیز zip را می‌گرفت ولی استمپ commit را از HEAD زندهٔ main می‌نوشت؛ zip ریلیز v0.3.27 پیش از کامیت گارد موجودی بریده شده بود و نصب تازه بی‌سروصدا کد قدیمی می‌گرفت (میدان: انتشار سایت با کیف صفر مجاز شد و ورکر بیلینگ سایت را در همان دقیقه کشت). حالا: برای main تاربال مخزن اولویت دارد (همیشه == main) و zip فقط برای تگ پین‌شده منبع اول است؛ zip ریلیز هم استمپ build خودش (.release-commit) را حمل می‌کند و bootstrap همان را ثبت می‌کند — نه sha اصلی.\n- **github_publish.sh حالا zip را از همان درختی که push کرده می‌سازد** (نه zip از پیش ساخته‌شده) و استمپ .release-commit را داخلش می‌گذارد؛ صحت استمپ پیش از آپلود راستی‌آزمایی می‌شود.\n- **گارد موجودی در هر سه مسیر روشن‌کردن سایت (v0.3.27) حالا واقعاً به نصب‌ها می‌رسد**: انتشار با کیف کمتر از یک ساعت پلن → flash صادقانه no_balance؛ پایان «منتشر شد سبز و ۶۰ ثانیه بعد مرگ بی‌صدا».\n- **خودترمیمی زون DNS در فعال‌سازی دامنه (پایان lame delegation نصب تازه)**: اگر زون پایه روی PDNS خودمان نباشد و NS دامنه به این سرور اشاره کند، apply_domain خودش زون base را provision می‌کند (پنل/گیت/سایت‌ها زنده)؛ میدان: پس از نصب تازه، رکوردهای وایلدکارد REFUSED می‌دادند و ویزارد بدون دخالت دستی بن‌بست می‌شد.\n- از v0.3.27: پروب آینهٔ PyPI/npm به دانلود واقعی + استمپ خودکار zip-name بوت‌استرپ.\n\nنصب: curl -fsSL https://raw.githubusercontent.com/${REPO}/main/bootstrap.sh | sudo bash"}"}
 EOF
 # field guard (v0.3.26): backticks inside an unquoted heredoc run as command
 # substitution and silently eat parts of the release notes — strip them all

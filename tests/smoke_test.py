@@ -346,6 +346,18 @@ for _line in (ROOT / "core/app/config.py").read_text().splitlines():
         break
 check("نام zip پیش‌فرض بوت‌استرپ هم‌نسخهٔ جاری است",
       _ver != "" and f"parastoo-v{_ver}.zip" in bs)
+check("نصب main تاربال زندهٔ مخزن را بر zip ریلیز (احتمالاً عقب‌مانده) ترجیح می‌دهد (v0.3.28)",
+      '[ "$REF" = "main" ]' in bs and "live main" in bs
+      and 'may lag main' in bs)
+check("zip ریلیز استمپ build خودش (.release-commit) را حمل می‌کند و bootstrap همان را ثبت می‌کند",
+      ".release-commit" in bs and "Release stamp honored" in bs
+      and "no .release-commit stamp" in bs)
+_pub = (ROOT / "scripts/github_publish.sh").read_text()
+check("github_publish.sh zip را از همان درختی که push کرده می‌سازد و استمپ می‌گذارد",
+      "PUSHED_SHA" in _pub and ".release-commit" in _pub and "zipstage" in _pub)
+_to = (ROOT / "core/app/traefik_ops.py").read_text()
+check("فعال‌سازی دامنه، زون غایب با دیالگیشن روی خود سرور را خودش provision می‌کند (v0.3.28)",
+      "_delegation_points_here" in _to and 'provision_zone(z, db=db, kind="base")' in _to)
 
 print()
 print("— گزارش عیب‌یابی doctor —")
