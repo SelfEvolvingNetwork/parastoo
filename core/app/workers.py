@@ -284,11 +284,27 @@ def _tls_certs_heal(db) -> None:
         if not ip:
             return
         broken = []
+
+        def _consider(host: str) -> None:
+            """گارد DNS + آزمون گواهی برای یک هاست — بدون استثنا."""
+            h = (host or "").strip().lower().rstrip(".")
+            if not h or h in broken:
+                return
+            if traefik_ops.resolve_a(h) != ip:
+                return  # DNS هنوز به این سرور اشاره ندارد — دست نزنیم
+            if traefik_ops.site_cert_ok(h) is False:
+                broken.append(h)
+
         for site in db.query(Site).filter(Site.status == "running").all():
-            if traefik_ops.resolve_a(site.subdomain) != ip:
-                continue  # DNS هنوز به این سرور اشاره ندارد — دست نزنیم
-            if traefik_ops.site_cert_ok(site.subdomain) is False:
-                broken.append(site.subdomain)
+            _consider(site.subdomain)
+        # v0.3.29 — زیرساخت هم مثل سایت: پنل/گیت/دامنهٔ پایه/www پس از یک
+        # شکست ACME (میدان 2026-11-06: سقف نرخ ۴۲۹ لایهٔ لت‌انکریپت در نصب
+        # تازهٔ چهارم) هرگز دوباره تلاش نمی‌کردند — پنل ساعت‌ها/روزها روی
+        # گواهی پیش‌فرض می‌ماند و هیچ چیزی آن را ترمیم نمی‌کرد.
+        for host in (settings.PANEL_DOMAIN, settings.GIT_DOMAIN,
+                     settings.BASE_DOMAIN,
+                     f"www.{(settings.BASE_DOMAIN or '').strip()}"):
+            _consider(host)
         if not broken or time.time() - _last_tls_restart < TLS_RESTART_GAP:
             return
         _last_tls_restart = time.time()

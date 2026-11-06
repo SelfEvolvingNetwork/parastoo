@@ -752,11 +752,22 @@ done
 # ---------- 6b) panel through Traefik — the real user path ----------
 # Field failure: core can be healthy on :8000 while Traefik serves zero routes
 # (panel 404 from everywhere) — the installer must test the FULL user path.
+# v0.3.29 field lesson (2026-11-06, 4th fresh install): with TLS enabled the
+# web entrypoint redirects EVERYTHING http->https (301), so a :80-only probe
+# that accepts only 200 raised a scary false alarm on every healthy install.
+# Now: 200 passes; 301/302/307/308 = routed, so verify the REAL user path on
+# :443 (curl -k: the LE certificate may not be issued yet at install time).
 mark "6b) panel via traefik"
 PANEL_CODE=""
 for i in $(seq 1 10); do
   PANEL_CODE="$(timeout 8 curl -sS -o /dev/null -w '%{http_code}' -H "Host: $PANEL_DOMAIN" http://127.0.0.1/healthz 2>/dev/null || true)"
-  [ "$PANEL_CODE" = "200" ] && break
+  case "$PANEL_CODE" in
+    200) break ;;
+    301|302|307|308)
+      H_CODE="$(timeout 8 curl -skS -o /dev/null -w '%{http_code}' --resolve "$PANEL_DOMAIN:443:127.0.0.1" "https://$PANEL_DOMAIN/healthz" 2>/dev/null || true)"
+      if [ "$H_CODE" = "200" ]; then PANEL_CODE=200; break; fi
+      ;;
+  esac
   sleep 2
 done
 if [ "$PANEL_CODE" = "200" ]; then
@@ -770,6 +781,12 @@ else
     warn "Root cause found: the host Docker Engine is newer than this Traefik image supports (Docker 29 needs Traefik >= 3.6.6)."
     say "Fix:  cd $INSTALL_DIR"
     say "      sed -i 's|image: traefik:.*|image: traefik:v3.6.6|' docker-compose.yml && sudo docker compose up -d traefik"
+  elif docker logs parastoo-traefik --tail 200 2>&1 | grep -q 'rateLimited'; then
+    # v0.3.29 — say the truth instead of "fault in the Traefik layer":
+    # LE rate limit (429) after many reinstalls of the same domain in 7 days.
+    RETRY_AT="$(docker logs parastoo-traefik --tail 200 2>&1 | grep -o 'retry after [0-9][0-9-]* [0-9:]* UTC' | tail -1 | sed 's/retry after //')"
+    warn "Root cause found: Let's Encrypt rate limit (429) — too many certificates were issued for this exact domain in the last 7 days (typical after repeated reinstalls)."
+    say "Nothing is broken: certificates will be issued automatically after ${RETRY_AT:-the rate-limit window}. The core worker retries ACME every 10 minutes — no action needed."
   fi
 fi
 

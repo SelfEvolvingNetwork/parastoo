@@ -985,8 +985,21 @@ check("site_cert_ok ورودی خالی و ترافیکِ در-دسترس-نیس
 _w = (ROOT / "core" / "app" / "workers.py").read_text()
 check("ورکر heal فاز گواهی دارد: DNS گارد + فاصلهٔ حداقل ری‌استارت ترافیک",
       "_tls_certs_heal" in _w and "TLS_RESTART_GAP = 600" in _w
-      and "resolve_a(site.subdomain) != ip" in _w
+      and "resolve_a(h) != ip" in _w
       and "Site.status == \"running\"" in _w)
+check("heal گواهی زیرساخت (پنل/گیت/پایه/www) را هم پوشش می‌دهد نه فقط سایت‌ها — میدان v0.3.29: پس از ۴۲۹ لایهٔ LE پنل برای همیشه روی گواهی پیش‌فرض می‌ماند",
+      "settings.PANEL_DOMAIN" in _w and "settings.GIT_DOMAIN" in _w
+      and 'www.{(settings.BASE_DOMAIN' in _w and "_consider(host)" in _w)
+_inst = (ROOT / "install.sh").read_text()
+check("نصب‌کننده ریدایرکت :80→:443 را مسیر سالم می‌داند — پایان آژیر کاذب ۳۰۱ روی هر نصب سالمِ TLS-دار (میدان v0.3.29)",
+      "301|302|307|308)" in _inst
+      and '--resolve "$PANEL_DOMAIN:443:127.0.0.1"' in _inst)
+check("نصب‌کننده ۴۲۹ لایهٔ LE را صادقانه اسم می‌برد نه «خرابی در لایهٔ ترافیک»",
+      "rateLimited" in _inst and "Let's Encrypt rate limit" in _inst
+      and "no action needed" in _inst)
+_doc = (ROOT / "scripts" / "doctor.sh").read_text()
+check("doctor.sh برای ریدایرکت ۳۰۱ مسیر HTTPS را هم می‌سنجد و تفسیر می‌کند",
+      "301|302|307|308)" in _doc and '--resolve "$PANEL:443:127.0.0.1"' in _doc)
 _r = (ROOT / "core" / "app" / "routes" / "projects.py").read_text()
 check("انتشار وقتی گواهی آماده نیست پیام صادقانه می‌دهد نه سبزِ دروغین",
       "published_cert_pending" in _r and "site_cert_ok(site.subdomain) is False" in _r)

@@ -100,7 +100,18 @@ probe() {  # probe <label> <url> — any HTTP answer counts as reachable
     echo "  core healthz: FAILING (see core logs below)"
   fi
   if [ -n "$PANEL" ]; then
-    echo "  panel via traefik: HTTP $(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -H "Host: $PANEL" http://127.0.0.1/ 2>/dev/null || echo 'no answer')"
+    P_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -H "Host: $PANEL" http://127.0.0.1/ 2>/dev/null || echo 'no answer')"
+    case "$P_CODE" in
+      301|302|307|308)
+        # v0.3.29 — با TLS فعال ریدایرکت :80 -> :443 طبیعی است؛ مسیر واقعی
+        # کاربر را روی ۴۴۳ هم بسنجیم (گواهی ممکن است هنوز صادر نشده باشد)
+        H_CODE="$(curl -skS -o /dev/null -w '%{http_code}' --max-time 8 --resolve "$PANEL:443:127.0.0.1" "https://$PANEL/" 2>/dev/null || echo 'no answer')"
+        echo "  panel via traefik: HTTP $P_CODE -> HTTPS $H_CODE $([ "$H_CODE" = "200" ] && echo '(ok — TLS entrypoint works)' || echo '(https not serving — see traefik logs)')"
+        ;;
+      *)
+        echo "  panel via traefik: HTTP $P_CODE"
+        ;;
+    esac
   fi
   # Docker Engine 29 raised the minimum daemon API to 1.44; Traefik < 3.6.6
   # dies with "client version 1.24 is too old" -> zero routes -> everything 404s.
