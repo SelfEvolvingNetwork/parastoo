@@ -11,6 +11,7 @@ from ..config import settings
 from ..models import Site, User
 from ..security import slugify
 from ..validation import site_slug_error
+from . import billing as billing_svc
 
 
 def site_for(db: Session, user: User, site_id: int) -> Site | None:
@@ -46,6 +47,10 @@ def publish_from_project(db: Session, owner: User, project, site_slug_raw: str,
         return None, "slug_taken"
     if tier_key not in settings.TIERS:
         tier_key = "nano"
+    # صداقت کیف پول (v0.3.27): با موجودیِ کمتر از یک ساعتِ پلن، اصلاً منتشر نکن —
+    # قبلاً انتشار سبز می‌داد و ورکر بیلینگ در همان دقیقهٔ اول خاموشش می‌کرد
+    if not billing_svc.balance_ok(owner, tier_key):
+        return None, "no_balance"
 
     site, ok = create_and_run(
         db, project=project, owner_id=owner.id, site_slug=s,
@@ -101,9 +106,12 @@ def port_for_project(project, port_str: str = "") -> int:
 # ---------------------------------------------------------------- کنترل
 
 def start(db: Session, site: Site) -> str:
-    """روشن کردن سایت — کاربر بدهکار اجازهٔ روشن‌کردن ندارد. کلید فلش برمی‌گردد."""
-    if site.owner.balance < settings.DEBT_LIMIT:
-        return "debt"
+    """روشن کردن سایت — کاربر بدهکار یا بدون بودجهٔ یک ساعت اجازهٔ روشن‌کردن ندارد.
+    کلید فلش برمی‌گردد."""
+    # قبلاً فقط منفی‌بودن چک می‌شد: با موجودی صفر، سایت روشن و بلافاصله
+    # توسط بیلینگ خاموش می‌شد — چرخهٔ بسته‌ای که کاربر علتش را نمی‌دید
+    if not billing_svc.balance_ok(site.owner, site.tier):
+        return "no_balance"
     try:
         dockerops.start_site(site.slug)
         site.status = "running"

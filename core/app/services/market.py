@@ -12,6 +12,7 @@ from ..config import settings
 from ..models import Project, Site, User, WalletTx
 from ..security import slugify
 from ..validation import site_slug_error
+from . import billing as billing_svc
 from . import sites as sites_svc
 
 
@@ -37,6 +38,10 @@ def activate_project(db: Session, buyer: User, project: Project,
     seller = project.owner
     price = project.price if project.owner_id != buyer.id else 0
     if price > buyer.balance:
+        return None, "no_balance"
+    # v0.3.27: خریدِ موفق هم کافی نیست — بعد از خرید، کسر ساعتی شروع می‌شود؛
+    # خریدارِ بدون بودجهٔ یک ساعت، سایتی می‌گرفت که در همان دقیقهٔ اول خاموش می‌شد
+    if not billing_svc.balance_ok(buyer, tier_key):
         return None, "no_balance"
 
     if price > 0:
