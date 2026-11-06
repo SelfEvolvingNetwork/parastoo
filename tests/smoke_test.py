@@ -356,8 +356,9 @@ _pub = (ROOT / "scripts/github_publish.sh").read_text()
 check("github_publish.sh zip را از همان درختی که push کرده می‌سازد و استمپ می‌گذارد",
       "PUSHED_SHA" in _pub and ".release-commit" in _pub and "zipstage" in _pub)
 _to = (ROOT / "core/app/traefik_ops.py").read_text()
-check("فعال‌سازی دامنه، زون غایب با دیالگیشن روی خود سرور را خودش provision می‌کند (v0.3.28)",
-      "_delegation_points_here" in _to and 'provision_zone(z, db=db, kind="base")' in _to)
+check("فعال‌سازی دامنه، زون غایب را خودش provision می‌کند (پایان lame delegation v0.3.28)",
+      'provision_zone(z, db=db, kind="base")' in _to
+      and "status != 404" in _to and "_delegation_points_here" not in _to)
 
 print()
 print("— گزارش عیب‌یابی doctor —")

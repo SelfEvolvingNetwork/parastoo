@@ -254,12 +254,18 @@ def sync_base_zone(db, base_domain: str) -> str:
     از فعال‌سازی جا می‌ماندند، check_dns برای همیشه شکست می‌خورد بی‌آنکه کسی
     بفهمد چرا. اکنون هر apply_domain اگر زون پایه روی PDNS خودمان باشد،
     ریشه/www/panel/git/apps/*.apps را با IP زنده بازنویسی می‌کند.
-    v0.3.28 — پایان lame delegation نصب تازه: اگر زون روی PDNS ما نباشد ولی
-    NS دامنه به همین سرور اشاره کند، دنیای بیرون ما را نگهبان DNS می‌داند و
-    زونِ غایب یعنی REFUSED برای کل دامنه (پنل/گیت/سایت‌ها از دسترس می‌افتند؛
-    میدان 2026-11-06: پس از نصب از صفر، وایلدکارد resolve نمی‌شد و ویزارد
-    بن‌بست می‌شد). در این حالت خودمان زون را با kind=base provision می‌کنیم.
-    اگر NS جای دیگری است، زون واقعاً جای دیگری میزبانی می‌شود → بی‌صدا رد.
+    v0.3.28 — پایان lame delegation نصب تازه: اگر زون روی PDNS ما نباشد،
+    خودمان آن را با kind=base provision می‌کنیم. چرا بدون گارد خارجی؟
+    (۱) همهٔ مسیرهای فراخوانی این تابع نیت صریحِ ادمین‌اند (اعمال دامنه در
+    ویزارد/ورکر انتظارِ همان دامنه)؛ (۲) زونی که روی PDNS ما ساخته می‌شود
+    بدون دیالگیشن دنیا کاملاً بی‌اثر است — هیچ رزولوری از ما نمی‌پرسد، پس
+    تهدید take-over ندارد؛ (۳) گارد خارجی («NS به ما اشاره می‌کند؟») در
+    میدان ایران بی‌اعتماد است: رزولور عمومی برای زون مرده SERVFAIL خالی
+    می‌دهد و سرورهای TLD/root از UDP تایم‌اوت می‌شوند (میدان 2026-11-06:
+    a.nic.ir از سرور تایم‌اوت؛ 8.8.8.8 rcode=2 خالی) — دقیقاً در همان
+    سناریویی که ترمیم لازم است گارد شکست می‌خورد و خودش بن‌بست می‌ساخت.
+    اگر NS جای دیگری است، زونِ ساخته‌شده بی‌اثر می‌ماند و فعال‌سازی TLS هم
+    به گارد check_dns (رکوردها به این سرور) باقی است — بیمهٔ دو لایه.
     این گام بیمه است، نه پیش‌نیاز — هرگز استثنا نمی‌دهد و مسیر را نمی‌بندد.
     """
     from . import domains
@@ -276,9 +282,7 @@ def sync_base_zone(db, base_domain: str) -> str:
         except dnsops.DnsError as e:
             if e.status != 404:
                 return f"zone_check_failed:{e.status}"
-            # زون غایب — آیا دنیا ما را نگهبان این دامنه می‌داند؟
-            if not _delegation_points_here(z, db):
-                return "no_zone"
+            # زون غایب → ساخت (بیمهٔ lame delegation؛ بی‌ضرر اگر NS جایی دیگر باشد)
             try:
                 dnsops.provision_zone(z, db=db, kind="base")
             except dnsops.DnsError as pe:
@@ -303,195 +307,6 @@ def sync_base_zone(db, base_domain: str) -> str:
         return f"updated:{n}/6"
     except Exception as e:
         return f"error:{type(e).__name__}"
-
-
-def _delegation_points_here(zone: str, db) -> bool:
-    """آیا دنیا این سرور را نگهبان DNS این دامنه می‌داند؟ (گارد provision v0.3.28)
-
-    درس میدانی 2026-11-06: امضای «ns1/ns2.<zone> → IP سرور» دقیقاً در همان
-    سناریویی که برایش ساخته شد می‌شکند — وقتی زون غایب است، A رکورد ns1/ns2
-    (که داخل همان زون بود) هم دیگر resolve نمی‌شود (مرغ‌وتخم‌مرغ دوم).
-    راه درست: پرسیدن از دنیای بیرون — کوئری NS به رزولور عمومی؛ NSهای
-    برگشتی (و glue آن‌ها) باید به IP همین سرور برسند. اگر هیچ رزولور عمومی
-    پاسخ نداد (تحریم/قطعی)، به امضای ns1/ns2 فال‌بک می‌کنیم (برای ترمیم
-    IP-تغییر که زون سرِجاست کار می‌کند) و در شکست نهایی، دست نمی‌زنیم.
-    """
-    from . import domains
-
-    try:
-        ip = domains.server_ip(db)
-        if not ip:
-            return False
-        hits = _ns_delegation_ip_hits(zone, ip)
-        if hits >= 1:
-            return True
-        if hits == 0:
-            return _ns_glue_signature(zone, ip)
-        return False  # hits == -1 و فال‌بک هم نگرفت → شک داریم → دست نمی‌زنیم
-    except Exception:
-        return False
-
-
-def _ns_glue_signature(zone: str, ip: str) -> bool:
-    """فال‌بک: glue رسمی پرستو (ns1/ns2.<zone> → IP) از دید رزولور محلی."""
-    hits = 0
-    for ns in (f"ns1.{zone}", f"ns2.{zone}"):
-        try:
-            infos = socket.getaddrinfo(ns, 53, family=socket.AF_INET)
-        except Exception:
-            continue
-        if any(ai[4][0] == ip for ai in infos):
-            hits += 1
-    return hits >= 1
-
-
-def _ns_delegation_ip_hits(zone: str, server_ip: str) -> int:
-    """کوئری NS از رزولور عمومی (پایتون خالص، UDP:53) + حل glue.
-
-    خروجی: تعداد میزبان‌های NS که A آن‌ها == server_ip است؛
-    -1 یعنی هیچ رزولوری پاسخ نداد (قطعی/تحریم) — «نمی‌دانم».
-    glue در بخش ADDITIONAL پاسخ NS هم خوانده می‌شود چون وقتی زون ماست که
-    مرده، A مستقل NS ممکن است از هیچ‌جا نیاید ولی glue در referral هست.
-    """
-    import os
-    import struct
-
-    zone = zone.rstrip(".")
-    resolvers = ("8.8.8.8", "1.1.1.1", "9.9.9.9")
-
-    def _read_name(buf: bytes, off: int) -> tuple[str, int]:
-        labels: list[str] = []
-        jumps = 0
-        while True:
-            if off >= len(buf) or jumps > 8:
-                return "", off
-            ln = buf[off]
-            if ln == 0:
-                off += 1
-                break
-            if ln & 0xC0 == 0xC0:
-                if off + 1 >= len(buf):
-                    return "", off
-                ptr = ((ln & 0x3F) << 8) | buf[off + 1]
-                sub, _ = _read_name(buf, ptr)
-                return (".".join(labels + ([sub] if sub else [])).strip("."), off + 2)
-            off += 1
-            labels.append(buf[off:off + ln].decode("ascii", "replace"))
-            off += ln
-        return ".".join(labels).strip("."), off
-
-    def _query(qname: str, qtype: int, resolver: str, timeout: float = 3.0):
-        """(ns_hosts, a_map) از ANSWER+AUTHORITY+ADDITIONAL؛ None = شکست."""
-        try:
-            labels = qname.rstrip(".").split(".")
-            enc = b"".join(bytes([len(p)]) + p.encode("idna" if not p.isascii() else "ascii")
-                           for p in labels if p) + b"\x00"
-        except Exception:
-            return None
-        pkt = os.urandom(2) + b"\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00" \
-            + enc + struct.pack(">HH", qtype, 1)
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.settimeout(timeout)
-        try:
-            s.sendto(pkt, (resolver, 53))
-            data, _ = s.recvfrom(4096)
-        except Exception:
-            return None
-        finally:
-            s.close()
-        if len(data) < 12:
-            return None
-        qd, an, ns_c, ar = struct.unpack(">HHHH", data[4:12])
-        off = 12
-        for _ in range(qd):  # رد شدن از سوال
-            _, off = _read_name(data, off)
-            off += 4
-        ns_hosts: set[str] = set()
-        a_map: dict[str, str] = {}
-        for _ in range(an + ns_c + ar):
-            name, off = _read_name(data, off)
-            if off + 10 > len(data):
-                break
-            rtype, _cls, _ttl, rdlen = struct.unpack(">HHIH", data[off:off + 10])
-            off += 10
-            rdata = data[off:off + rdlen]
-            off += rdlen
-            if rtype == 2 and rdlen >= 1:  # NS
-                h, _ = _read_name(data, off - rdlen)
-                if h:
-                    ns_hosts.add(h.rstrip(".").lower())
-            elif rtype == 1 and rdlen == 4:  # A
-                a_map[name.rstrip(".").lower()] = socket.inet_ntoa(rdata)
-        return ns_hosts, a_map
-
-    zone_l = zone.lower()
-
-    def _referral_hits(ns_hosts: set[str], a_map: dict[str, str]) -> int:
-        return sum(1 for h in ns_hosts if a_map.get(h) == server_ip)
-
-    # مسیر ارزان: رزولور بازگشتی عمومی — وقتی زون/NS در کشش زنده باشد جواب
-    # کامل (NS + glue) می‌دهد؛ وقتی زون ما مرده است معمولاً SERVFAIL خالی.
-    for r in resolvers:
-        out = _query(zone, 2, r)
-        if not out:
-            continue
-        ns_hosts, a_map = out
-        for h in list(ns_hosts):  # glue ناقص → A مستقل هر NS را بپرس
-            if h in a_map:
-                continue
-            out2 = _query(h, 1, r)
-            if out2 and h in out2[1]:
-                a_map[h] = out2[1][h]
-        hits = _referral_hits(ns_hosts, a_map)
-        if hits >= 1:
-            return hits
-        if ns_hosts and not any(h.endswith("." + zone_l) for h in ns_hosts):
-            return 0  # NSهای out-of-bailiwick با IP غیر از ما → قطعی «نه»
-        break  # پاسخ خالی/بازگشتیِ بی‌ثمر → به پیوند تکراری برو
-
-    # مسیر iterative (درس میدانی: وقتی زون خودمان REFUSE می‌کند، رزولور
-    # بازگشتی SERVFAIL می‌دهد و glue فقط در referral از سرورهای TLD هست —
-    # پس مستقیم از root به TLD می‌رویم و referral را می‌خوانیم).
-    roots: list[str] = []
-    for rn in ("a.root-servers.net", "b.root-servers.net"):
-        try:
-            infos = socket.getaddrinfo(rn, 53, family=socket.AF_INET)
-        except Exception:
-            continue
-        roots.append(infos[0][4][0])
-    if not roots:
-        roots = ["198.41.0.4"]  # hint کلاسیک a.root — بهتر از «نمی‌دانم»
-    cur = roots
-    for _depth in range(4):  # root → tld → (گلوی زون در همان referral)
-        out = None
-        for srv in cur:
-            out = _query(zone, 2, srv)
-            if out and (out[0] or out[1]):
-                break
-            out = None
-        if not out:
-            return -1  # زنجیره پاسخ نداد → «نمی‌دانم»
-        ns_hosts, a_map = out
-        hits = _referral_hits({h for h in ns_hosts}, a_map)
-        if hits >= 1:
-            return hits
-        if not ns_hosts:
-            return 0  # پاسخ صاحب‌دار بدون NS → قطعی «نه»
-        # NSهای بعدی زنجیره: IP از glue همین referral یا رزولور محلی
-        nxt: list[str] = list({a_map[h] for h in ns_hosts if h in a_map})
-        if not nxt:
-            for h in list(ns_hosts)[:2]:
-                infos = None
-                try:
-                    infos = socket.getaddrinfo(h, 53, family=socket.AF_INET)
-                except Exception:
-                    pass
-                if infos:
-                    nxt.append(infos[0][4][0])
-        if not nxt:
-            return 0  # NSها شناخته شدند ولی IP ندارند → نمی‌تواند ما باشیم
-        cur = nxt
-    return 0  # زنجیره تمام شد و هیچ NSای به ما نرسید → قطعی «نه»
 
 
 # ---------- اعمال تغییر دامنه ----------
