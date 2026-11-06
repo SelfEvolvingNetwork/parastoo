@@ -38,5 +38,6 @@ def marketplace_use(
     if err == "no_balance":
         return redirect("/wallet?m=no_balance")
     if err == "publish_failed":
-        return redirect("/sites?m=publish_failed")
+        # سایت ثبت شده ولی کانتینر روشن نشده — پیام صادقانهٔ جدا از «انتشار ناموفق»
+        return redirect("/sites?m=purchase_needs_start")
     return redirect(f"/marketplace?m={err}")

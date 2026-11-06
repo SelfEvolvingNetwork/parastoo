@@ -19,7 +19,7 @@
         {% endfor %}
       </select>
     </label>
-    <label>دستور اجرا (فقط برای Python — اختیاری؛ پیش‌فرض: gunicorn app:app)
+    <label id="startcmd-label">دستور اجرا (فقط برای Python — اختیاری؛ پیش‌فرض: gunicorn app:app)
       <input type="text" name="start_cmd" placeholder="gunicorn -b 0.0.0.0:3000 main:app">
     </label>
     <label>توضیح کوتاه (اختیاری)
@@ -29,4 +29,15 @@
     <button class="btn btn-primary btn-block" type="submit">ساخت پروژه و مخزن گیت</button>
   </form>
 </div>
+<script>
+/* «دستور اجرا» فقط برای استک Python معنا دارد؛ تا انتخاب نشود، پنهان است تا فرم برای
+   بقیهٔ فناوری‌ها شلوغ به نظر نرسد. مقدارِ واردشده در هر حالت ارسال می‌شود. */
+(() => {
+  const sel = document.querySelector('select[name="stack"]');
+  const lbl = document.getElementById('startcmd-label');
+  const sync = () => { lbl.style.display = sel.value === 'python' ? '' : 'none'; };
+  sel.addEventListener('change', sync);
+  sync();
+})();
+</script>
 {% endblock %}

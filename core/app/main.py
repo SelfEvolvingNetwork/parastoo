@@ -35,6 +35,16 @@ async def lifespan(app: FastAPI):
 
 # ---------- صفحات خطا (خارج از کارخانه تا تست‌پذیر باشند) ----------
 
+# متن‌های پیش‌فرض Starlette انگلیسی‌اند؛ برای کاربر فارسی‌زبان به پیام روشن تبدیل می‌شوند
+_ERROR_MESSAGES = {
+    400: "درخواست ارسالی معتبر نیست.",
+    403: "دسترسی به این بخش مجاز نیست.",
+    404: "صفحه‌ای که دنبالش بودید پیدا نشد. اگر از داخل پنل به اینجا رسیده‌اید، مشکل را برای ما گزارش کنید.",
+    405: "این عملیات روی این آدرس مجاز نیست.",
+    429: "درخواست‌های شما زیاد است؛ کمی صبر کنید و دوباره تلاش کنید.",
+}
+
+
 def _error_page(request: Request, code: int, message: str):
     db = SessionLocal()
     try:
@@ -42,7 +52,8 @@ def _error_page(request: Request, code: int, message: str):
     finally:
         db.close()
     return render("error.html", {
-        "request": request, "user": user, "code": code, "message": message,
+        "request": request, "user": user, "code": code,
+        "message": _ERROR_MESSAGES.get(code, message),
         "m": None, "flash": "", "path": request.url.path,
     }, status_code=code)
 

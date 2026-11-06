@@ -111,7 +111,7 @@ def start(db: Session, site: Site) -> str:
     except Exception:
         site.status = "error"
         db.commit()
-        return "publish_failed"
+        return "site_start_failed"
     return "site_started"
 
 
@@ -123,7 +123,7 @@ def stop(db: Session, site: Site) -> str:
     except Exception:
         site.status = "error"
         db.commit()
-        return "publish_failed"
+        return "site_stop_failed"
     return "site_stopped"
 
 

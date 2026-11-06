@@ -30,7 +30,9 @@ h3 { font-size: 1rem; margin: 0 0 .5rem; }
 .mt { margin-top: 1.2rem; }
 .muted { color: var(--muted); }
 .small { font-size: .82rem; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; direction: ltr; unicode-bidi: embed; }
+/* isolate: توکن لاتین داخل جملهٔ فارسی هرگز با علائم اطرافش قاطی نمی‌شود؛
+   overflow-wrap: anywhere — دامنهٔ خیلی بلند به‌جای سرریز، خودش می‌شکند */
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; direction: ltr; unicode-bidi: isolate; overflow-wrap: anywhere; }
 .pos { color: var(--ok); font-weight: 600; }
 .neg { color: var(--err); font-weight: 600; }
 
@@ -129,9 +131,14 @@ tr:last-child td { border-bottom: none; }
 /* جدول‌های پهن در موبایل: اسکرول افقی مستقل به‌جای شکستن صفحه */
 @media (max-width: 700px) {
   table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* چهار کارت آمار داشبورد در موبایل ۲×۲ — به‌جای چهار ردیف تمام‌عرض */
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+  .stat { padding: .8rem 1rem; margin: 0; }
+  .stat-num { font-size: 1.3rem; }
 }
-.w50 { width: 60%; }
-@media (max-width: 700px) { .w50 { width: 100%; } }
+/* w50/w60 هر دو ۶۰٪ — نام‌ها تاریخی‌اند؛ جدول w60 ویزارد دامنه هم همین عرض را می‌گیرد */
+.w50, .w60 { width: 60%; }
+@media (max-width: 700px) { .w50, .w60 { width: 100%; } }
 .actions { display: flex; gap: .3rem; flex-wrap: wrap; }
 .actions form { margin: 0; }
 
@@ -191,6 +198,11 @@ label.check input { width: auto; }
   background: #0f1722; color: #d7e3f2; border-radius: 10px;
   padding: .9rem 1.1rem; overflow-x: auto; font-size: .82rem; line-height: 1.9;
 }
+/* اسکرول‌بار همیشه قابل‌دیدن — دستورهای بلند داخل کارت تاریک ناگهان «بریده» به نظر نرسند */
+.code { scrollbar-width: thin; scrollbar-color: #3b506c #0f1722; }
+.code::-webkit-scrollbar { height: 8px; }
+.code::-webkit-scrollbar-track { background: #0f1722; }
+.code::-webkit-scrollbar-thumb { background: #3b506c; border-radius: 4px; }
 .code.log { max-height: 320px; overflow-y: auto; }
 pre.code { margin: .6rem 0; }
 

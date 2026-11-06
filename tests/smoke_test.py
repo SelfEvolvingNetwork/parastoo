@@ -407,6 +407,37 @@ check("README فقط یک روش نصب دارد (گیت‌هاب) — بدون 
       "sudo bash setup.sh" not in rme and "bootstrap.sh | sudo bash" in rme)
 
 print()
+print("— تجربهٔ کاربری: پیام‌ها، دوجهته‌بودن، موبایل (v0.3.21) —")
+r = c.get("/آدرس-موجود-نیست")  # مسیر ناموجود → صفحهٔ خطای ۴۰۴
+check("صفحهٔ ۴۰۴ پیام فارسی روشن دارد (نه Not Found خام)",
+      r.status_code == 404 and "پیدا نشد" in r.text and "Not Found" not in r.text)
+from app.tpl import FLASHES as _flash_keys  # noqa: E402
+check("شکست روشن‌کردن سایت، پیام مخصوص خودش را دارد (نه «انتشار ناموفق»)",
+      "site_start_failed" in _flash_keys and "site_stop_failed" in _flash_keys)
+check("خریدِ مارکت با شکستِ روشن‌شدن، تکلیف پول و قدم بعدی را می‌گوید",
+      "purchase_needs_start" in _flash_keys
+      and "هزینه از کیف پول کسر شده" in _flash_keys["purchase_needs_start"])
+_svc = (ROOT / "core/app/services/sites.py").read_text()
+check("سرویس سایت‌ها شکست start/stop را به کلیدهای جدید نگاشت می‌کند",
+      _svc.count('return "site_start_failed"') == 1
+      and _svc.count('return "site_stop_failed"') == 1)
+_mp = (ROOT / "core/app/routes/marketplace.py").read_text()
+check("مسیر مارکت‌پلیس شکست انتشار خرید را به purchase_needs_start می‌فرستد",
+      "purchase_needs_start" in _mp)
+_css = (ROOT / "core/app/web/static/style.css").read_text()
+check("توکن‌های لاتین (mono) isolate هستند — جملهٔ فارسی به‌هم نمی‌ریزد",
+      "unicode-bidi: isolate" in _css)
+check("جدول w60 ویزارد دامنه عرض واقعی دارد (w50 و w60 هر دو ۶۰٪)",
+      ".w50, .w60 { width: 60%; }" in _css)
+check("اسکرول‌بار بلوک‌های کد پنهان نیست (دستور بلند «بریده» دیده نمی‌شود)",
+      "scrollbar-color" in _css and ".code::-webkit-scrollbar" in _css)
+check("کارت‌های آمار داشبورد در موبایل ۲×۲ می‌شوند",
+      ".grid-4 { grid-template-columns: repeat(2, 1fr); }" in _css)
+_newp = (ROOT / "core/app/web/templates/project_new.html").read_text()
+check("فیلد «دستور اجرا» فقط برای استک Python نشان داده می‌شود",
+      'id="startcmd-label"' in _newp and "sel.value === 'python'" in _newp)
+
+print()
 print("— API نسخه و حالت توسعه‌دهنده (v0.2.12) —")
 r = c.get("/api/version")
 check("GET /api/version عمومی و سبک (بدون لاگین)", r.status_code == 200 and r.json().get("ok") is True
