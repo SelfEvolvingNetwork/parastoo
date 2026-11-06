@@ -791,7 +791,7 @@ case "$BASE_DOMAIN" in
       core python3 -c '
 import os
 from app.db import SessionLocal
-from app import dnsops
+from app.services import dnsops
 from app.traefik_ops import apply_domain
 db = SessionLocal()
 try:
