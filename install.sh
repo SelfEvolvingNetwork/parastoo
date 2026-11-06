@@ -772,6 +772,61 @@ if [ -n "$PARASTOO_DNS_BIND_IP" ]; then
   fi
 fi
 
+# ---------- 6d) provision the base zone + apply the domain (v0.3.25) ----------
+# Field gap (2026-11-06): with an explicit PARASTOO_BASE_DOMAIN the installer
+# prints https://panel.<domain>/setup, but nothing ever created the DNS zone
+# on our PowerDNS — the printed URL did not resolve ANYWHERE, and the zone is
+# created only by the very wizard that URL opens (chicken-and-egg; nip.io
+# installs never noticed because the wildcard resolves). Provision the base
+# zone and run the same apply_domain the wizard uses, right here, so
+# panel/git/*.apps resolve (and ACME can start) the moment the installer ends.
+mark "6d) base zone + apply domain"
+case "$BASE_DOMAIN" in
+  *.nip.io)
+    ok "nip.io domain — zone provisioning and HTTPS activation happen in the wizard."
+    ;;
+  *)
+    ZONE_OUT="$(docker compose exec -T \
+      -e PZ_BASE="$BASE_DOMAIN" -e PZ_EMAIL="$ACME_EMAIL" -e PZ_TLS="$TLS_ENABLED" \
+      core python3 -c '
+import os
+from app.db import SessionLocal
+from app import dnsops
+from app.traefik_ops import apply_domain
+db = SessionLocal()
+try:
+    base = os.environ["PZ_BASE"].strip().lower().rstrip(".")
+    try:
+        dnsops.get_zone(base)
+        print("zone:exists")
+    except dnsops.DnsError as e:
+        if e.status == 404:
+            dnsops.provision_zone(base, db=db, kind="base")
+            print("zone:provisioned")
+        else:
+            print("zone:check_failed:" + str(e.status))
+    except dnsops.DnsUnavailable:
+        print("zone:dns_unavailable")
+    r = apply_domain(db, base, os.environ["PZ_EMAIL"], os.environ["PZ_TLS"] == "true")
+    print("apply:files=" + str(r.get("files")) + " zone_sync=" + str(r.get("zone_sync")))
+    for err in r.get("errors", []):
+        print("apply_error:" + err)
+finally:
+    db.close()
+' 2>&1 || true)"
+    echo "$ZONE_OUT" | sed 's/^/        /'
+    case "$ZONE_OUT" in
+      *zone:provisioned*|*zone:exists*)
+        ok "Base zone ${BASE_DOMAIN} is served by our authoritative DNS — panel/git/apps resolve now."
+        ;;
+      *)
+        warn "Base zone could not be provisioned automatically (see lines above)."
+        warn "If https://${PANEL_DOMAIN} does not resolve, provision ${BASE_DOMAIN} on the DNS page of the panel and re-run the domain step in the wizard."
+        ;;
+    esac
+    ;;
+esac
+
 SCHEME="http"; [ "$TLS_ENABLED" = "true" ] && SCHEME="https"
 mark "done"
 

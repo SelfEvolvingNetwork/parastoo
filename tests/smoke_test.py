@@ -962,7 +962,7 @@ _cm = (ROOT / "docker-compose.yml").read_text()
 check(".env هاست داخل هسته سوار می‌شود (همگام‌سازی ماندگار برای up بعدی compose)",
       "- ./.env:/app/host-env/.env" in _cm)
 
-print("— میدان v0.3.25: تصحیح NAT با دامنهٔ صریح + بایند درست DNS + پروب بایند میزبان —")
+print("— میدان v0.3.26: provision زون پایه در نصب‌کننده (پایان مرغ‌وتخم‌مرغ دامنهٔ صریح) —")
 _to = (ROOT / "core" / "app" / "traefik_ops.py").read_text()
 check("site_cert_ok دست‌دادن کامل TLS با SNI هاست می‌سنجد؛ خطای تأیید یعنی گواهی نیست",
       "def site_cert_ok" in _to and "server_hostname=h" in _to
