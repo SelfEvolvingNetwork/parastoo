@@ -28,6 +28,19 @@ DEFAULT_PANEL = "http://panel.193.151.142.128.nip.io"
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 
+# میدان v0.3.29: پس از نصب تازه ممکن است گواهی LE هنوز صادر نشده باشد (سقف
+# نرخ ۴۲۹ یا انتظار DNS) — هارنس نباید همان‌جا کلاً کور شود. با
+# PARASTOO_TLS_INSECURE=1 اعتبارسنجی گواهی رد می‌شود (مثل curl -k) تا بقیهٔ
+# چک‌ها آزموده شوند؛ پیش‌فرض همچنان اعتبارسنجی کامل است.
+_TLS_INSECURE = os.environ.get("PARASTOO_TLS_INSECURE") == "1"
+if _TLS_INSECURE:
+    import ssl as _ssl
+    _INSECURE_CTX = _ssl.create_default_context()
+    _INSECURE_CTX.check_hostname = False
+    _INSECURE_CTX.verify_mode = _ssl.CERT_NONE
+else:
+    _INSECURE_CTX = None
+
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *a, **k):  # نمی‌خواهیم 30x را دنبال کنیم
@@ -36,7 +49,10 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def fetch(method: str, url: str, data=None, headers=None, timeout: int = 15):
     req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
-    opener = urllib.request.build_opener(_NoRedirect)
+    handlers: list = [_NoRedirect]
+    if _INSECURE_CTX is not None:
+        handlers.append(urllib.request.HTTPSHandler(context=_INSECURE_CTX))
+    opener = urllib.request.build_opener(*handlers)
     try:
         with opener.open(req, timeout=timeout) as r:
             return r.status, dict(r.headers), r.read()
@@ -80,7 +96,8 @@ def main() -> int:
         if not d.get("ok") or d.get("app") != "parastoo":
             return FAIL, f"بدنهٔ غیرمنتظره: {str(d)[:120]}"
         note = f"version={d.get('version')} commit={str(d.get('commit'))[:12]} dev_mode={d.get('dev_mode')}"
-        if expect_commit and (d.get("commit") or "") != expect_commit:
+        # v0.3.29 — تطبیق پیشوندی: انتظار ممکن است SHA کوتاه (۸ رقمی) باشد
+        if expect_commit and not (d.get("commit") or "").startswith(expect_commit):
             return FAIL, f"کامیت مستقر {str(d.get('commit'))[:12]} ≠ انتظار {expect_commit[:12]} ({note})"
         return PASS, note
 

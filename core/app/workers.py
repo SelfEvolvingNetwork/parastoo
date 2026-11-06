@@ -38,8 +38,10 @@ DOMAIN_INTERVAL = 60          # ثانیه بین چک‌های DNS
 PENDING_DEADLINE_S = 72 * 3600  # سقف تلاش برای فعال‌سازی معلق (۷۲ ساعت)
 HEAL_INTERVAL = 120           # ثانیه بین چک‌های خودترمیم گیتا (v0.3.22)
 TLS_RESTART_GAP = 600         # حداقل فاصلهٔ ری‌استارت ترافیک برای تلاش مجدد ACME (v0.3.23)
+REGISTRY_RETRY_GAP = 900      # حداقل فاصلهٔ صف‌کردن مجدد بیلد مردود رجیستری (v0.3.29)
 
 _last_tls_restart = 0.0  # زمان آخرین ری‌استارت ترافیک در این فرایند
+_last_registry_retry = 0.0  # زمان آخرین صف‌کردن مجدد بیلد در این فرایند
 
 
 def start_workers() -> None:
@@ -220,6 +222,16 @@ def _run_build(db, job: Build) -> None:
     except Exception as e:
         job.status = "failed"
         log(f"[failed] {e}")
+        # صداقت (v0.3.29): اگر ریشه، گواهیِ در-انتظارِ دامنهٔ رجیستری است،
+        # همان‌جا بگو — نه خطای مبهم داکر. ورکر خودترمیم خودش دوباره تلاش می‌کند.
+        _m = str(e)
+        if "push ناموفق" in _m and ("tls: failed to verify" in _m or "x509" in _m):
+            try:
+                if traefik_ops.site_cert_ok(domains.git()) is False:
+                    log("گواهی HTTPS دامنهٔ رجیستری (گیت) هنوز صادر نشده — پنجرهٔ انتظار پس از نصب تازه."
+                        " این بیلد پس از صادرشدن گواهی خودکار دوباره تلاش می‌شود؛ نیازی به کاری نیست.")
+            except Exception:
+                pass
     finally:
         job.finished_at = db_now()
         db.commit()
@@ -276,6 +288,7 @@ def heal_once() -> None:
         except Exception as e:
             print(f"[parastoo] gitea self-heal failed: {e}")
     _tls_certs_heal(db)
+    _build_retry_heal(db)
 
 
 def _tls_certs_heal(db) -> None:
@@ -319,6 +332,55 @@ def _tls_certs_heal(db) -> None:
         c.containers.get(settings.TRAEFIK_CONTAINER).restart(timeout=10)
     except Exception as e:
         print(f"[parastoo] cert self-heal failed: {e}")
+
+
+def _registry_tls_failure(job_log: str | None) -> bool:
+    """آیا لاگ این بیلد، مردودشدن در push به‌خاطر TLS رجیستری است؟"""
+    t = job_log or ""
+    return "push ناموفق" in t and ("tls: failed to verify" in t or "x509" in t)
+
+
+def _build_retry_heal(db) -> None:
+    """فاز ج) خودترمیم بیلدِ مردودِ رجیستری در پنجرهٔ انتظار گواهی (v0.3.29).
+
+    میدان: تا وقتی گواهی git.<domain> صادر نشده (۴۲۹ سقف نرخ لت‌انکریپت یا
+    DNS کند)، دیمون داکر هنگام گرفتن توکن رجیستری TLS را رد می‌کند و بیلد
+    می‌میرد — در نصب سالمِ قبل-از-گواهی، هر بیلدی تکرارشدنیِ نامعلوم به نظر
+    می‌رسید. وقتی گواهی آماده شد، آخرین بیلد مردود هر پروژه حداکثر یک‌بار
+    خودکار دوباره صف می‌شود — کاربر هیچ کاری ندارد. best-effort."""
+    global _last_registry_retry
+    try:
+        if time.time() - _last_registry_retry < REGISTRY_RETRY_GAP:
+            return
+        if not dockerops.available():
+            return
+        if traefik_ops.site_cert_ok(domains.git()) is not True:
+            return  # گواهی هنوز آماده نیست — دست نزنیم
+        projects = db.query(Project).all()
+        for project in projects:
+            latest = (db.query(Build)
+                      .filter(Build.project_id == project.id)
+                      .order_by(Build.id.desc()).first())
+            if latest is None or latest.status != "failed":
+                continue
+            if not _registry_tls_failure(latest.log) or "[auto-retry]" in (latest.log or ""):
+                continue  # این بیلد یک‌بار فرصت صف مجدد داشته
+            busy = (db.query(Build)
+                    .filter(Build.project_id == project.id,
+                            Build.status.in_(("queued", "running"))).first())
+            if busy:
+                continue
+            _last_registry_retry = time.time()
+            latest.log = ((latest.log or "")[-LOG_TAIL:]
+                          + "[auto-retry] گواهی رجیستری آماده شد — بیلد خودکار دوباره صف شد\n")
+            db.add(Build(project_id=project.id, commit_sha=latest.commit_sha,
+                         status="queued"))
+            db.commit()
+            print(f"[parastoo] build #{latest.id} died on registry TLS — "
+                  f"auto-requeued (cert is ready now)")
+            return  # هر چرخه حداکثر یک صف — چرخهٔ بعدی بقیه را می‌گیرد
+    except Exception as e:
+        print(f"[parastoo] build retry heal failed: {e}")
 
 
 # ---------------------------------------------------------------- billing

@@ -994,6 +994,14 @@ check("استثنای فاز گیتا در heal فاز گواهی را قربا�
       "gitea staleness check failed (continuing)" in _w
       and "stale = False" in _w
       and _w.index("stale = False") < _w.index("_tls_certs_heal(db)"))
+check("بیلد مردودِ رجیستری-گواهی پس از آماده‌شدن گواهی خودکار دوباره صف می‌شود (فاز ج heal — میدان v0.3.29: پنجرهٔ انتظار گواهی هر بیلد را می‌کشت)",
+      "_build_retry_heal" in _w and "_registry_tls_failure" in _w
+      and "REGISTRY_RETRY_GAP = 900" in _w
+      and '"[auto-retry]" in (latest.log or "")' in _w
+      and "site_cert_ok(domains.git()) is not True" in _w)
+check("شکست push در پنجرهٔ انتظار گواهی پیام صادقانهٔ فارسی دارد نه خطای مبهم داکر",
+      "گواهی HTTPS دامنهٔ رجیستری (گیت) هنوز صادر نشده" in _w
+      and "نیازی به کاری نیست" in _w)
 _inst = (ROOT / "install.sh").read_text()
 check("نصب‌کننده ریدایرکت :80→:443 را مسیر سالم می‌داند — پایان آژیر کاذب ۳۰۱ روی هر نصب سالمِ TLS-دار (میدان v0.3.29)",
       "301|302|307|308)" in _inst
