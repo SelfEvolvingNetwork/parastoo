@@ -332,38 +332,44 @@ else
   ok "Public IP from PARASTOO_PUBLIC_IP: ${PUBLIC_IP}"
 fi
 [ -n "$PUBLIC_IP" ] || die "Could not detect the public IP. Set it manually: PARASTOO_PUBLIC_IP=1.2.3.4 PARASTOO_BASE_DOMAIN=example.com bash install.sh"
+
+# cross-check: the detected IP should be plausible as the INBOUND IP.
+# If it is not bound to any local interface, egress != inbound is likely.
+# v0.3.19 — field incident (server rebuild 2026-11-05): the egress echo
+# (ipify) returned the provider NAT IP (205.x) while the real inbound IP
+# sat on the NIC (193.x) — the installer only WARNED and built the whole
+# install around an unreachable nip.io domain. Auto-correct instead:
+# candidate inbound IPs = public IPs actually bound to interfaces
+# (RFC1918/CGNAT/link-local/docker bridges excluded), and when exactly
+# one such IP exists, prefer it over the egress echo.
+# v0.3.25 — the correction now runs BEFORE the BASE_DOMAIN branch: with an
+# explicit PARASTOO_BASE_DOMAIN the egress echo used to leak into
+# PARASTOO_DNS_BIND_IP and the base-zone A records — PowerDNS tried to bind
+# a non-local address ("cannot assign requested address"), the container
+# reported healthy with ZERO host ports, and authoritative DNS was silently
+# dead (field: fresh install with BASE_DOMAIN=zeolitecenter.ir, 2026-11-06).
+INTF_IPS="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 \
+            | grep -vE '^(10\.|127\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\.)' \
+            | paste -sd' ' - 2>/dev/null || true)"
+[ -n "$INTF_IPS" ] || INTF_IPS="$(hostname -I 2>/dev/null || true)"
+if [ -n "$INTF_IPS" ] && ! printf '%s\n' $INTF_IPS | grep -qx "$PUBLIC_IP"; then
+  warn "Detected IP ${PUBLIC_IP} is NOT bound to any interface of this server (interfaces: ${INTF_IPS})."
+  warn "Outbound traffic probably leaves via another IP (NAT / VPN / provider route)."
+  if [ "$(printf '%s\n' $INTF_IPS | grep -c . )" = "1" ]; then
+    INBOUND_IP="$(printf '%s\n' $INTF_IPS | head -n1)"
+    warn "Auto-correcting to the interface (inbound) IP: ${INBOUND_IP}"
+    PUBLIC_IP="$INBOUND_IP"
+    ok "Inbound IP: ${PUBLIC_IP}"
+  else
+    warn "Multiple interface IPs — cannot auto-pick; re-run with the real inbound IP:"
+    say "  curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo env PARASTOO_PUBLIC_IP=<real-IP> bash"
+    say "  (or set the domain later in the panel wizard: /setup/domain)"
+  fi
+fi
+
 if [ -z "$BASE_DOMAIN" ]; then
   BASE_DOMAIN="${PUBLIC_IP}.nip.io"
   ok "Temporary domain: ${BASE_DOMAIN} (real domain is set later from the web panel)"
-  # cross-check: the detected IP should be plausible as the INBOUND IP.
-  # If it is not bound to any local interface, egress != inbound is likely
-  # and the domain above will not resolve to this server.
-  # v0.3.19 — field incident (server rebuild 2026-11-05): the egress echo
-  # (ipify) returned the provider NAT IP (205.x) while the real inbound IP
-  # sat on the NIC (193.x) — the installer only WARNED and built the whole
-  # install around an unreachable nip.io domain. Auto-correct instead:
-  # candidate inbound IPs = public IPs actually bound to interfaces
-  # (RFC1918/CGNAT/link-local/docker bridges excluded), and when exactly
-  # one such IP exists, prefer it over the egress echo.
-  INTF_IPS="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 \
-              | grep -vE '^(10\.|127\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\.)' \
-              | paste -sd' ' - 2>/dev/null || true)"
-  [ -n "$INTF_IPS" ] || INTF_IPS="$(hostname -I 2>/dev/null || true)"
-  if [ -n "$INTF_IPS" ] && ! printf '%s\n' $INTF_IPS | grep -qx "$PUBLIC_IP"; then
-    warn "Detected IP ${PUBLIC_IP} is NOT bound to any interface of this server (interfaces: ${INTF_IPS})."
-    warn "Outbound traffic probably leaves via another IP (NAT / VPN / provider route)."
-    if [ "$(printf '%s\n' $INTF_IPS | grep -c . )" = "1" ]; then
-      INBOUND_IP="$(printf '%s\n' $INTF_IPS | head -n1)"
-      warn "Auto-correcting to the interface (inbound) IP: ${INBOUND_IP}"
-      PUBLIC_IP="$INBOUND_IP"
-      BASE_DOMAIN="${PUBLIC_IP}.nip.io"
-      ok "Inbound IP: ${PUBLIC_IP} — temporary domain: ${BASE_DOMAIN}"
-    else
-      warn "Multiple interface IPs — cannot auto-pick; re-run with the real inbound IP:"
-      say "  curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo PARASTOO_PUBLIC_IP=<real-IP> bash"
-      say "  (or set the domain later in the panel wizard: /setup/domain)"
-    fi
-  fi
 else
   ok "Domain from env: ${BASE_DOMAIN}"
 fi
@@ -504,6 +510,20 @@ if [ -z "${PARASTOO_DNS_BIND_IP:-}" ] && [ -n "${PUBLIC_IP:-}" ] \
    && (ss -tln 2>/dev/null | grep -Eq '127\.0\.0\.5[34](%[a-zA-Z0-9._-]+)?:53'); then
   PARASTOO_DNS_BIND_IP="${PUBLIC_IP}"
   ok "systemd-resolved detected on 127.0.0.53:53 -> DNS binds to ${PUBLIC_IP} (PARASTOO_DNS_BIND_IP)"
+fi
+# v0.3.25 — the bind IP must be an address of THIS host (a NAT egress IP is
+# not bindable: "cannot assign requested address" -> the container comes up
+# "healthy" with zero host ports). Defense in depth even when the NAT
+# auto-correct above could not run (e.g. an explicit env override).
+if [ -n "${PARASTOO_DNS_BIND_IP:-}" ] \
+   && ! ip -4 -o addr show scope global 2>/dev/null | grep -qw "$PARASTOO_DNS_BIND_IP"; then
+  _BIND_FALLBACK="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 \
+      | grep -vE '^(10\.|127\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\.)' \
+      | head -n1 || true)"
+  if [ -n "${_BIND_FALLBACK:-}" ]; then
+    warn "DNS bind IP ${PARASTOO_DNS_BIND_IP} is not a local interface address — using ${_BIND_FALLBACK} instead."
+    PARASTOO_DNS_BIND_IP="${_BIND_FALLBACK}"
+  fi
 fi
 PARASTOO_DNS_BIND_IP="${PARASTOO_DNS_BIND_IP:-}"
 
@@ -724,6 +744,31 @@ else
     warn "Root cause found: the host Docker Engine is newer than this Traefik image supports (Docker 29 needs Traefik >= 3.6.6)."
     say "Fix:  cd $INSTALL_DIR"
     say "      sed -i 's|image: traefik:.*|image: traefik:v3.6.6|' docker-compose.yml && sudo docker compose up -d traefik"
+  fi
+fi
+
+# ---------- 6c) authoritative DNS — the silent-kill check (v0.3.25) ----------
+# Field failure (2026-11-06): parastoo-dns reported "healthy" while its host
+# port never bound (a NAT egress IP in PARASTOO_DNS_BIND_IP) — authoritative
+# DNS was dead with every container green, and panel/git answered only from
+# stale resolver caches. Probe the REAL host path: the container must own a
+# :53 host binding; a green container with none is a failure.
+mark "6c) dns host bind"
+if [ -n "$PARASTOO_DNS_BIND_IP" ]; then
+  DNS_PORT_OK=""
+  for i in $(seq 1 6); do
+    if docker port parastoo-dns 2>/dev/null | grep -q ':53'; then DNS_PORT_OK="ok"; break; fi
+    sleep 2
+  done
+  if [ "$DNS_PORT_OK" = "ok" ]; then
+    ok "Authoritative DNS is bound on the host port 53."
+  else
+    warn "parastoo-dns has NO host port binding on :53 — authoritative DNS would be silently dead."
+    say "Diagnose:  sudo docker port parastoo-dns   (empty output = not bound)"
+    say "PARASTOO_DNS_BIND_IP in .env must be an interface address of this server:"
+    say "  $(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | paste -sd' ' -)"
+    say "Fix: edit .env, then:  cd $INSTALL_DIR && sudo docker compose up -d dns"
+    die "DNS host bind failed — a green dns container without a host :53 binding kills every domain."
   fi
 fi
 
