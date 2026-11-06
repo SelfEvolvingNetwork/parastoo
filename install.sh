@@ -260,6 +260,26 @@ probe_full() {  # probe_full <label> <url>; 0 = usable for builds (host + contai
   echo "ok (host only — docker absent, container re-check skipped)"; return 0
 }
 
+# v0.3.27 — a pip mirror only counts as live if a REAL package file downloads.
+# Field bug (2026-11-06, fresh install): runflare's index answered 200 but every
+# /packages/... fetch returned 402 Payment Required; the old index-only probe
+# passed it and broke out of the loop, so the core image build died on
+# `pip install fastapi` (HTTP 402). Meanwhile liara — perfectly healthy — was
+# never reached. Probe = fetch the six wheel from the mirror itself.
+# Relative hrefs (`../../packages/...`) resolve to different depths per mirror
+# layout (liara nests under /repository/pypi/), so the absolute URL is built
+# with urllib.parse.urljoin — python3 is guaranteed on Ubuntu 24.04.
+pypi_file_probe() {  # $1 = mirror index URL; rc 0 = a real wheel actually downloaded
+  local page_url="${1%/}/six/"
+  local link resolved
+  link="$(timeout 14 curl -fsSL --max-time 10 "$page_url" 2>/dev/null \
+      | grep -oE 'href="[^"]+six-[0-9][^"]*\.whl[^"]*"' | head -1 | sed 's/^href="//;s/"$//')" || true
+  [ -n "$link" ] || return 1
+  resolved="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.urljoin(sys.argv[1], sys.argv[2].split("#")[0]))' "$page_url" "$link" 2>/dev/null)" || return 1
+  [ -n "$resolved" ] || return 1
+  timeout 25 curl -fsSL --max-time 18 -o /dev/null "$resolved" 2>/dev/null
+}
+
 mark "1d) PyPI/npm probes"
 # Real-world report: this used to be the ONLY silent phase (up to ~1 min) and
 # users read the silence as a hang — every host and mirror now prints its result.
@@ -272,7 +292,7 @@ if [ -z "${PARASTOO_PIP_INDEX_URL:-}" ]; then
   if [ "$PYPI_OK" = yes ] && [ "$FILES_OK" = yes ]; then
     ok "PyPI fully reachable (index + download host). No mirror needed."
   else
-    say "Probing Python package mirrors from this server..."
+    say "Probing Python package mirrors (a real package file must download)..."
     for m in \
       https://package-mirror.liara.ir/repository/pypi/simple \
       https://mirror.abrha.net/repository/pypi/simple \
@@ -280,10 +300,13 @@ if [ -z "${PARASTOO_PIP_INDEX_URL:-}" ]; then
       https://mirror.kargadan.ir/repository/pypi-group/simple \
       https://mirrors.arvancloud.ir/pypi/simple \
       https://pypi.tuna.tsinghua.edu.cn/simple \
-      https://mirrors.aliyun.com/pypi/simple; do
-      # -L follows redirects; trailing slash matters for some mirrors; 200 strictly required
+      https://mirrors.aliyun.com/pypi/simple \
+      https://pypi.mirrors.ustc.edu.cn/simple \
+      https://mirrors.cloud.tencent.com/pypi/simple; do
+      # the index page AND a real wheel download must both succeed — a 200 on
+      # the index alone is exactly how runflare (402 on files) slipped through
       printf '      testing %-58s' "${m%/}/"
-      if [ "$(timeout 12 curl -fsSL -o /dev/null -w '%{http_code}' --max-time 8 "${m%/}/" 2>/dev/null)" = "200" ]; then
+      if pypi_file_probe "$m"; then
         echo "ok"
         DETECTED_PIP_MIRROR="$m"; ok "Live pip mirror: $m (will be written to .env)"; break
       fi
@@ -297,10 +320,13 @@ if [ -z "${PARASTOO_NPM_REGISTRY:-}" ]; then
   if [ "$NPM_OK" = yes ]; then
     ok "Official npm is reachable. No mirror needed."
   else
-    say "Probing npm mirrors from this server..."
+    say "Probing npm mirrors (ping AND a real tarball download must pass)..."
     for m in https://registry.npmjs.ir https://registry.npmmirror.com; do
       printf '      testing %-58s' "$m/-/ping"
-      if [ "$(timeout 12 curl -fsSL -o /dev/null -w '%{http_code}' --max-time 8 "$m/-/ping" 2>/dev/null)" = "200" ]; then
+      # same false-positive class as PyPI: /-/ping can 200 while package
+      # tarball routes are dead — left-pad is ~2 KB, standard registry layout
+      if [ "$(timeout 12 curl -fsSL -o /dev/null -w '%{http_code}' --max-time 8 "$m/-/ping" 2>/dev/null)" = "200" ] \
+         && timeout 25 curl -fsSL -o /dev/null --max-time 18 "$m/left-pad/-/left-pad-1.3.0.tgz" 2>/dev/null; then
         echo "ok"
         DETECTED_NPM_MIRROR="$m"; ok "Live npm mirror: $m (will be written to .env)"; break
       fi
