@@ -308,31 +308,146 @@ def sync_base_zone(db, base_domain: str) -> str:
 def _delegation_points_here(zone: str, db) -> bool:
     """آیا دنیا این سرور را نگهبان DNS این دامنه می‌داند؟ (گارد provision v0.3.28)
 
-    امضای رسمی پرستو: زون‌های میزبانی‌شده روی این نیم‌سرور glue NS دارند —
-    ns1.<zone> و ns2.<zone> به IP همین سرور اشاره می‌کنند (الگوی provision_zone).
-    اگر حداقل یکی از آن‌ها با getaddrinfo (همان سازوکار check_dns) به IP سرور
-    رسید، زونِ غایب روی PDNS ما یعنی lame delegation و ساختش ترمیم است؛
-    در غیر این صورت زون جای دیگری میزبانی می‌شود → دست نمی‌زنیم.
+    درس میدانی 2026-11-06: امضای «ns1/ns2.<zone> → IP سرور» دقیقاً در همان
+    سناریویی که برایش ساخته شد می‌شکند — وقتی زون غایب است، A رکورد ns1/ns2
+    (که داخل همان زون بود) هم دیگر resolve نمی‌شود (مرغ‌وتخم‌مرغ دوم).
+    راه درست: پرسیدن از دنیای بیرون — کوئری NS به رزولور عمومی؛ NSهای
+    برگشتی (و glue آن‌ها) باید به IP همین سرور برسند. اگر هیچ رزولور عمومی
+    پاسخ نداد (تحریم/قطعی)، به امضای ns1/ns2 فال‌بک می‌کنیم (برای ترمیم
+    IP-تغییر که زون سرِجاست کار می‌کند) و در شکست نهایی، دست نمی‌زنیم.
     """
-    import socket
-
     from . import domains
 
     try:
         ip = domains.server_ip(db)
         if not ip:
             return False
-        hits = 0
-        for ns in (f"ns1.{zone}", f"ns2.{zone}"):
-            try:
-                infos = socket.getaddrinfo(ns, 53, family=socket.AF_INET)
-            except Exception:
-                continue
-            if any(ai[4][0] == ip for ai in infos):
-                hits += 1
-        return hits >= 1
+        hits = _ns_delegation_ip_hits(zone, ip)
+        if hits >= 1:
+            return True
+        if hits == 0:
+            return _ns_glue_signature(zone, ip)
+        return False  # hits == -1 و فال‌بک هم نگرفت → شک داریم → دست نمی‌زنیم
     except Exception:
         return False
+
+
+def _ns_glue_signature(zone: str, ip: str) -> bool:
+    """فال‌بک: glue رسمی پرستو (ns1/ns2.<zone> → IP) از دید رزولور محلی."""
+    hits = 0
+    for ns in (f"ns1.{zone}", f"ns2.{zone}"):
+        try:
+            infos = socket.getaddrinfo(ns, 53, family=socket.AF_INET)
+        except Exception:
+            continue
+        if any(ai[4][0] == ip for ai in infos):
+            hits += 1
+    return hits >= 1
+
+
+def _ns_delegation_ip_hits(zone: str, server_ip: str) -> int:
+    """کوئری NS از رزولور عمومی (پایتون خالص، UDP:53) + حل glue.
+
+    خروجی: تعداد میزبان‌های NS که A آن‌ها == server_ip است؛
+    -1 یعنی هیچ رزولوری پاسخ نداد (قطعی/تحریم) — «نمی‌دانم».
+    glue در بخش ADDITIONAL پاسخ NS هم خوانده می‌شود چون وقتی زون ماست که
+    مرده، A مستقل NS ممکن است از هیچ‌جا نیاید ولی glue در referral هست.
+    """
+    import os
+    import struct
+
+    zone = zone.rstrip(".")
+    resolvers = ("8.8.8.8", "1.1.1.1", "9.9.9.9")
+
+    def _read_name(buf: bytes, off: int) -> tuple[str, int]:
+        labels: list[str] = []
+        jumps = 0
+        while True:
+            if off >= len(buf) or jumps > 8:
+                return "", off
+            ln = buf[off]
+            if ln == 0:
+                off += 1
+                break
+            if ln & 0xC0 == 0xC0:
+                if off + 1 >= len(buf):
+                    return "", off
+                ptr = ((ln & 0x3F) << 8) | buf[off + 1]
+                sub, _ = _read_name(buf, ptr)
+                return (".".join(labels + ([sub] if sub else [])).strip("."), off + 2)
+            off += 1
+            labels.append(buf[off:off + ln].decode("ascii", "replace"))
+            off += ln
+        return ".".join(labels).strip("."), off
+
+    def _query(qname: str, qtype: int, resolver: str, timeout: float = 3.0):
+        """(ns_hosts, a_map) از ANSWER+AUTHORITY+ADDITIONAL؛ None = شکست."""
+        try:
+            labels = qname.rstrip(".").split(".")
+            enc = b"".join(bytes([len(p)]) + p.encode("idna" if not p.isascii() else "ascii")
+                           for p in labels if p) + b"\x00"
+        except Exception:
+            return None
+        pkt = os.urandom(2) + b"\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00" \
+            + enc + struct.pack(">HH", qtype, 1)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(timeout)
+        try:
+            s.sendto(pkt, (resolver, 53))
+            data, _ = s.recvfrom(4096)
+        except Exception:
+            return None
+        finally:
+            s.close()
+        if len(data) < 12:
+            return None
+        qd, an, ns_c, ar = struct.unpack(">HHHH", data[4:12])
+        off = 12
+        for _ in range(qd):  # رد شدن از سوال
+            _, off = _read_name(data, off)
+            off += 4
+        ns_hosts: set[str] = set()
+        a_map: dict[str, str] = {}
+        for _ in range(an + ns_c + ar):
+            name, off = _read_name(data, off)
+            if off + 10 > len(data):
+                break
+            rtype, _cls, _ttl, rdlen = struct.unpack(">HHIH", data[off:off + 10])
+            off += 10
+            rdata = data[off:off + rdlen]
+            off += rdlen
+            if rtype == 2 and rdlen >= 1:  # NS
+                h, _ = _read_name(data, off - rdlen)
+                if h:
+                    ns_hosts.add(h.rstrip(".").lower())
+            elif rtype == 1 and rdlen == 4:  # A
+                a_map[name.rstrip(".").lower()] = socket.inet_ntoa(rdata)
+        return ns_hosts, a_map
+
+    zone_l = zone.lower()
+    for r in resolvers:
+        try:
+            out = _query(zone, 2, r)  # NS زون
+        except Exception:
+            out = None
+        if not out:
+            continue
+        ns_hosts, a_map = out
+        # اگر glue برای بعضی NSها در پاسخ نبود، A مستقل هر NS را بپرس
+        for h in list(ns_hosts):
+            if h in a_map:
+                continue
+            try:
+                out2 = _query(h, 1, r)  # A میزبان NS
+            except Exception:
+                out2 = None
+            if out2 and h in out2[1]:
+                a_map[h] = out2[1][h]
+        hits = sum(1 for h, a in a_map.items()
+                   if a == server_ip and (h in ns_hosts or h == f"ns1.{zone_l}"
+                                          or h == f"ns2.{zone_l}"))
+        return hits  # پاسخ معتبرResolver → «می‌دانم» (حتی اگر صفر باشد)
+    return -1  # هیچ رزولوری پاسخ نداد → «نمی‌دانم»
 
 
 # ---------- اعمال تغییر دامنه ----------
