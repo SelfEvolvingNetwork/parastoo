@@ -1011,6 +1011,16 @@ check("نصب‌کننده ریدایرکت :80→:443 را مسیر سالم م
 check("نصب‌کننده ۴۲۹ لایهٔ LE را صادقانه اسم می‌برد نه «خرابی در لایهٔ ترافیک»",
       "rateLimited" in _inst and "Let's Encrypt rate limit" in _inst
       and "no action needed" in _inst)
+_tmpl = (ROOT / "deploy" / "templates" / "traefik.yml.tmpl").read_text()
+check("CA ACME قابل‌انتخاب است: نگاشت caServer و EAB در قالب ترافیک — پایان انحصار لت‌انکریپت (میدان 2026-11-06: سقف نرخ ۴۲۹ پنجمین نصب تازهٔ همان دامنه را می‌بست و ZeroSSL از ایران سبز و سریع است)",
+      "__ACME_CASERVER__" in _tmpl and "__ACME_EAB__" in _tmpl
+      and "acme.zerossl.com/v2/DV90" in _inst
+      and "eab-credentials" in _inst
+      and "PARASTOO_ACME_CA" in _inst
+      and "PARASTOO_ACME_EAB_KID" in _inst)
+check("دایرکتوری CA پیش از نصب پروب می‌شود — CA مسدود (میدان: BuyPass/Actalis از ایران تایم‌اوت) همان‌جا صادقانه دیده می‌شود نه ساعت‌ها بعد در لاگ ترافیک",
+      "ACME CA directory" in _inst and "docs/SANCTIONS.md" in _inst
+      and "_ACME_CODE" in _inst)
 _doc = (ROOT / "scripts" / "doctor.sh").read_text()
 check("doctor.sh برای ریدایرکت ۳۰۱ مسیر HTTPS را هم می‌سنجد و تفسیر می‌کند",
       "301|302|307|308)" in _doc and '--resolve "$PANEL:443:127.0.0.1"' in _doc)

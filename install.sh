@@ -474,6 +474,41 @@ TRAEFIK_ENTRYPOINTS="web"; TRAEFIK_TLS="false"
 if [ "$TLS_ENABLED" = "true" ]; then TRAEFIK_ENTRYPOINTS="web,websecure"; TRAEFIK_TLS="true"; fi
 GITEA_ROOT_URL_SCHEME="http"; [ "$TLS_ENABLED" = "true" ] && GITEA_ROOT_URL_SCHEME="https"
 
+# --- CA گواهی (v0.3.30): letsencrypt (پیش‌فرض) | zerossl — برای نصب‌هایی که
+# سقف نرخ لت‌انکریپت (۵ گواهی در ۷ روز برای هر مجموعه هاست) آنها را می‌بندد
+# (میدان 2026-11-06: پنجمین نصب تازهٔ همان دامنه). ZeroSSL از ایران سبز و
+# سریع است؛ BuyPass/Actalis مسدودند. EAB یک‌بار گرفته می‌شود و در .env
+# می‌ماند (طبق مستندات ZeroSSL قابل استفادهٔ مجدد است).
+ACME_CA="${PARASTOO_ACME_CA:-letsencrypt}"
+ACME_CA_URL="https://acme-v02.api.letsencrypt.org/directory"
+ACME_EAB_BLOCK=""
+if [ "$TLS_ENABLED" = "true" ] && [ "$ACME_CA" = "zerossl" ]; then
+  ACME_CA_URL="https://acme.zerossl.com/v2/DV90"
+  if [ -z "${PARASTOO_ACME_EAB_KID:-}" ] && [ -n "${PARASTOO_ZEROSSL_API_KEY:-}" ]; then
+    say "ZeroSSL: fetching EAB credentials via API ..."
+    _EAB_JSON="$(curl -s --max-time 20 -X POST \
+      "https://api.zerossl.com/acme/eab-credentials?access_key=${PARASTOO_ZEROSSL_API_KEY}" || true)"
+    PARASTOO_ACME_EAB_KID="$(printf '%s' "$_EAB_JSON" | sed -n 's/.*"eab_kid"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+    PARASTOO_ACME_EAB_HMAC="$(printf '%s' "$_EAB_JSON" | sed -n 's/.*"eab_hmac_key"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+  fi
+  if [ -n "${PARASTOO_ACME_EAB_KID:-}" ] && [ -n "${PARASTOO_ACME_EAB_HMAC:-}" ]; then
+    ACME_EAB_BLOCK="      eab:
+        kid: \"${PARASTOO_ACME_EAB_KID}\"
+        hmacEncoded: \"${PARASTOO_ACME_EAB_HMAC}\""
+    say "ACME CA: ZeroSSL (EAB ready, reusable)."
+  else
+    die "PARASTOO_ACME_CA=zerossl needs EAB credentials: create a free account at zerossl.com, then pass PARASTOO_ZEROSSL_API_KEY (EAB is fetched automatically) or PARASTOO_ACME_EAB_KID + PARASTOO_ACME_EAB_HMAC from the Developer section of the dashboard."
+  fi
+fi
+# بلوک YAML برای قالب ترافیک (کلید + تورفتگی ۶ فاصله) — جدا از URL پروب
+ACME_CASERVER_BLOCK="      caServer: \"${ACME_CA_URL}\""
+# probe the CA directory — a blocked CA (field: BuyPass times out from Iran)
+# is seen honestly here, not hours later in traefik logs
+if [ "$TLS_ENABLED" = "true" ]; then
+  _ACME_CODE="$(timeout 15 curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$ACME_CA_URL" 2>/dev/null || echo 000)"
+  [ "$_ACME_CODE" = "200" ] || warn "ACME CA directory ($ACME_CA) answered '$_ACME_CODE' — certificate issuance may fail (network/sanctions). See docs/SANCTIONS.md."
+fi
+
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(gen)}"
 GITEA_DB_PASSWORD="${GITEA_DB_PASSWORD:-$(gen)}"
 GITEA_SECRET_KEY="${GITEA_SECRET_KEY:-$(gen)}"
@@ -561,6 +596,10 @@ GIT_DOMAIN=${GIT_DOMAIN}
 APPS_DOMAIN=${APPS_DOMAIN}
 TLS_ENABLED=${TLS_ENABLED}
 ACME_EMAIL=${ACME_EMAIL}
+# --- v0.3.30: CA انتخابی + EAB قابل استفادهٔ مجدد ZeroSSL (خالی برای لت‌انکریپت) ---
+PARASTOO_ACME_CA=${ACME_CA}
+PARASTOO_ACME_EAB_KID=${PARASTOO_ACME_EAB_KID:-}
+PARASTOO_ACME_EAB_HMAC=${PARASTOO_ACME_EAB_HMAC:-}
 TRAEFIK_ENTRYPOINTS=${TRAEFIK_ENTRYPOINTS}
 TRAEFIK_TLS=${TRAEFIK_TLS}
 GITEA_ROOT_URL=${GITEA_ROOT_URL_SCHEME}://${GIT_DOMAIN}/
@@ -630,8 +669,10 @@ if [ "$TLS_ENABLED" = "true" ]; then
           scheme: https"
 fi
 
-awk -v block="$REDIRECT_BLOCK" -v email="$ACME_EMAIL" '
-  { gsub(/__WEB_REDIRECT__/, block); gsub(/__ACME_EMAIL__/, email) }
+awk -v block="$REDIRECT_BLOCK" -v email="$ACME_EMAIL" \
+    -v ca="${ACME_CASERVER_BLOCK:-}" -v eab="${ACME_EAB_BLOCK:-}" '
+  { gsub(/__WEB_REDIRECT__/, block); gsub(/__ACME_EMAIL__/, email);
+    gsub(/__ACME_CASERVER__/, ca); gsub(/__ACME_EAB__/, eab) }
   { print }
 ' deploy/templates/traefik.yml.tmpl > config/traefik.yml
 
