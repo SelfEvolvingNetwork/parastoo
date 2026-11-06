@@ -436,6 +436,11 @@ check("کارت‌های آمار داشبورد در موبایل ۲×۲ می�
 _newp = (ROOT / "core/app/web/templates/project_new.html").read_text()
 check("فیلد «دستور اجرا» فقط برای استک Python نشان داده می‌شود",
       'id="startcmd-label"' in _newp and "sel.value === 'python'" in _newp)
+_au = (ROOT / "scripts/auto-update.sh").read_text()
+check("auto-update متادیتای استقرار را صریح صادر می‌کند (وگرنه healthz یک چرخه عقب می‌افتد)",
+      "set -a; . ./.env; set +a" in _au
+      and 'export PARASTOO_DEPLOYED_COMMIT="$REMOTE"' in _au
+      and _au.find("set -a; . ./.env; set +a") < _au.find('export PARASTOO_DEPLOYED_COMMIT="$REMOTE"'))
 
 print()
 print("— API نسخه و حالت توسعه‌دهنده (v0.2.12) —")

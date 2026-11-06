@@ -170,6 +170,12 @@ NOW_H="$(date '+%F %T')"
 } > "$DEPLOY"
 set_env PARASTOO_DEPLOYED_COMMIT "$REMOTE"
 set_env PARASTOO_DEPLOYED_AT "$NOW_H"
+# v0.3.21 (درس بازبینی زنده): اسکریپت در ابتدا (.env) را با set -a صادر کرده؛
+# مقدارهای کهنه در محیط شل می‌مانند و compose موقع up به‌جای فایل از محیط شل
+# می‌خواند (اولویت محیط > فایل) — نتیجه: healthz یک چرخه عقب می‌افتاد.
+# صریحاً مقدار تازه را صادر می‌کنیم تا کانتینر همان‌جا متادیتای درست بگیرد.
+export PARASTOO_DEPLOYED_COMMIT="$REMOTE"
+export PARASTOO_DEPLOYED_AT="$NOW_H"
 cp -f bin/parastoo /usr/local/bin/parastoo 2>/dev/null || true
 echo "$APP_DIR" 2>/dev/null > /etc/parastoo-install-path || true
 
