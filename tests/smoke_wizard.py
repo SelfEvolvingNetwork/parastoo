@@ -192,6 +192,14 @@ with TestClient(app, follow_redirects=False) as c:
         if p == "/servers/localhost/zones" and request.method == "GET":
             return _httpx.Response(200, json=[{"name": k, "kind": v["kind"], "serial": 1}
                                               for k, v in _zones2.items()])
+        if p == "/servers/localhost/zones" and request.method == "POST":
+            b = _json.loads(request.content)
+            zname = str(b.get("name", "")).rstrip(".") + "."
+            if zname in _zones2:
+                return _httpx.Response(409, json={"error": "Duplicate zone"})
+            _zones2[zname] = {"kind": str(b.get("kind", "Master")),
+                              "rrsets": [dict(x) for x in (b.get("rrsets") or [])]}
+            return _httpx.Response(201, json={"name": zname, "kind": "Master", "serial": 1})
         if p.startswith("/servers/localhost/zones/"):
             zid = p[len("/servers/localhost/zones/"):]
             if zid not in _zones2:
@@ -234,13 +242,22 @@ with TestClient(app, follow_redirects=False) as c:
         db3 = SessionLocal()
         _res2 = traefik_ops.sync_base_zone(db3, "missing.example.org")
         db3.close()
-        check("زون ناموجود (DNS جای دیگر) → بی‌صدا رد می‌شود",
-              _res2 == "no_zone", extra=str(_res2))
+        check("زون غایب → خودکار provision شد و ۶ رکورد A گرفت (پایان lame delegation v0.3.28)",
+              _res2 == "updated:6/6", extra=str(_res2))
+        _base_ok = True
+        for _nm in ("missing.example.org.", "www.missing.example.org.", "panel.missing.example.org.",
+                    "git.missing.example.org.", "apps.missing.example.org.", "*.apps.missing.example.org.",
+                    "ns1.missing.example.org.", "ns2.missing.example.org."):
+            _rr = next((x for x in _zones2["missing.example.org."]["rrsets"]
+                        if x["name"] == _nm and x["type"] == "A"), None)
+            if not _rr or _rr["records"][0]["content"] != "203.0.113.10":
+                _base_ok = False
+        check("زون provisionشده همهٔ رکوردهای base (نیم‌سرورها + پنل/گیت/سایت‌ها) را دارد", _base_ok)
         db3 = SessionLocal()
         _ap = traefik_ops.apply_domain(db3, "shop.example.net", "tls@example.net", True)
         db3.close()
-        check("apply_domain گام همگام‌سازی زون را در نتیجه ثبت می‌کند (زون اینجا نیست → no_zone)",
-              _ap.get("zone_sync") == "no_zone" and _ap.get("files") is True)
+        check("apply_domain گام همگام‌سازی زون را در نتیجه ثبت می‌کند (زون غایب → provision)",
+              _ap.get("zone_sync") == "updated:6/6" and _ap.get("files") is True)
 
         def _probe_handler(request):
             if request.url.host == "panel.good.example":
