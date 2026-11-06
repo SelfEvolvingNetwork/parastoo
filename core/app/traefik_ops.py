@@ -114,33 +114,57 @@ def render_static(tls_enabled: bool, acme_email: str) -> str:
 
 
 def render_dynamic(panel_domain: str, git_domain: str, tls_enabled: bool,
-                   base_domain: str = "") -> str:
+                   base_domain: str = "", wild_mode: bool = False) -> str:
+    """رندر روترهای زیرساخت — wild_mode (v0.3.34): پنل/گیت/ریشه/www هم به
+    وایلدکارد DNS-01 می‌روند. سه گواهی برای کل استک: `*.<دامنه>` + `<دامنه>`
+    + `*.apps.<دامنه>`؛ هیچ هاستی سفارش اختصاصی ندارد.
+    اولویت ۱۰۰ روترهای فایل لازم است چون روترهای لیبلیِ compose (certresolver=le)
+    با همان قاعدهٔ Host می‌مانند (مسیر nip.io/بوت اول) — اگر فایل نبرد، SNI به
+    روتر لیبلی می‌رسد و گواهی وایلدکارد هرگز سرو نمی‌شود. در حالت le
+    (nip.io/دامنهٔ بیرونی) خروجی دقیقاً رفتار قدیم است.
+    """
     eps = "      - web\n      - websecure" if tls_enabled else "      - web"
-    tls_block = "      tls:\n        certResolver: le\n" if tls_enabled else ""
+    base = (base_domain or "").strip().lower().rstrip(".")
+    if tls_enabled and wild_mode and base:
+        infra_tls = ("      priority: 100\n"
+                     "      tls:\n"
+                     "        certResolver: wild\n"
+                     f"        domains:\n"
+                     f"          - main: \"*.{base}\"\n")
+    else:
+        infra_tls = "      tls:\n        certResolver: le\n" if tls_enabled else ""
     routers = (
         "    panel-dyn:\n"
         f"      rule: \"Host(`{panel_domain}`)\"\n"
         "      entryPoints:\n"
         f"{eps}\n"
         "      service: panel-svc\n"
-        + tls_block +
+        + infra_tls +
         "    git-dyn:\n"
         f"      rule: \"Host(`{git_domain}`)\"\n"
         "      entryPoints:\n"
         f"{eps}\n"
         "      service: gitea-svc\n"
-        + tls_block
+        + infra_tls
     )
     # v0.3.17 — ریشه/www روتر گرفتند: sync_base_zone رکورد A ریشه/www را نگه
     # می‌دارد و راهنمای DNS «وب‌سایت ریشه» را قول می‌دهد، ولی روتری برای آن‌ها
     # نبود → https://دامنهٔ ریشه گواهی پیش‌فرض ترافیک می‌گرفت. دو روتر جدا =
     # دو گواهی مستقل؛ خرابی www صدور گواهی ریشه را نمی‌بندد.
-    base = (base_domain or "").strip().lower().rstrip(".")
     middlewares = ""
     if base and panel_domain == f"panel.{base}":
         esc = base.replace(".", r"\.")
         target = (f"https://{panel_domain}" if tls_enabled
                   else f"http://{panel_domain}")
+        # وایلدکارد فقط یک برچسب را می‌پوشاند — ریشهٔ خود دامنه گواهی apex
+        # جدا می‌خواهد (یک سفارش DNS-01 اضافه برای همیشه، نه به‌ازای هر هاست)
+        root_tls = infra_tls
+        if tls_enabled and wild_mode and base:
+            root_tls = ("      priority: 100\n"
+                        "      tls:\n"
+                        "        certResolver: wild\n"
+                        "        domains:\n"
+                        f"          - main: \"{base}\"\n")
         routers += (
             "    base-redir:\n"
             f"      rule: \"Host(`{base}`)\"\n"
@@ -149,7 +173,7 @@ def render_dynamic(panel_domain: str, git_domain: str, tls_enabled: bool,
             "      middlewares:\n"
             "      - base-redir-mw\n"
             "      service: noop@internal\n"
-            + tls_block +
+            + root_tls +
             "    www-redir:\n"
             f"      rule: \"Host(`www.{base}`)\"\n"
             "      entryPoints:\n"
@@ -157,7 +181,7 @@ def render_dynamic(panel_domain: str, git_domain: str, tls_enabled: bool,
             "      middlewares:\n"
             "      - base-redir-mw\n"
             "      service: noop@internal\n"
-            + tls_block
+            + infra_tls
         )
         middlewares = (
             "  middlewares:\n"
@@ -167,13 +191,14 @@ def render_dynamic(panel_domain: str, git_domain: str, tls_enabled: bool,
             f"        replacement: '{target}/$2'\n"
             "        permanent: false\n"
         )
-    # v0.3.33 — روترِ اعلام وایلدکارد: تنها وظیفه‌اش رساندن `*.apps.<دامنه>` به
-    # رزولور wild است تا گواهی یک‌بار صادر/تمدید شود — حتی وقتی هنوز هیچ سایتی
-    # ساخته نشده. priority: 1 حیاتی است: اولویت پیش‌فرض ترافیک «طول قاعده» است و
-    # HostRegexp بلندتر از Host دقیق سایت‌ها درمی‌آمد → دام‌الگو ترافیک همهٔ
-    # سایت‌ها را به panel-svc می‌ربود؛ با ۱ همهٔ روترهای دقیق برنده‌اند و دام‌الگو
-    # فقط پشتیبانِ زیردامنه‌های بدون روتر است.
-    if base and tls_enabled:
+    # v0.3.33 — روترِ اعلام وایلدکارد سایت‌ها: تنها وظیفه‌اش رساندن
+    # `*.apps.<دامنه>` به رزولور wild است تا گواهی یک‌بار صادر/تمدید شود — حتی
+    # وقتی هنوز هیچ سایتی ساخته نشده. priority: 1 حیاتی است: اولویت پیش‌فرض
+    # ترافیک «طول قاعده» است و HostRegexp بلندتر از Host دقیق سایت‌ها
+    # درمی‌آمد → دام‌الگو ترافیک همهٔ سایت‌ها را به panel-svc می‌ربود؛ با ۱
+    # همهٔ روترهای دقیق برنده‌اند. فقط در حالت وایلدکارد — در حالت le
+    # (nip.io) سفارش DNS-01 بی‌سرانجام می‌ماند و فقط آلودگی لاگ است.
+    if base and tls_enabled and wild_mode:
         routers += (
             "    apps-wild:\n"
             f"      rule: \"HostRegexp(`{{any:.+}}.apps.{base}`)\"\n"
@@ -419,7 +444,8 @@ def apply_domain(db, base_domain: str, acme_email: str, tls_enabled: bool) -> di
         new_static = render_static(tls_enabled, acme_email)
         static_path.write_text(new_static)
         (dyn_dir / "routers.yml").write_text(
-            render_dynamic(panel_d, git_d, tls_enabled, base_domain=base_domain))
+            render_dynamic(panel_d, git_d, tls_enabled, base_domain=base_domain,
+                           wild_mode=domains.wildcard_mode(db)))
         result["files"] = True
         result["static_changed"] = old_static != new_static
     except Exception as e:
@@ -526,7 +552,8 @@ def ensure_traefik_config(db) -> dict:
 
         dyn_path = dyn_dir / "routers.yml"
         new_dyn = render_dynamic(domains.panel(db), domains.git(db),
-                                 tls_on, base_domain=b)
+                                 tls_on, base_domain=b,
+                                 wild_mode=domains.wildcard_mode(db))
         old_dyn = dyn_path.read_text(encoding="utf-8") if dyn_path.exists() else ""
         if old_dyn != new_dyn:
             dyn_path.write_text(new_dyn, encoding="utf-8")

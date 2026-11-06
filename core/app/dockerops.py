@@ -16,6 +16,7 @@ from pathlib import Path
 from . import domains
 from .config import settings
 from .domains import tls as tls_enabled_now
+from .domains import wildcard_mode as wildcard_mode_now
 
 try:
     import docker
@@ -298,18 +299,23 @@ def _site_labels(slug: str, subdomain: str, port: int) -> dict:
         f"traefik.http.services.{router}.loadbalancer.server.port": str(port),
     }
     if tls_on:
-        # v0.3.33 — الگوی ساب‌دامنهٔ بی‌نهایت: سایت دیگر گواهی اختصاصی نمی‌خواهد.
-        # هر روتر سایت روی رزولور wild (DNS-01) با همان وایلدکارد `*.apps.<دامنه>`
-        # می‌ماند — پس صدومین سایت هم هیچ سفارش ACME تازه‌ای نمی‌گشاید و سقف نرخ
-        # CA دیگر با تعداد سایت‌ها گاز نمی‌گیرد (درس میدانی ۴۲۹ نصب‌های ۴ و ۵).
-        # وایلدکارد از خود subdomain مشتق می‌شود نه از env — تا حتی بی‌ری‌استارت
-        # هسته (پس از تغییر دامنه در ویزارد) همیشه با دامنهٔ فعال هم‌گام بماند.
+        # v0.3.33/34 — الگوی ساب‌دامنهٔ بی‌نهایت: در حالت وایلدکارد (زون روی
+        # PDNS خودمان) سایت دیگر گواهی اختصاصی نمی‌خواهد؛ هر روتر سایت روی
+        # رزولور wild (DNS-01) با همان وایلدکارد `*.apps.<دامنه>` می‌ماند —
+        # صدومین سایت هم هیچ سفارش ACME تازه‌ای نمی‌گشاید. وایلدکارد از خود
+        # subdomain مشتق می‌شود نه از env — تا حتی بی‌ری‌استارت هسته (پس از
+        # تغییر دامنه در ویزارد) همیشه با دامنهٔ فعال هم‌گام بماند.
+        # بیرون از حالت وایلدکارد (nip.io/دامنهٔ بیرونی): مسیر قدیمی — HTTP-01
+        # به‌ازای هر هاست (چالش DNS-01 آنجا ناممکن است).
         labels[f"traefik.http.routers.{router}.tls"] = "true"
-        labels[f"traefik.http.routers.{router}.tls.certresolver"] = "wild"
-        _rest = (subdomain or "").strip().lower().rstrip(".").split(".", 1)
-        if len(_rest) == 2:
-            labels[f"traefik.http.routers.{router}.tls.domains[0].main"] = (
-                f"*.{_rest[1]}")
+        if wildcard_mode_now():
+            labels[f"traefik.http.routers.{router}.tls.certresolver"] = "wild"
+            _rest = (subdomain or "").strip().lower().rstrip(".").split(".", 1)
+            if len(_rest) == 2:
+                labels[f"traefik.http.routers.{router}.tls.domains[0].main"] = (
+                    f"*.{_rest[1]}")
+        else:
+            labels[f"traefik.http.routers.{router}.tls.certresolver"] = "le"
     return labels
 
 

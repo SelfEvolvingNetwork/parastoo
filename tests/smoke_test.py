@@ -878,14 +878,15 @@ import yaml as _yaml  # noqa: E402
 from app.traefik_ops import render_dynamic as _rd  # noqa: E402
 
 _y = _rd("panel.example.com", "git.example.com", True, base_domain="example.com")
-check("روترهای ریشه/www با گواهی اختصاصی (۴ گواهی le) + دام‌الگوی وایلدکارد (v0.3.33)",
-      "Host(`example.com`" in _y and _y.count("certResolver: le") == 4)
+check("روترهای ریشه/www با گواهی اختصاصی در حالت le (۴ گواهی، بدون دام‌الگو)",
+      "Host(`example.com`" in _y and _y.count("certResolver: le") == 4
+      and "apps-wild" not in _y)
 check("روتر www جدا — گواهی مستقل از ریشه", "Host(`www.example.com`)" in _y)
 check("ری‌دایرکت به پنل با حفظ مسیر", "https://panel.example.com/$2" in _y
       and "noop@internal" in _y and "(www\\.)?example\\.com" in _y)
 _d = _yaml.safe_load(_y)
 check("خروجی YAML سالم — ساختار روتر/میدل‌ویر",
-      len(_d["http"]["routers"]) == 5
+      len(_d["http"]["routers"]) == 4
       and _d["http"]["routers"]["base-redir"]["middlewares"] == ["base-redir-mw"]
       and _d["http"]["routers"]["base-redir"]["service"] == "noop@internal"
       and _d["http"]["middlewares"]["base-redir-mw"]["redirectRegex"]["permanent"] is False)
@@ -918,24 +919,50 @@ check("ویزارد دیگر EAB زروسsl را نمی‌بُرد (گپ v0.3.30
 check("وایلدکارد در حالت زروسsl هم لت‌انکریپت می‌ماند",
       "caServer" not in _z.split("  wild:")[1]
       and "kid:" not in _z.split("  wild:")[1])
-_y3 = _rd("panel.example.com", "git.example.com", True, base_domain="example.com")
+_y3 = _rd("panel.example.com", "git.example.com", True, base_domain="example.com",
+          wild_mode=True)
 _d3 = _yaml.safe_load(_y3)
 _aw = _d3["http"]["routers"].get("apps-wild", {})
-check("دام‌الگوی وایلدکارد: قاعده + دامنهٔ main + رزولور wild",
+check("حالت وایلدکارد: دام‌الگوی سایت‌ها (قاعده + دامنهٔ main + رزولور wild)",
       _aw.get("rule") == "HostRegexp(`{any:.+}.apps.example.com`)"
       and _aw.get("tls", {}).get("domains", [{}])[0].get("main") == "*.apps.example.com"
       and _aw.get("tls", {}).get("certResolver") == "wild")
 check("دام‌الگو اولویت ۱ دارد و ترافیک سایت‌ها را نمی‌رباید",
       _aw.get("priority") == 1)
 check("بدون TLS دام‌الگو هم نیست", "HostRegexp" not in _y2)
+check("حالت وایلدکارد: پنل/گیت روی wild با اولویت ۱۰۰ (از روترهای لیبلی ببرند)",
+      _d3["http"]["routers"]["panel-dyn"].get("priority") == 100
+      and _d3["http"]["routers"]["panel-dyn"]["tls"]["certResolver"] == "wild"
+      and _d3["http"]["routers"]["panel-dyn"]["tls"]["domains"][0]["main"] == "*.example.com"
+      and _d3["http"]["routers"]["git-dyn"]["tls"]["domains"][0]["main"] == "*.example.com")
+check("حالت وایلدکارد: ریشه گواهی apex جدا (وایلدکارد یک برچسب را می‌پوشاند)",
+      _d3["http"]["routers"]["base-redir"]["tls"]["domains"][0]["main"] == "example.com"
+      and _d3["http"]["routers"]["base-redir"].get("priority") == 100
+      and _d3["http"]["routers"]["www-redir"]["tls"]["domains"][0]["main"] == "*.example.com")
+check("حالت وایلدکارد: هیچ سفارش le باقی نمی‌ماند",
+      "certResolver: le" not in _y3 and len(_d3["http"]["routers"]) == 5)
+check("حالت le (nip.io/دامنهٔ بیرونی): دقیقاً رفتار قدیم — بدون دام‌الگو و اولویت",
+      "apps-wild" not in _y and "priority" not in _y
+      and _rd("p.nip.io", "g.nip.io", True).count("certResolver: le") == 2)
 _oltls = _ddo.tls_enabled_now
+_olw = _ddo.wildcard_mode_now
 _ddo.tls_enabled_now = lambda: True
+_ddo.wildcard_mode_now = lambda db=None: True
 _l = _ddo._site_labels("shop", "shop.apps.example.com", 8080)
 _ddo.tls_enabled_now = _oltls
+_ddo.wildcard_mode_now = _olw
 _r = "traefik.http.routers.parastoo-site-shop"
-check("لیبل سایت: رزولور wild + وایلدکارد مشتق‌شده از خود subdomain",
+check("لیبل سایت در حالت وایلدکارد: رزولور wild + وایلدکارد مشتق‌شده از خود subdomain",
       _l.get(f"{_r}.tls.certresolver") == "wild"
       and _l.get(f"{_r}.tls.domains[0].main") == "*.apps.example.com")
+_ddo.tls_enabled_now = lambda: True
+_ddo.wildcard_mode_now = lambda db=None: False
+_l4 = _ddo._site_labels("shop", "shop.apps.example.com", 8080)
+_ddo.tls_enabled_now = _oltls
+_ddo.wildcard_mode_now = _olw
+check("لیبل سایت بیرون از حالت وایلدکارد: مسیر قدیمی le (nip.io/دامنهٔ بیرونی)",
+      _l4.get(f"{_r}.tls.certresolver") == "le"
+      and not any(k.endswith("domains[0].main") for k in _l4))
 _ddo.tls_enabled_now = lambda: False
 _l2 = _ddo._site_labels("shop", "shop.apps.example.com", 8080)
 _ddo.tls_enabled_now = _oltls
@@ -962,12 +989,14 @@ _ensure_dir = Path(_tf.mkdtemp()) / "config"
 (_ensure_dir / "dynamic" / "routers.yml").write_text("old-dyn\n", encoding="utf-8")
 from app import domains as _dom  # noqa: E402
 from app import traefik_ops  # noqa: E402
-_o_dom = {n: getattr(_dom, n) for n in ("base", "panel", "git", "tls", "acme_email")}
+_o_dom = {n: getattr(_dom, n) for n in ("base", "panel", "git", "tls",
+                                        "acme_email", "wildcard_mode")}
 _dom.base = lambda db=None: "example.com"
 _dom.panel = lambda db=None: "panel.example.com"
 _dom.git = lambda db=None: "git.example.com"
 _dom.tls = lambda db=None: True
 _dom.acme_email = lambda db=None: "ops@example.com"
+_dom.wildcard_mode = lambda db=None: True
 _old_cfg2 = _st.CONFIG_DIR
 _st.CONFIG_DIR = str(_ensure_dir)
 _eres = traefik_ops.ensure_traefik_config(None)
@@ -983,6 +1012,25 @@ check("دور دوم همگام‌سازی هیچ چیز بازنویسی نمی
 for n, f in _o_dom.items():
     setattr(_dom, n, f)
 _st.CONFIG_DIR = _old_cfg2
+print("— حالت‌سنج wildcard_mode (v0.3.34) —")
+from app.services import dnsops as _dn  # noqa: E402
+_o_av, _o_gz = _dn.available, _dn.get_zone
+_o_base = _dom.base
+_dom.base = lambda db=None: "example.com"
+_dn.available = lambda: True
+_dn.get_zone = lambda z: {"name": z}
+check("زون روی PDNS خودمان → حالت وایلدکارد", _dom.wildcard_mode(None) is True)
+_dn.get_zone = lambda z: (_ for _ in ()).throw(RuntimeError("404"))
+check("زون نزد ما نیست → مسیر قدیمی le", _dom.wildcard_mode(None) is False)
+_dn.available = lambda: False
+check("PDNS در دسترس نیست → مسیر قدیمی le", _dom.wildcard_mode(None) is False)
+_dom.base = lambda db=None: "1-2-3-4.nip.io"
+_dn.available = lambda: True
+_dn.get_zone = lambda z: {"name": z}
+check("nip.io هرگز حالت وایلدکارد نمی‌گیرد (چالش DNS-01 ناممکن)",
+      _dom.wildcard_mode(None) is False)
+_dom.base = _o_base
+_dn.available, _dn.get_zone = _o_av, _o_gz
 _w = (ROOT / "core" / "app" / "workers.py").read_text()
 check("heal فاز صفر: همگام‌سازی پیکربندی پیش از همهٔ فازها (بدون استثنا)",
       "ensure_traefik_config(db0)" in _w
