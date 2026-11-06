@@ -483,3 +483,66 @@ def apply_domain(db, base_domain: str, acme_email: str, tls_enabled: bool) -> di
                 result["errors"].append(f"بازسازی سایت {site.slug}: {e}")
         db.commit()
     return result
+
+
+# ---------- همگام‌سازی پیکربندی ترافیک با حقیقت (v0.3.33) ----------
+
+CFG_RESTART_GAP = 300   # حداقل فاصلهٔ ری‌استارت ترافیک برخاسته از همگام‌سازی
+_last_cfg_restart = 0.0
+
+
+def ensure_traefik_config(db) -> dict:
+    """پیکربندی ترافیک روی دیسک باید همیشه از قالبِ همین نسخهٔ کد + حقیقت دامنه
+    ساخته شده باشد. تا v0.3.33 فقط نصب‌کننده و اعمال دامنهٔ ویزارد این فایل‌ها را
+    می‌نوشتند — یعنی هر تغییر قالب در کد، تا نصب مجدد هرگز روی سرور زنده نمی‌نشست
+    (استقرار همین v0.3.33 گره را نشان داد: رزولور wild تازه در فایل‌های رندرشدهٔ
+    قدیمی وجود نداشت و auto-update هم فقط compose را up می‌کند). هر چرخهٔ heal
+    رندر می‌کند و فقط وقتی خروجی با دیسک فرق دارد می‌نویسد؛ تغییر استاتیک =
+    ری‌استارت ترافیک با گارد فاصله (که چرخهٔ ACME را هم از نو می‌اندازد)؛
+    داینامیک را فایل‌پروایدر خودکار می‌گیرد. بدون استثنا — best-effort مثل
+    بقیهٔ فازهای heal؛ در محیط بدون داکر فقط نوشتن انجام می‌شود.
+    منبع مقادیر: دیتابیس (پس از ویزارد) وگرنه env نصب (ACME_EMAIL جدیداً به
+    هسته می‌رسد) — دقیقاً همان ورودی‌هایی که install.sh برای رندر اول داشت.
+    """
+    global _last_cfg_restart
+    out: dict = {"static": False, "dynamic": False, "restarted": False}
+    try:
+        from . import domains
+        b = (domains.base(db) or "").strip().lower().rstrip(".")
+        tls_on = bool(domains.tls(db))
+        email = (domains.acme_email(db)
+                 or (getattr(settings, "ACME_EMAIL", "") or "").strip()
+                 or "admin@example.com")
+        cfg_dir = Path(settings.CONFIG_DIR)
+        dyn_dir = cfg_dir / "dynamic"
+        dyn_dir.mkdir(parents=True, exist_ok=True)
+
+        static_path = cfg_dir / "traefik.yml"
+        new_static = render_static(tls_on, email)
+        old_static = static_path.read_text(encoding="utf-8") if static_path.exists() else ""
+        if old_static != new_static:
+            static_path.write_text(new_static, encoding="utf-8")
+            out["static"] = True
+
+        dyn_path = dyn_dir / "routers.yml"
+        new_dyn = render_dynamic(domains.panel(db), domains.git(db),
+                                 tls_on, base_domain=b)
+        old_dyn = dyn_path.read_text(encoding="utf-8") if dyn_path.exists() else ""
+        if old_dyn != new_dyn:
+            dyn_path.write_text(new_dyn, encoding="utf-8")
+            out["dynamic"] = True
+
+        if out["static"]:
+            import time as _time
+            try:
+                if _time.time() - _last_cfg_restart >= CFG_RESTART_GAP:
+                    from . import dockerops
+                    dockerops.client().containers.get(
+                        settings.TRAEFIK_CONTAINER).restart(timeout=10)
+                    _last_cfg_restart = _time.time()
+                    out["restarted"] = True
+            except Exception as e:
+                out["restart_error"] = str(e)
+    except Exception as e:
+        out["error"] = str(e)
+    return out

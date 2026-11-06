@@ -954,6 +954,44 @@ _t = (ROOT / "deploy" / "templates" / "traefik.yml.tmpl").read_text()
 check("قالب نصب‌کننده هم رزولور wild دارد (همگام با هسته)",
       "dnsChallenge" in _t and "provider: pdns" in _t and "  wild:" in _t)
 
+print("— همگام‌ساز پیکربندی ترافیک: استقرار بدون نصب مجدد (v0.3.33) —")
+import tempfile as _tf  # noqa: E402
+_ensure_dir = Path(_tf.mkdtemp()) / "config"
+(_ensure_dir / "dynamic").mkdir(parents=True)
+(_ensure_dir / "traefik.yml").write_text("old-static-no-wild\n", encoding="utf-8")
+(_ensure_dir / "dynamic" / "routers.yml").write_text("old-dyn\n", encoding="utf-8")
+from app import domains as _dom  # noqa: E402
+from app import traefik_ops  # noqa: E402
+_o_dom = {n: getattr(_dom, n) for n in ("base", "panel", "git", "tls", "acme_email")}
+_dom.base = lambda db=None: "example.com"
+_dom.panel = lambda db=None: "panel.example.com"
+_dom.git = lambda db=None: "git.example.com"
+_dom.tls = lambda db=None: True
+_dom.acme_email = lambda db=None: "ops@example.com"
+_old_cfg2 = _st.CONFIG_DIR
+_st.CONFIG_DIR = str(_ensure_dir)
+_eres = traefik_ops.ensure_traefik_config(None)
+check("فایل‌های رندرشدهٔ کهنه بازنویسی می‌شوند (استقرار بدون نصب مجدد)",
+      _eres.get("static") is True and _eres.get("dynamic") is True)
+check("استاتیک پس از همگام‌سازی رزولور wild دارد",
+      "provider: pdns" in (_ensure_dir / "traefik.yml").read_text(encoding="utf-8"))
+check("داینامیک پس از همگام‌سازی دام‌الگوی وایلدکارد دارد",
+      "apps-wild" in (_ensure_dir / "dynamic" / "routers.yml").read_text(encoding="utf-8"))
+check("دور دوم همگام‌سازی هیچ چیز بازنویسی نمی‌کند (ایدمپوتنت)",
+      (lambda r: r.get("static") is False and r.get("dynamic") is False)(
+          traefik_ops.ensure_traefik_config(None)))
+for n, f in _o_dom.items():
+    setattr(_dom, n, f)
+_st.CONFIG_DIR = _old_cfg2
+_w = (ROOT / "core" / "app" / "workers.py").read_text()
+check("heal فاز صفر: همگام‌سازی پیکربندی پیش از همهٔ فازها (بدون استثنا)",
+      "ensure_traefik_config(db0)" in _w
+      and _w.index("ensure_traefik_config(db0)") < _w.index("gitea_stale()"))
+_c2 = (ROOT / "core" / "app" / "config.py").read_text()
+check("هسته: ایمیل ACME هم از env می‌آید (رندر همگام با نصب‌کننده)",
+      "ACME_EMAIL: ${ACME_EMAIL}" in _c
+      and 'ACME_EMAIL: str = os.environ.get("ACME_EMAIL"' in _c2)
+
 print("— درس میدانی v0.3.18: EADDRINUSE پورت ۵۳ در نصب تازه —")
 _ins = (ROOT / "install.sh").read_text()
 check("install.sh گوش‌دادن resolved را با پسوند اسکوپ %lo هم می‌بیند (v0.3.19)",

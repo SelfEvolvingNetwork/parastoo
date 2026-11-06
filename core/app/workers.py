@@ -268,6 +268,20 @@ def heal_once() -> None:
         db.close()
     if not dockerops.available():
         return
+    # فاز ۰) همگام‌سازی پیکربندی ترافیک با قالبِ همین نسخه (v0.3.33) — پیش از
+    # هر فاز دیگر. تغییر قالب کد (مثل رزولور wild تازه) تا دیروز فقط با نصب
+    # مجدد روی سرور می‌نشست؛ حالا هر استقرار خودش فایل‌ها را با حقیقت دامنه
+    # بازنویسی می‌کند. تغییر استاتیک = ری‌استارت ترافیک = چرخهٔ ACME هم از نو.
+    try:
+        db0 = SessionLocal()
+        try:
+            _r = traefik_ops.ensure_traefik_config(db0)
+        finally:
+            db0.close()
+        if _r.get("static") or _r.get("dynamic"):
+            print(f"[parastoo] traefik config resynced: {_r}")
+    except Exception as e:
+        print(f"[parastoo] traefik config resync failed (continuing): {e}")
     try:
         stale, cur = dockerops.gitea_stale()
     except Exception as e:

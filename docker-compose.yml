@@ -113,6 +113,7 @@ services:
       GIT_DOMAIN: ${GIT_DOMAIN}
       APPS_DOMAIN: ${APPS_DOMAIN}
       TLS_ENABLED: ${TLS_ENABLED}
+      ACME_EMAIL: ${ACME_EMAIL}
       # v0.3.33 — انتخاب CA و EAB به هسته هم می‌رسد تا بازنویسی استاتیک ترافیک
       # در ویزارد، EAB زروسsl را بی‌صدا نبُرد (قبلاً فقط نصب‌کننده می‌شناخت)
       PARASTOO_ACME_CA: ${PARASTOO_ACME_CA:-}

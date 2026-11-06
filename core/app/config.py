@@ -23,6 +23,9 @@ class Settings:
     GIT_DOMAIN: str = os.environ.get("GIT_DOMAIN", f"git.{BASE_DOMAIN}")
     APPS_DOMAIN: str = os.environ.get("APPS_DOMAIN", f"apps.{BASE_DOMAIN}")
     TLS_ENABLED: bool = _bool("TLS_ENABLED")
+    # ایمیل ACME — فقط برای همگام‌ساز پیکربندی (v0.3.33): وقتی ویزارد هنوز مقدار
+    # دیتابیسی ندارد، رندر باید همان چیزی باشد که install.sh از env ساخت
+    ACME_EMAIL: str = os.environ.get("ACME_EMAIL", "").strip()
 
     # --- CA گواهی (v0.3.33) — همان‌ها که install.sh در .env می‌نویسد؛
     # بازنویسی استاتیک ترافیک در ویزارد دیگر EAB زروسsl را بی‌صدا نمی‌بُرد
