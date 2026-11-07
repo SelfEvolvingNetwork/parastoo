@@ -123,9 +123,17 @@ def oauth_userinfo(request: Request,
     user = db.get(User, uid)
     if user is None or not user.is_active:
         return _oauth_error("invalid_token", 401)
+    uname = user.gitea_username or user.email.split("@")[0]
     return {
         "id": user.id,
-        "login": user.gitea_username or user.email.split("@")[0],
+        "sub": str(user.id),
+        # قرارداد goth (client «gitea»): هویت از login/email/full_name/avatar_url
+        # خوانده می‌شود. کلیدهای OIDC زیر برای نگاشت [oauth2_client] USERNAME
+        # گیتا لازم‌اند — گیتا 1.23 برای preferred_username فال‌بک به login ندارد
+        # (میدان 2026-11-07: بدون این کلید، auto-reg با «missing fields» می‌ماند).
+        "login": uname,
+        "preferred_username": uname,
+        "nickname": uname,
         "email": user.email,
         "full_name": user.name or "",
         "avatar_url": "",

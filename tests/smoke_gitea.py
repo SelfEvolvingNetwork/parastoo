@@ -368,9 +368,11 @@ with TestClient(app, follow_redirects=False) as c:
 
     r = c.get(f"/oauth/userinfo?access_token={at}")
     ui = r.json() if r.status_code == 200 else {}
-    check("userinfo: هویت همان کاربر گیتای علی (قرارداد goth)",
+    check("userinfo: هویت همان کاربر گیتای علی (قرارداد goth + کلیدهای OIDC گیتا)",
           ui.get("login") == gname and ui.get("email") == "ali@test.ir"
-          and isinstance(ui.get("id"), int), f"{r.status_code} {ui}")
+          and isinstance(ui.get("id"), int)
+          and ui.get("preferred_username") == gname and ui.get("nickname") == gname,
+          f"{r.status_code} {ui}")
 
     r = c.post("/oauth/token", data={"grant_type": "authorization_code",
                                      "code": code, "redirect_uri": cb,
