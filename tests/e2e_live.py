@@ -8,7 +8,7 @@
 
 کاربرد:
   python3 tests/e2e_live.py                          # آدرس از env یا پیش‌فرض سند
-  python3 tests/e2e_live.py http://panel.X.nip.io    # آدرس صریح
+  python3 tests/e2e_live.py https://panel.<دامنه>    # آدرس صریح
   python3 tests/e2e_live.py --expect-commit <SHA>    # تأیید استقرارِ کامیت مشخص (گام M5)
 
 متغیرهای محیطی:
@@ -28,7 +28,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-DEFAULT_PANEL = "http://panel.193.151.142.128.nip.io"
+DEFAULT_PANEL = "https://panel.zeolitecenter.ir"
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 
