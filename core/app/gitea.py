@@ -212,25 +212,30 @@ def sso_redirect_uri() -> str:
     return f"{scheme}://{domains.git()}/user/oauth2/{SSO_SOURCE_NAME}/callback"
 
 
+_sso_source_ready = False
+
+
 def ensure_sso_source(db=None) -> None:
     """ایجاد idempotent منبع احراز هویت OAuth2 در گیتا — فقط با CLI رسمی.
 
     معادل همان کاری که ادمین از UI گیتا می‌کند (Auth Source از نوع OAuth2
     با custom URLs به اندپوینت‌های OAuth2 پنل)، خودکار و بازتولیدپذیر؛
     در هر سیکل بوت‌استرپ صدا زده می‌شود تا پس از بازسازی گیتا هم خودترمیم
-    شود. اگر منبع با همین نام فعال باشد، دست نمی‌زند.
+    شود.
+
+    درس میدانی v0.5.8: گیتا 1.23 هیچ اندپوینت API برای فهرست منابع احراز
+    ندارد (GET /api/v1/admin/auths → 404 خام؛ در سورس v1.23.8 و main هم
+    نیست). پیش‌بررسیِ API کهنه همیشه می‌افتاد و هر سیکل add-oauth می‌زد →
+    «login source already exists» → استثنا → بقیهٔ سیکل بوت‌استرپ (از جمله
+    خودترمیم حساب/مخزن) فلج بود. اکنون خودِ add-oauth مرجع حقیقت است،
+    «already exists» یعنی موفقیت و پرچم درون‌فرایندی سیکل‌های بعدی را بی‌کار
+    می‌کند (پس از ری‌استارت هسته یک‌بار دوباره اطمینان حاصل می‌شود).
     """
+    global _sso_source_ready
+    if _sso_source_ready:
+        return
     from . import dockerops, domains
 
-    token = system_token(db)
-    if not token:
-        return
-    gh = GiteaClient(token=token)
-    r = gh.client.get("/api/v1/admin/auths")
-    if r.status_code == 200:
-        for src in r.json():
-            if src.get("name") == SSO_SOURCE_NAME and src.get("is_active", False):
-                return  # از قبل هست — دست‌زدن ممنوع
     cid, csec = sso_client_creds(db)
     scheme = "https" if domains.tls() else "http"
     panel = f"{scheme}://{domains.panel()}"
@@ -246,8 +251,9 @@ def ensure_sso_source(db=None) -> None:
         "--custom-profile-url", f"{panel}/oauth/userinfo",
     ]
     code, out = dockerops.exec_in_gitea(cmd)
-    if code != 0:
+    if code != 0 and "already exists" not in out.lower():
         raise GiteaError(f"add-oauth source: {out[:300]}")
+    _sso_source_ready = True
     print("[parastoo] gitea SSO source ready (/user/oauth2/parastoo)")
 
 

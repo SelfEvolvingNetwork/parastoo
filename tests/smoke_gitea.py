@@ -201,8 +201,23 @@ with LOCK:
 
 from app import dockerops, security  # noqa: E402  (بعد از ست‌شدن env)
 
-# exec داکر فقط برای ساخت ادمین سیستمی گیتا استفاده می‌شود؛ اینجا شبیه‌سازی می‌کنیم
-dockerops.exec_in_gitea = lambda cmd: (0, "ok")
+# exec داکر: برای ساخت ادمین سیستمی و ثبت منبع SSO گیتا استفاده می‌شود؛
+# رفتار واقعی گیتا 1.23 شبیه‌سازی می‌شود: add-oauth تکراری → خطای
+# «already exists» (رگرسیون v0.5.8 — اندپوینت API فهرست منابع در گیتا
+# 1.23 وجود ندارد؛ «already exists» باید = موفقیت تلقی شود، نه استثنا)
+_EXEC_STATE = {"addoauth": 0}
+
+
+def _exec_mock(cmd):
+    if cmd[:3] == ["gitea", "admin", "auth"]:
+        _EXEC_STATE["addoauth"] += 1
+        if _EXEC_STATE["addoauth"] > 1:
+            return 1, "Command error: login source already exists [name: parastoo]"
+        return 0, "ok"
+    return 0, "ok"
+
+
+dockerops.exec_in_gitea = _exec_mock
 
 from app import workers  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
@@ -434,6 +449,13 @@ with TestClient(app, follow_redirects=False) as c:
     check("نوشتن روی دیسک (config/gitea-custom) و idempotent بودن سیکل بعدی",
           _ch1 and not _ch2 and "127.0.0.1.nip.io" in _ondisk,
           f"ch1={_ch1} ch2={_ch2}")
+
+    # رگرسیون v0.5.8: سیکل‌های مکرر بوت‌استرپ نباید add-oauth را دوباره بزنند
+    # و خطای «already exists» گیتا نباید بقیهٔ سیکل (خودترمیم حساب/مخزن) را فلج کند
+    workers.bootstrap_once()
+    workers.bootstrap_once()
+    check("سیکل‌های بعدی add-oauth را تکرار نمی‌کنند (پرچم اطمینان درون‌فرایندی)",
+          _EXEC_STATE["addoauth"] == 1, f"addoauth={_EXEC_STATE['addoauth']}")
 
 srv.shutdown()
 
