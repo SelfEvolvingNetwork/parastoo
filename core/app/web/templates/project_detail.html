@@ -81,8 +81,10 @@ services:
   <p class="muted small">با یک توکنِ مخصوص همین پروژه، عامل هوش مصنوعی شما (مثلاً Claude Code یا Cursor) می‌تواند کد را <b>پوش کند</b>، بیلد و لاگ‌ها را <b>ببیند</b>، داخل کانتینرها <b>تست و عیب‌یابی کند</b> (exec) و سرویس را ری‌استارت کند — فقط روی همین پروژه. دیدن کانتینرها، مخزن‌ها و داده‌های پروژه‌های دیگر و زیرساخت سرور از دید عامل خارج است و هر فراخوانی در گزارش پل ثبت می‌شود.</p>
 
   {% if new_token %}
-  <div class="badge badge-ok">توکن جدید ساخته شد — این مقدار فقط همین یک‌بار نمایش داده می‌شود؛ همین حالا در جای امن (مثلاً .parastoo.json روی دستگاه عامل) ذخیره کنید:</div>
+  <div class="badge badge-ok">توکن جدید ساخته شد — این مقدار فقط همین یک‌بار نمایش داده می‌شود؛ با دکمهٔ زیر همه‌چیز را یک‌جا کپی کنید:</div>
   <pre class="code" dir="ltr">{{ new_token }}</pre>
+  <button class="btn btn-primary" type="button" onclick="pstCopy(this,'agent-setup-text')">کپی با یک دکمه: توکن + آدرس سرویس‌دهی + رفرنس راهنما</button>
+  <p class="muted small">این دکمه همهٔ آنچه کلاینت عامل نیاز دارد را یک‌جا در کلیپ‌بورد می‌گذارد — توکن، آدرس سرویس‌دهی (پنل، ریموت گیتِ پل و ابزار pst.py) و رفرنس راهنمای کامل (<a href="/docs/agent" target="_blank" rel="noopener">/docs/agent</a>)؛ فقط نتیجه را به عامل بدهید.</p>
   {% endif %}
 
   {% if tokens %}
@@ -122,9 +124,9 @@ services:
   </form>
 
   <details class="mt">
-    <summary class="btn-link">متن راه‌اندازی عامل — از پنل کپی و به کلاینت عامل بدهید</summary>
-    <p class="muted small">این متن همهٔ آنچه عامل نیاز دارد را یک‌جا دارد: مقصد گیت، توکن، ابزار و آدرس سند کامل. سند کامل (همیشه‌به‌روز) در <a href="/docs/agent" target="_blank">/docs/agent</a> است — با هر استقرار پنل به‌روز می‌شود.</p>
-    <pre class="code">{% set tok = new_token if new_token else '«جای توکن عامل pst_ — اگر ندارید در همین کارت بسازید؛ مقدار فقط یک‌بار نمایش داده می‌شود»' -%}
+    <summary class="btn-link">متن راه‌اندازی عامل — با یک دکمه کپی و به کلاینت عامل بدهید</summary>
+    <p class="muted small">این متن همهٔ آنچه عامل نیاز دارد را یک‌جا دارد: مقصد گیت، توکن، ابزار و آدرس سند کامل. سند کامل (همیشه‌به‌روز) در <a href="/docs/agent" target="_blank" rel="noopener">/docs/agent</a> است — با هر استقرار پنل به‌روز می‌شود.</p>
+    <pre class="code" id="agent-setup-text">{% set tok = new_token if new_token else '«جای توکن عامل pst_ — اگر ندارید در همین کارت بسازید؛ مقدار فقط یک‌بار نمایش داده می‌شود»' -%}
 تو عامل هوش مصنوعیِ این پروژه هستی و چرخهٔ توسعه و تست آن را زیر نظر کاربر پیش می‌بری.
 
 پروژه: {{ p.name }} (شناسه: {{ p.slug }})
@@ -141,6 +143,7 @@ services:
 - تست: pst.py exec (داخل کانتینر) و pst.py logs (لاگ اجرا)؛ وضعیت: pst.py status
 - انتشار سایت و دامنه با کاربر است (از پنل) — توکن تو انتشار ندارد؛ نیازش را صریح بگو
 - توکن را در کد/کامیت نمی‌نویسی؛ .env را کامیت نمی‌کنی؛ پیش از اقدام تخریبی از کاربر تأیید می‌گیری</pre>
+    <p class="mt"><button class="btn btn-ghost btn-small" type="button" onclick="pstCopy(this,'agent-setup-text')">کپی همین متن با یک دکمه</button></p>
   </details>
 </section>
 
@@ -254,4 +257,31 @@ services:
     <button class="btn btn-danger" type="submit">حذف پروژه</button>
   </form>
 </section>
+{% endblock %}
+
+{% block script %}
+<script>
+function _pstCopyFallback(txt){
+  var ta = document.createElement('textarea');
+  ta.value = txt; ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+}
+function pstCopy(btn, srcId){
+  var el = document.getElementById(srcId);
+  if (!el || btn.dataset.busy) return;
+  var txt = el.textContent;
+  var done = function(){
+    btn.dataset.busy = '1';
+    var old = btn.textContent;
+    btn.textContent = 'کپی شد — حالا به کلاینت عامل بدهید';
+    setTimeout(function(){ btn.textContent = old; delete btn.dataset.busy; }, 2500);
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(txt).then(done, function(){ _pstCopyFallback(txt); done(); });
+  } else { _pstCopyFallback(txt); done(); }
+}
+</script>
 {% endblock %}

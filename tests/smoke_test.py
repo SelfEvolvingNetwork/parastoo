@@ -381,11 +381,12 @@ with TestClient(app, follow_redirects=False) as c:
     _r2 = c2.get("/docs/agent")
     check("سند عامل برای کاربر واردشده هم همان صفحه است", _r2.status_code == 200)
 
-    # متن آمادهٔ کپی عامل در صفحهٔ پروژه + ارجاع به سند
+    # متن آمادهٔ کپی عامل در صفحهٔ پروژه + ارجاع به سند + ماشین کپی یک‌دکمه‌ای (v0.5.4)
     r = c.get("/projects/bridge-proj")
-    check("صفحهٔ پروژه متن راه‌اندازی عامل را دارد",
+    check("صفحهٔ پروژه متن راه‌اندازی عامل را دارد (با دکمهٔ کپی یک‌دکمه‌ای)",
           "متن راه‌اندازی عامل" in r.text and "/docs/agent" in r.text
-          and "bridge/git/bridge-proj.git" in r.text and "PST_TOKEN" in r.text)
+          and "bridge/git/bridge-proj.git" in r.text and "PST_TOKEN" in r.text
+          and 'id="agent-setup-text"' in r.text and "pstCopy" in r.text)
 
     # ساخت توکن از پنل — نمایش کامل فقط یک‌بار
     r = c.post("/projects/bridge-proj/agent-tokens", data={"name": "", "csrf": csrf}, follow_redirects=False)
@@ -397,6 +398,9 @@ with TestClient(app, follow_redirects=False) as c:
     tok = _m.group(0) if _m else "pst_none"
     check("اثر انگشت پیشوندی در جدول نمایش داده شده (نه مقدار کامل)", tok[:12] in r.text
           and r.text.count(tok) == 2)  # بلوک نمایش یک‌بار + متن آمادهٔ کپی عامل — همین رندر، بعداً هرگز
+    check("جعبهٔ توکن تازه: دکمهٔ کپی یک‌جا (توکن+آدرس سرویس‌دهی+رفرنس راهنما) و ارجاع /docs/agent هست",
+          "کپی با یک دکمه" in r.text and "agent-setup-text" in r.text
+          and r.text.count('/docs/agent') >= 3)  # جعبهٔ توکن + متن راه‌اندازی + ارجاع در متن
     H = {"Authorization": f"Bearer {tok}"}
 
     # گاردهای احراز
