@@ -194,6 +194,76 @@ def update_host_env(pairs: dict[str, str]) -> bool:
         return False
 
 
+def _host_env_get(name: str) -> str:
+    """خواندن یک کلید از .env هاست (سوار در HOST_ENV_FILE) — برای مقادیری که
+    install.sh می‌نویسد ولی از طریق compose به هسته پاس داده نشده‌اند."""
+    p = Path(settings.HOST_ENV_FILE) if getattr(settings, "HOST_ENV_FILE", "") else None
+    if not p or not p.is_file():
+        return ""
+    try:
+        for ln in p.read_text(encoding="utf-8").splitlines():
+            ln = ln.strip()
+            if ln.startswith(f"{name}="):
+                return ln.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return ""
+
+
+def _pin_ip() -> str:
+    """IP قابل‌دسترس از داخل کانتینرها برای پین نام‌های پلتفرم (DNS خوداتکا v0.4.6).
+
+    اولویت: PARASTOO_DNS_BIND_IP از .env هاست — نصب‌کننده محلی‌بودنش را روی یک
+    اینترفیس گارد می‌کند (درس میدانی v0.3.25: IP خروجی NAT نباید جایگزین شود)؛
+    سپس PARASTOO_PUBLIC_IP. غیبت هر دو = قابلیت خاموش (توسعه/نصب ناقص).
+    ترافیک پورت 80/443 را روی همهٔ اینترفیس‌ها پابلیش می‌کند (compose) پس همین
+    IP برای مسیر hairpin کانتینر→ترافیک نیز درست است (میدان v0.4.6: connect 0.2ms).
+    """
+    return _host_env_get("PARASTOO_DNS_BIND_IP") or settings.PUBLIC_IP or ""
+
+
+def pin_host_entries() -> dict[str, str]:
+    """نقشهٔ نام→IP برای /etc/hosts کانتینرهای پروژه — DNS خوداتکا (v0.4.6).
+
+    تصمیم مالک (2026-11-07): پروژه‌ها با API استاندارد از وب جهانی و از پروژه‌های
+    دیگرِ همان سرور قابل دسترس‌اند — تنها درِ مشترک، URL عمومی است. برای آنکه
+    فراخوانی شرق-غرب از کانتینر به DNS بالادست وابسته نماند (ریسک SERVFAIL
+    دامنه‌های .ir — درس v0.3.35)، نام‌های پلتفرم (زیرساخت + همهٔ سایت‌های
+    منتشرشده) در /etc/hosts پین می‌شوند.
+
+    چرا نه dns= دومرحله‌ای [نیم‌سرور خودمان، بالادست]؟ آزمون میدانی v0.4.6:
+    forwarder داکر روی شبکهٔ user-defined با پاس REFUSED سرِ اول می‌ماند —
+    google.com/pypi.org با EAI_AGAIN شکست خوردند. پین hosts زنجیرهٔ فعلی را
+    دست‌نخورده نگه می‌دارد و فقط نام‌های خودمان را از بالادست جدا می‌کند.
+
+    بی‌ضرری ورودی‌های کهنه: نام حذف‌شده → 404 ترافیک، همان رفتار مسیر DNS؛
+    و نام‌های منتشرشدهٔ «بعد از» این استقرار، تا deploy بعدی از مسیر DNS
+    بالادست می‌آیند (رفتار امروز) — یعنی پین شتاب‌دهنده است، نه پیش‌شرط.
+    """
+    ip = _pin_ip()
+    if not ip:
+        return {}
+    names: list[str] = []
+    for d in (domains.panel(), domains.git(), domains.base(), f"www.{domains.base()}"):
+        d = (d or "").strip().lower()
+        if d and d not in names:
+            names.append(d)
+    try:  # سایت‌های منتشرشدهٔ همهٔ پروژه‌ها — منبع حقیقت: جدول sites
+        from .db import SessionLocal
+        from .models import Site
+        s = SessionLocal()
+        try:
+            for (sub,) in s.query(Site.subdomain).all():
+                sub = (sub or "").strip().lower()
+                if sub and sub not in names:
+                    names.append(sub)
+        finally:
+            s.close()
+    except Exception:
+        pass  # DB غایب (توسعه/مهاجرت) — نام‌های زیرساختی کافی است
+    return {n: ip for n in names}
+
+
 def sync_host_env() -> bool:
     """همگام‌سازی دامنه‌های .env هاست با دامنهٔ فعال — تا اجرای بعدی
     docker compose interpolation کهنه را پس نزند (ریشهٔ بازگشت باگ)."""
@@ -407,6 +477,8 @@ def deploy_project(project, services, sites,
     net_name = project_network(pid)
     ensure_network(pid)
     remove_project(pid, quiet=True)
+    # DNS خوداتکا (v0.4.6): یک بار برای همهٔ سرویس‌های پروژه
+    hosts_entries = pin_host_entries()
 
     ordered = sorted(services, key=lambda s: (bool(s.is_public), s.name))
     for svc in ordered:
@@ -443,6 +515,7 @@ def deploy_project(project, services, sites,
             environment=svc.env(),
             host_config=host_config,
             networking_config=networking_config,
+            hosts=hosts_entries or None,  # DNS خوداتکا (v0.4.6) — /etc/hosts
             detach=True,
         )
         if svc.command:

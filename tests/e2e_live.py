@@ -14,6 +14,9 @@
 متغیرهای محیطی:
   PARASTOO_PANEL_URL   آدرس پنل زنده (پیش‌فرض: مقدار ثابت سند)
   PARASTOO_DEV_TOKEN   اگر ست باشد، لایهٔ /api/dev/* هم آزموده می‌شود (X-Dev-Token)
+  PARASTOO_BRIDGE_TOKEN توکن پل عامل (pst_…) یک پروژهٔ منتشرشده — لایهٔ پل (v0.4.6)
+  PARASTOO_CROSS_TARGET URL عمومی یک پروژهٔ دیگر برای چک فراخوانی بین-پروژه‌ای
+  PARASTOO_BRIDGE_SVC  سرویس هدف exec (پیش‌فرض web)
 
 خروجی: چک‌به‌چک فارسی + جمع‌بندی؛ کد خروج 0 فقط اگر هیچ چکی FAIL نباشد.
 SKIP خطا نیست (مثلاً لایهٔ توسعه‌دهنده بدون توکن).
@@ -22,6 +25,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 DEFAULT_PANEL = "http://panel.193.151.142.128.nip.io"
@@ -312,6 +316,82 @@ def main() -> int:
 
         check("dev-dns-status", "/api/dns/status — سرویس نیم‌سرور", c_dev_dns_status)
         check("dev-dns-roundtrip", "/api/dns/zones — ساخت/رکورد/حذف زون موقت", c_dev_dns_roundtrip)
+
+    # ---------- لایهٔ پل عامل (v0.4.6) — قرارداد SERVICE_COMMS ----------
+    bridge_token = os.environ.get("PARASTOO_BRIDGE_TOKEN", "").strip()
+    cross_target = os.environ.get("PARASTOO_CROSS_TARGET", "").strip()
+    bridge_svc = (os.environ.get("PARASTOO_BRIDGE_SVC", "web").strip() or "web")
+    if not bridge_token:
+        print("[−] bridge-cross    لایهٔ پل عامل رد شد — PARASTOO_BRIDGE_TOKEN خالی است")
+        results.append((SKIP, "bridge-cross", ""))
+        print("[−] bridge-hosts    — (وابسته به توکن پل)")
+        results.append((SKIP, "bridge-hosts", ""))
+    else:
+        hh = {"Authorization": f"Bearer {bridge_token}", "Content-Type": "application/json"}
+
+        def b_exec(cmd: str, timeout_s: int = 30):
+            st, _, body = fetch("POST", f"{base}/api/bridge/exec", headers=hh,
+                                data=json.dumps({"cmd": cmd, "svc": bridge_svc,
+                                                 "timeout_s": timeout_s}).encode(),
+                                timeout=60)
+            if st != 200:
+                return None, f"HTTP {st}"
+            try:
+                d = json.loads(body)
+            except Exception:
+                return None, f"بدنهٔ نامعتبر: {str(body)[:80]}"
+            if not d.get("ok"):
+                return None, f"exec رد شد: {d.get('error') or '?'}"
+            return d, None
+
+        if not cross_target:
+            print("[−] bridge-cross    رد شد — PARASTOO_CROSS_TARGET خالی است (URL عمومی پروژهٔ دیگر)")
+            results.append((SKIP, "bridge-cross", ""))
+        else:
+            _ctx = ("c=ssl._create_unverified_context()\n" if _TLS_INSECURE else "")
+            _kw = (",context=c" if _TLS_INSECURE else "")
+            _probe = (
+                "import urllib.request as u,urllib.error as e"
+                + (",ssl" if _TLS_INSECURE else "") + "\n"
+                + _ctx
+                + "try:\n"
+                + f"    r=u.urlopen({cross_target!r},timeout=15{_kw})\n"
+                + "    print('HTTP',r.status)\n"
+                + "except e.HTTPError as x:\n"
+                + "    print('HTTP',x.code)\n"
+            )
+
+            def c_bridge_cross():
+                d, err = b_exec(_probe, 40)
+                if d is None:
+                    return FAIL, f"exec: {err}"
+                out = (d.get("stdout") or "").strip()
+                if d.get("exit_code") != 0 or not out.startswith("HTTP"):
+                    return FAIL, f"خروج غیرمنتظره: {out[:80] or (d.get('stderr') or '—')[:80]}"
+                try:
+                    code = int(out.split()[1])
+                except (IndexError, ValueError):
+                    return FAIL, f"خروج غیرقابل‌تجزیه: {out[:60]}"
+                if 500 <= code < 600:
+                    return FAIL, f"HTTP {code} — مقصد از داخل کانتینر خطای سرور داد"
+                return PASS, f"از داخل کانتینر به {cross_target} → HTTP {code}"
+
+            check("bridge-cross", "فراخوانی بین-پروژه‌ای از داخل کانتینر (درِ واحد)", c_bridge_cross)
+
+        def c_bridge_hosts():
+            host = urllib.parse.urlparse(cross_target).netloc.split(":")[0] if cross_target else ""
+            if not host:
+                return SKIP, "بدون PARASTOO_CROSS_TARGET نامی برای سنجش پین نیست"
+            d, err = b_exec("cat /etc/hosts")
+            if d is None:
+                return FAIL, f"exec: {err}"
+            for ln in (d.get("stdout") or "").splitlines():
+                parts = ln.split()
+                if len(parts) >= 2 and parts[1] == host:
+                    return PASS, f"{host} پین است → {parts[0]} (DNS خوداتکا)"
+            return SKIP, f"{host} پین نیست — کانتینر هنوز روی v0.4.6 مستقر نشده یا قابلیت خاموش است"
+
+        check("bridge-hosts", "پین DNS خوداتکا در /etc/hosts (v0.4.6)", c_bridge_hosts)
 
     npass = sum(1 for s, *_ in results if s == PASS)
     nfail = sum(1 for s, *_ in results if s == FAIL)

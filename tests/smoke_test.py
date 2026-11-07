@@ -1531,6 +1531,45 @@ check("گارد کیف پول جمعی کار می‌کند",
       _bl04.balance_ok_total(_NS04(balance=2300), _svcs)
       and not _bl04.balance_ok_total(_NS04(balance=1000), _svcs))
 
+# ---------- DNS خوداتکا (v0.4.6): پین نام‌های پلتفرم در /etc/hosts ----------
+from app import domains as _dm06  # noqa: E402
+from app import dockerops as _do06  # noqa: E402
+_ip06, _hef06 = _do06.settings.PUBLIC_IP, _do06.settings.HOST_ENV_FILE
+_do06.settings.HOST_ENV_FILE = "/nonexistent-host-env"
+_do06.settings.PUBLIC_IP = ""
+check("پین DNS خوداتکا: بدون IP قابلیت خاموش است", _do06.pin_host_entries() == {})
+import tempfile as _tf06  # noqa: E402
+with _tf06.NamedTemporaryFile("w", suffix=".env", delete=False) as _f06:
+    _f06.write("PARASTOO_DNS_BIND_IP=10.5.5.5\n")
+    _p06 = _f06.name
+_do06.settings.HOST_ENV_FILE = _p06
+check("پین: IP از .env هاست خوانده می‌شود", _do06._pin_ip() == "10.5.5.5")
+_do06.settings.PUBLIC_IP = "10.9.9.9"
+check("پین: PARASTOO_DNS_BIND_IP بر PUBLIC_IP مقدم است", _do06._pin_ip() == "10.5.5.5")
+_ent06 = _do06.pin_host_entries()
+_base06 = _dm06.base()
+check("پین: همهٔ مقادیر = IP پین‌شده",
+      bool(_ent06) and all(v == "10.5.5.5" for v in _ent06.values()))
+check("پین: نام‌های زیرساخت (panel/git/base/www) در نقشه‌اند",
+      f"panel.{_base06}" in _ent06 and f"git.{_base06}" in _ent06
+      and _base06 in _ent06 and f"www.{_base06}" in _ent06)
+# سایت probe خودمان — مستقل از چرخهٔ حیات پروژه‌های دیگرِ اسموک
+from app.models import Site as _Site06  # noqa: E402
+_d06 = SessionLocal()
+_d06.add(_Site06(project_id=1, owner_id=1, slug="pin-probe",
+                 subdomain="pin-probe.apps.test", status="running"))
+_d06.commit()
+check("پین: سایت‌های منتشرشدهٔ DB هم پین می‌شوند",
+      "pin-probe.apps.test" in _do06.pin_host_entries())
+_d06.query(_Site06).filter(_Site06.slug == "pin-probe").delete()
+_d06.commit()
+_d06.close()
+check("پین: حذف سایت از DB، از نقشهٔ پین بعدی هم می‌رود",
+      "pin-probe.apps.test" not in _do06.pin_host_entries())
+_do06.settings.PUBLIC_IP, _do06.settings.HOST_ENV_FILE = _ip06, _hef06
+import os as _os06  # noqa: E402
+_os06.unlink(_p06)
+
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)
