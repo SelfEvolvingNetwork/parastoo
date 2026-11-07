@@ -49,7 +49,9 @@ def sso_go(request: Request,
     except Exception:
         return redirect("/dashboard", "git_sso_failed")
     scheme = "https" if domains.tls() else "http"
-    resp = RedirectResponse(f"{scheme}://{domains.git()}", status_code=303)
+    # مقصد: صفحهٔ پروفایل خود کاربر (فهرست مخزن‌هایش) — آشناترین صفحه برای مالک
+    resp = RedirectResponse(f"{scheme}://{domains.git()}/{user.gitea_username}",
+                            status_code=303)
     resp.set_cookie(
         gitea.SESSION_COOKIE, sid,
         domain=f".{domains.base()}",

@@ -369,8 +369,8 @@ with TestClient(app, follow_redirects=False) as c:
     check("صفحهٔ میانی SSO با فرم CSRF پنل باز می‌شود",
           r.status_code == 200 and 'action="/git/sso"' in r.text and 'name="csrf"' in r.text)
     r = c.post("/git/sso", data={"csrf": security.csrf_token(uid)}, follow_redirects=False)
-    check("SSO: ریدایرکت به وب گیتا با اسکیم درست",
-          r.status_code == 303 and r.headers["location"] == f"http://git.{os.environ['BASE_DOMAIN']}",
+    check("SSO: ریدایرکت به پروفایل خود کاربر در وب گیتا (فهرست مخزن‌ها)",
+          r.status_code == 303 and r.headers["location"] == f"http://git.{os.environ['BASE_DOMAIN']}/{gname}",
           f"loc={r.headers.get('location')}")
     sc = " ".join(r.headers.get_list("set-cookie"))
     check("SSO: کوکی نشست گیتا روی دامنهٔ پایهٔ مشترک نشسته",
