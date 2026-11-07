@@ -61,6 +61,7 @@ core/app/
     account.py      صفحهٔ /account + تغییر رمز
     dashboard.py    / (خانه) و /dashboard
     health.py       healthz + /api/version (عمومی و سبک)
+    agentdocs.py    /docs/agent — سند عمومی راهنمای عامل کاربر (تک‌منبع همیشه‌به‌روز؛ بدون رمز)
     projects.py     ساخت/جزئیات/بیلد مجدد/مارکت/انتشار سایت (نازک)
     sites.py        روشن/خاموش/حذف سایت (نازک)
     marketplace.py  لیست + فعال‌سازی (نازک؛ منطق در services/market.py)
@@ -88,7 +89,7 @@ core/app/
 
 **مارکت‌پلیس:** POST /marketplace/{id}/use → کسر از خریدار، واریز ۹۰٪ به فروشنده، پروژهٔ مالک خریدار با کپی سرویس‌ها + استقرار روی شبکهٔ خودش؛ انتشار اپِ به‌روز به نصب‌ها خودکار (`_propagate_installs`). pull ایمیج خصوصی سمت سرور با اعتبار فروشنده.
 
-**پل عامل پروژه:** توکن AgentToken (فقط sha256 در DB، نمایش یک‌بار، ابطال فوری) → شیم گیت `/bridge/git/<slug>.git` (پروتکل گیت هوشمند؛ مخزن مقصد همیشه از DB؛ اعتبار سمت‌سرور) + API `/api/bridge/*` (status/manifest/builds/log/exec/restart/env/audit) با سقف نرخ پنجره‌لغزان و audit JSONL. قرارداد: `docs/AGENT_BRIDGE.fa.md`.
+**پل عامل پروژه:** توکن AgentToken (فقط sha256 در DB، نمایش یک‌بار، ابطال فوری) → شیم گیت `/bridge/git/<slug>.git` (پروتکل گیت هوشمند؛ مخزن مقصد همیشه از DB؛ اعتبار سمت‌سرور) + API `/api/bridge/*` (status/manifest/builds/log/exec/restart/env/audit) با سقف نرخ پنجره‌لغزان و audit JSONL. قرارداد: `docs/AGENT_BRIDGE.fa.md`. سند رو به عامل کاربر: `/docs/agent` (رندر از کد — با هر استقرار به‌روز) + متن آمادهٔ کپی در کارت پل صفحهٔ پروژه (توکن تازه در متن درج می‌شود).
 
 **دامنه و DNS:** ویزارد /setup/domain (ادمین) → `apply_domain` (پیکربندی ترافیک + گواهی) + `provision_zone`/`sync_base_zone` (PowerDNS)؛ ورکر ۶۰ثانیه‌ای دامنهٔ معلق را خودگردان فعال می‌کند. حالت وایلدکارد: زون روی نیم‌سرور خودمان → سه گواهی DNS-01 برای کل استک (`*.<دامنه>` + apex+www + `*.apps.<دامنه>`). مدیریت رکورد: `services/dnsops.py` + `routes/dns.py`.
 

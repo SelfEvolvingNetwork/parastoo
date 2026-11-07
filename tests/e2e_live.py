@@ -185,6 +185,17 @@ def main() -> int:
     check("dev-page-anon", "/dev ناشناس → 404", c_dev_page_anon)
     check("dev-api-anon", "/api/dev/report ناشناس → 404", c_dev_api_anon)
     check("static", "/static/style.css — استاتیک سالم", c_static)
+
+    def c_agent_docs():
+        st, _, body = fetch("GET", f"{base}/docs/agent", timeout=timeout)
+        if st != 200:
+            return FAIL, f"HTTP {st}"
+        ok = b"parastoo.yml" in body and b"bridge/git" in body and b"pst.py" in body
+        leak = __import__("re").search(rb"pst_[A-Za-z0-9_-]{20,}", body)
+        return (PASS, "سند عامل عمومی و بدون توکن واقعی") if ok and not leak else (FAIL, "ناقص یا لو توکن")
+
+    check("agent-docs", "/docs/agent — سند عمومی عامل کاربر", c_agent_docs)
+
     check("sec-headers", "هدرهای امنیتی", c_headers)
     check("webhook-reject", "وب‌هوک بدون امضا رد می‌شود (ok:false)", c_webhook_reject)
 

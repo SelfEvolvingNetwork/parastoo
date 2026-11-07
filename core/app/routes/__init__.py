@@ -3,8 +3,9 @@
 ترتیب ثبت فقط برای هم‌پوشانی مسیرها مهم است؛ الان هیچ تداخلی نیست، اما
 ترتیب معنایی «ویزارد ← احراز هویت ← صفحات اصلی ← عملیات‌ها» حفظ شده است.
 """
-from . import (account, admin, auth, bridge, dashboard, dev, dns, health,
-               hooks, marketplace, payment, projects, setup, sites, wallet)
+from . import (account, admin, agentdocs, auth, bridge, dashboard, dev, dns,
+               health, hooks, marketplace, payment, projects, setup, sites,
+               wallet)
 
 ROUTERS = (
     setup.router,        # ویزارد نصب/دامنه
@@ -12,6 +13,7 @@ ROUTERS = (
     account.router,      # حساب کاربری
     dashboard.router,    # / و /dashboard
     health.router,       # healthz و /api/version
+    agentdocs.router,    # /docs/agent — راهنمای عمومی عامل هوش مصنوعی کاربر
     projects.router,
     sites.router,
     marketplace.router,

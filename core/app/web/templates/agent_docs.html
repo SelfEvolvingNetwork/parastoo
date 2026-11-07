@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}راهنمای عامل هوش مصنوعی کاربر{% endblock %}
+{% block content %}
+<div class="auth-card card wide">
+  <h1>راهنمای عامل هوش مصنوعی کاربر</h1>
+  <p class="muted">تک‌منبعِ رسمی برای عامل‌هایی که پروژهٔ یک کاربر را روی پرستو توسعه و تست می‌کنند. کاربر برای شما توکن پلِ پروژه و متن راه‌اندازی را از پنل کپی کرده است؛ این سند جزئیات کامل همان قرارداد است و با هر استقرار به‌روز می‌شود (نسخهٔ سند = نسخهٔ پنل v{{ settings.VERSION }}).</p>
+
+  <section class="mt">
+    <h2>۱) هویت و مأموریت شما</h2>
+    <ul>
+      <li>شما عاملِ <b>یک پروژه</b> روی پلتفرم پرستو هستید — نه اپراتور سرور. توکنی که دارید فقط به همین پروژه می‌رسد.</li>
+      <li>مأموریت: جلو بردن چرخهٔ <b>توسعه → بیلد → تست → گزارش به کاربر</b>. تصمیم‌های محصولی، انتشار سایت و خریدها با کاربر است؛ شما پیشنهاد می‌دهید، او تأیید می‌کند.</li>
+      <li>هر فراخوانی شما در «گزارش پل» ثبت می‌شود و کاربر می‌بیند — شفاف کار کنید.</li>
+    </ul>
+  </section>
+
+  <section class="mt">
+    <h2>۲) پرستو در یک نگاه</h2>
+    <ul>
+      <li>پرستو پلتفرم ساخت، انتشار و اجرای وب‌اپ روی سرور خودمان است. <b>پروژه = گروه سرویس‌ها (تا ۸) + مخزن گیت خصوصی + سایت‌های منتشرشده.</b></li>
+      <li><b>push = استقرار.</b> هر push به مخزن (هر شاخه) وب‌هوک می‌زند → بیلد <b>کل-یا-هیچ</b> → استقرار خودکار همان کامیت. نیازی به دستور deploy نیست.</li>
+      <li><b>فناوری هنگام ساخت پروژه انتخاب نمی‌شود</b> — در بیلد از محتوای مخزن خوانده می‌شود، به همین ترتیب:
+        ① <span class="mono">parastoo.yml</span> (چند سرویس؛ همیشه مقدم) ② <span class="mono">Dockerfile</span> خودتان ③ <span class="mono">package.json</span> ④ <span class="mono">requirements.txt</span> ⑤ <span class="mono">index.html</span> (استاتیک). هیچ‌کدام نبود؟ بیلد با پیام فارسیِ گویا راهنمایی می‌کند.</li>
+      <li><b>قرارداد پورت:</b> اپ داینامیک باید روی پورت <span class="mono">3000</span> گوش دهد (متغیر محیطی <span class="mono">PORT</span> تزریق می‌شود). سایت استاتیک nginx است و 80.</li>
+      <li><b>شبکه:</b> هر پروژه شبکهٔ خصوصی خودش را دارد؛ نام هر سرویس همان نام میزبان است (<span class="mono">db:5432</span>). سرویس داخلی از اینترنت دیده نمی‌شود؛ گفت‌وگوی بین‌پروژه‌ای فقط با URL عمومی (<span class="mono">https://&lt;slug&gt;.apps.&lt;دامنه&gt;</span>) است و احراز هویت کار خودِ اپ شماست.</li>
+      <li>مخزن تازه یک <b>بذر جهانی</b> می‌گیرد: نمونهٔ استاتیک آمادهٔ اجرا + README پنج‌مسیری — آزادانه همه‌اش را عوض کنید.</li>
+    </ul>
+  </section>
+
+  <section class="mt">
+    <h2>۳) دسترسی شما — پل عامل (Agent Bridge)</h2>
+    <p class="muted small">توکن عامل با پیشوند <span class="mono">pst_</span> فقط همین پروژه را می‌بیند: مخزن گیت آن، سرویس‌های آن و APIهای زیر. حساب گیتِ کاربر (که همهٔ پروژه‌ها را می‌بیند) هرگز به شما داده نمی‌شود.</p>
+    <table>
+      <thead><tr><th>وسیله</th><th>نشانی</th><th>احراز</th></tr></thead>
+      <tbody>
+        <tr><td>گیت (کلون/پوش)</td><td class="mono" dir="ltr">https://پنل/bridge/git/&lt;slug&gt;.git</td><td>Basic — نام‌کاربری هر چیزی، رمز = توکن</td></tr>
+        <tr><td>CLI تک‌فایلی</td><td class="mono" dir="ltr">curl -fsSL https://پنل/static/pst.py -o pst.py</td><td><span class="mono">pst.py init --url … --token …</span></td></tr>
+        <tr><td>API مستقیم</td><td class="mono" dir="ltr">https://پنل/api/bridge/*</td><td>هدر <span class="mono">Authorization: Bearer &lt;توکن&gt;</span></td></tr>
+      </tbody>
+    </table>
+    <p class="muted small">اندپوینت‌های API: <span class="mono">GET status</span> · <span class="mono">GET manifest</span> · <span class="mono">GET builds</span> · <span class="mono">GET builds/{id}</span> (لاگ بیلد) · <span class="mono">POST build</span> (بیلد مجدد) · <span class="mono">GET logs?svc=</span> (لاگ اجرا) · <span class="mono">POST exec</span> (دستور داخل کانتینر) · <span class="mono">POST restart</span> · <span class="mono">GET env</span> · <span class="mono">GET audit</span>. سقف‌ها: exec ≤۱۲۰ثانیه و ≤۲۵۶KB، حجم push محدود، نرخ فراخوانی پنجرهٔ لغزان. خطاها پیام فارسی دارند — بخوانید.</p>
+    <p class="muted small">معادل‌های CLI: <span class="mono">pst.py status / builds / log / build / push / clone / git-url / logs --svc / exec -- / restart / env / manifest / audit</span></p>
+  </section>
+
+  <section class="mt">
+    <h2>۴) چرخهٔ توسعه و تست — رویهٔ روزمره</h2>
+    <ol>
+      <li><b>هم‌گام شوید:</b> <span class="mono">pst.py clone</span> یا کلون مستقیم ریموت پل؛ اگر پروژه را از قبل دارید <span class="mono">git pull</span>.</li>
+      <li><b>تغییر کوچکِ معنادار</b> + کامیت گویا. (قاعده: هر تغییرِ یک‌منظوره، یک کامیت.)</li>
+      <li><b>push کنید</b> — بیلد خودکار شروع می‌شود. معادل دستی: <span class="mono">pst.py build</span>.</li>
+      <li><b>نتیجهٔ بیلد را بخوانید:</b> <span class="mono">pst.py log</span> تا سبز شود. بیلد «کل-یا-هیچ» است؛ شکست هیچ سرویسی را تغییر نمی‌دهد.</li>
+      <li><b>تست:</b> اگر سایت منتشر است، URL عمومی را بزنید؛ در هر حال <span class="mono">pst.py exec -- curl -s localhost:3000/…</span> و <span class="mono">pst.py logs</span> حقیقتِ اجراست.</li>
+      <li><b>مردود؟</b> لاگ فارسی بیلد را بخوانید (پیش‌بازرسی فایل کلید استک، خطای داکر و…)، اصلاح، push دوباره. لاگ را برای کاربر خلاصه کنید، نه کورکورانه تکرار.</li>
+      <li><b>گزارش به کاربر:</b> چه رفت، چه ماند؛ قدم بعدی پیشنهادی. <b>انتشار سایت جدید، دامنه، و همهٔ عملیات پولی از پنل با کاربر است</b> — توکن شما «انتشار» ندارد؛ نیازش را صریح بگویید.</li>
+    </ol>
+  </section>
+
+  <section class="mt">
+    <h2>۵) پروژهٔ جدید — نکات حیاتی</h2>
+    <ul>
+      <li>ساخت پروژه از پنل کاربر است (نام + شناسه <span class="mono">slug</span> + توضیح — بدون پرسش فناوری). مخزن خصوصی و بذر اولیه خودکار ساخته می‌شود.</li>
+      <li>اپ تک‌سرویسی ساده؟ فقط یکی از این‌ها را در ریشه بگذارید: <span class="mono">package.json</span> (اسکریپت <span class="mono">start</span>، گوش روی <span class="mono">PORT</span>) یا <span class="mono">requirements.txt</span> + <span class="mono">app.py</span> با شیء <span class="mono">app</span> (اجرای خودکار: gunicorn + ورکر uvicorn) یا <span class="mono">Dockerfile</span> خودتان (پورت 3000) یا <span class="mono">index.html</span>.</li>
+      <li>اپ + دیتابیس + …؟ <span class="mono">parastoo.yml</span> در ریشه — نمونهٔ کمینه:</li>
+    </ul>
+    <pre class="code" dir="ltr">parastoo: 1
+services:
+  web:
+    build: .
+    port: 3000
+    public: true
+  db:
+    image: postgres:16-alpine
+    volume: dbdata:/var/lib/postgresql/data</pre>
+    <ul>
+      <li>قواعد سخت مانیفست: فقط کلیدهای شناخته‌شده؛ <span class="mono">network_mode</span>، <span class="mono">devices</span>، پورت/بایند هاست و سوارکردن مسیر سرور <b>رد می‌شوند</b>. <span class="mono">env</span> مقادیر لفظی است (تفسیر بین سرویسی ندارد).</li>
+      <li>رازها را کامیت نکنید؛ <span class="mono">.env</span> را از پنل یا <span class="mono">GET /api/bridge/env</span> مدیریت کنید و بعد از تغییر، سرویس را <span class="mono">restart</span> کنید.</li>
+      <li>نام‌گذاری: <span class="mono">slug</span> تغییرناپذیر است و در زیردامنه و مسیر مخزن می‌آید — از اول درست انتخاب کنید.</li>
+    </ul>
+  </section>
+
+  <section class="mt">
+    <h2>۶) عیب‌یابی سریع</h2>
+    <table>
+      <thead><tr><th>علامت</th><th>اقدام</th></tr></thead>
+      <tbody>
+        <tr><td>بیلد سرخ شد</td><td><span class="mono">pst.py log</span> — پیام فارسیِ پیش‌بازرسی معمولاً خودش دستور اصلاح می‌دهد (فایل کلید استک نیست؟ پورت 3000 نیست؟)</td></tr>
+        <tr><td>سایت 502/به‌روز نشد</td><td><span class="mono">pst.py status</span> و <span class="mono">pst.py logs --svc web</span> — کانتینر احتمالاً بعد از بیلد سالم بالا نیامده</td></tr>
+        <tr><td>env جدید اثر نکرد</td><td>env در بیلد تزریق می‌شود — یا restart کافی است یا push تازه لازم</td></tr>
+        <tr><td>«سرویس یافت نشد»</td><td><span class="mono">pst.py manifest</span> — نام دقیق سرویس‌های پروژه</td></tr>
+        <tr><td>گیت 401/403</td><td>توکن باطل یا اشتباه است — از کاربر بخواهید در پنل توکن تازه بسازد (نمایش فقط یک‌بار)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="mt">
+    <h2>۷) امنیت و ادب عامل</h2>
+    <ul>
+      <li>توکن را در کد، کامیت، لاگ یا پاسخ‌ها ننویسید؛ اگر لو رفت، فوراً از کاربر بخواهید ابطال کند (ابطال فوری است).</li>
+      <li>به زیرساخت و پروژه‌های دیگر دسترسی ندارید — تلاش برای آن هم بیهوده است (مسیرها از دیتابیس قفل‌اند) و در گزارش ثبت می‌شود.</li>
+      <li>پیش از هر اقدام تخریبی (حذف داده، تغییر شکل شِما، ری‌استارت زنجیره‌ای) از کاربر تأیید بگیرید.</li>
+      <li>دادهٔ کاربر محرمانه است — در گزارش‌ها فقط به اندازهٔ لازم.</li>
+    </ul>
+  </section>
+
+  <p class="muted small">این سند از کد پنل رندر می‌شود و با هر استقرار به‌روز است؛ به نسخه‌های خارجی اعتماد نکنید. تک‌منبع این قرارداد همین‌جاست.</p>
+</div>
+{% endblock %}

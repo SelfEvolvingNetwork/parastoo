@@ -370,6 +370,23 @@ with TestClient(app, follow_redirects=False) as c:
                follow_redirects=False)
     check("پروژهٔ تست پل ساخته شد", r.status_code == 303 and "bridge-proj" in r.headers["location"])
 
+    # صفحهٔ عمومی راهنمای عامل (v0.5.3) — تک‌منبع همیشه‌به‌روز، بدون هیچ رمزی
+    import re as _re
+    r = c.get("/docs/agent")  # بدون نشست
+    check("/docs/agent بدون نشست باز می‌شود (عمومی برای عامل‌ها)", r.status_code == 200)
+    check("سند عامل معماری و پل را پوشش می‌دهد",
+          all(k in r.text for k in ("parastoo.yml", "پورت", "bridge/git", "pst.py", "api/bridge", "قواعد سخت مانیفست")))
+    check("سند عامل هیچ توکن واقعی ندارد (فقط الگوی پیشوند pst_ می‌گوید)",
+          _re.search(r"pst_[A-Za-z0-9_-]{20,}", r.text) is None)
+    _r2 = c2.get("/docs/agent")
+    check("سند عامل برای کاربر واردشده هم همان صفحه است", _r2.status_code == 200)
+
+    # متن آمادهٔ کپی عامل در صفحهٔ پروژه + ارجاع به سند
+    r = c.get("/projects/bridge-proj")
+    check("صفحهٔ پروژه متن راه‌اندازی عامل را دارد",
+          "متن راه‌اندازی عامل" in r.text and "/docs/agent" in r.text
+          and "bridge/git/bridge-proj.git" in r.text and "PST_TOKEN" in r.text)
+
     # ساخت توکن از پنل — نمایش کامل فقط یک‌بار
     r = c.post("/projects/bridge-proj/agent-tokens", data={"name": "", "csrf": csrf}, follow_redirects=False)
     check("توکن بدون نام → رد با پیام", "m=token_name" in r.headers.get("location", ""))
@@ -378,7 +395,8 @@ with TestClient(app, follow_redirects=False) as c:
     _m = _re.search(r"pst_[A-Za-z0-9_-]{20,}", r.text)
     check("ساخت توکن → مقدار کامل یک‌بار در صفحه", bool(_m))
     tok = _m.group(0) if _m else "pst_none"
-    check("اثر انگشت پیشوندی در جدول نمایش داده شده (نه مقدار کامل)", tok[:12] in r.text and r.text.count(tok) == 1)
+    check("اثر انگشت پیشوندی در جدول نمایش داده شده (نه مقدار کامل)", tok[:12] in r.text
+          and r.text.count(tok) == 2)  # بلوک نمایش یک‌بار + متن آمادهٔ کپی عامل — همین رندر، بعداً هرگز
     H = {"Authorization": f"Bearer {tok}"}
 
     # گاردهای احراز
