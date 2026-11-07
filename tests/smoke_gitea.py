@@ -32,6 +32,7 @@ os.environ.update(
     GITEA_ADMIN_USER="parastoo-system",
     GITEA_ADMIN_PASSWORD="syspass-Test123",
     DATA_DIR="/tmp/parastoo-test-gitea-data",
+    PARASTOO_CONFIG_DIR="/tmp/parastoo-test-gitea-config",
 )
 
 sys.path.insert(0, str(ROOT / "core"))
@@ -402,6 +403,37 @@ with TestClient(app, follow_redirects=False) as c:
               f"{r.status_code}")
         r = c2.get("/oauth/userinfo")
         check("userinfo بدون توکن → 401", r.status_code == 401)
+
+    # --- یکپارچگی UI (v0.5.8): «بازگشت به پنل» با سازوکار رسمی قالب‌های گیتا ---
+    import re  # noqa: E402
+    import tempfile  # noqa: E402
+    files = gitea_mod.render_gitea_custom_templates("https://panel.example.ir/")
+    check("قالب ناوبری و پاورقی با نام‌های رسمی گیتا 1.23 رندر می‌شود",
+          set(files) == {"extra_links.tmpl", "extra_links_footer.tmpl"})
+    check("URL پنل جای‌گذاری شد؛ جای‌نگهدار باقی نماند",
+          all("https://panel.example.ir/" in t and "__PANEL_URL__" not in t
+              for t in files.values()))
+    check("آیتم ناوبری از کلاس رسمی item گیتا استفاده می‌کند",
+          'class="item"' in files["extra_links.tmpl"])
+    check("برچسب فارسی «بازگشت به پنل» و برند «پنل پرستو»",
+          "بازگشت به پنل" in files["extra_links.tmpl"]
+          and "پنل پرستو" in files["extra_links_footer.tmpl"])
+    check("هیچ توکن/رمزی در قالب‌های برندینگ نیست (مخزن عمومی)",
+          all(not re.search(r"pst_[A-Za-z0-9_-]{20,}|password|secret", t)
+              for t in files.values()))
+    _old_cfg = gitea_mod.settings.CONFIG_DIR
+    try:
+        with tempfile.TemporaryDirectory() as _td:
+            gitea_mod.settings.CONFIG_DIR = _td
+            _ch1 = gitea_mod.ensure_custom_templates()
+            _d = Path(_td) / "gitea-custom" / "templates"
+            _ondisk = (_d / "extra_links.tmpl").read_text(encoding="utf-8")
+            _ch2 = gitea_mod.ensure_custom_templates()
+    finally:
+        gitea_mod.settings.CONFIG_DIR = _old_cfg
+    check("نوشتن روی دیسک (config/gitea-custom) و idempotent بودن سیکل بعدی",
+          _ch1 and not _ch2 and "127.0.0.1.nip.io" in _ondisk,
+          f"ch1={_ch1} ch2={_ch2}")
 
 srv.shutdown()
 

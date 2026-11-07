@@ -165,6 +165,18 @@ def recreate_gitea() -> None:
     c.api.start(name)
 
 
+def restart_gitea(timeout: int = 30) -> bool:
+    """ری‌استارت best-effort گیتا — برای اعمال پیکربندی/قالبی که فقط هنگام
+    بوت خوانده می‌شود (مثل قالب‌های سفارشی ناوبری/پاورقی). داکر در دسترس
+    نباشد False می‌دهد؛ فراخوانِ خودترمیم سیکل بعدی دوباره امتحان می‌کند.
+    """
+    try:
+        client().containers.get(settings.GITEA_CONTAINER).restart(timeout=timeout)
+        return True
+    except Exception:
+        return False
+
+
 def update_host_env(pairs: dict[str, str]) -> bool:
     """به‌روزرسانی کلید=مقدار در .env هاست (best-effort؛ هرگز استثنا نمی‌دهد).
 

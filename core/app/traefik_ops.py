@@ -539,6 +539,14 @@ def apply_domain(db, base_domain: str, acme_email: str, tls_enabled: bool) -> di
             result["gitea_old_root_url"] = cur
     except Exception as e:
         result["errors"].append(f"بازسازی گیتا: {e}")
+    # ۳.۷) قالب‌های سفارشی گیتا با URL پنل تازه (v0.5.8) — پس از set_many
+    # تا domains دامنهٔ تازه را بخواند؛ ری‌استارتِ لازم داخل همان تابع است
+    try:
+        from .gitea import ensure_custom_templates_and_restart
+        if ensure_custom_templates_and_restart():
+            result["gitea_rebranded"] = True
+    except Exception as e:
+        result["errors"].append(f"همگام‌سازی قالب گیتا: {e}")
 
     # ۴) سایت‌های موجود: زیردامنهٔ جدید + استقرار مجدد پروژهٔ هر سایت
     # (سرویس‌محور v0.4.0: روتر ترافیک روی کانتینرهای پروژه است؛ با دامنهٔ

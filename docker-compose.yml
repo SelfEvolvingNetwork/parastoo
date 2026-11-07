@@ -80,6 +80,11 @@ services:
     volumes:
       - gitea_data:/data
       - gitea_indexer:/data/gitea/indexers
+      # (v0.5.8) قالب‌های سفارشی رسمی گیتا (extra_links*) — «بازگشت به پنل»
+      # در ناوبری/پاورقی. تک‌منبع متن: core/app/gitea.py؛ هسته با URL فعال
+      # پنل در config/gitea-custom/templates می‌نویسد (خودترمیم بوت‌استرپ)
+      # و CustomPath گیتا در استک /data/gitea است → پوشهٔ templates همان‌جا.
+      - ./config/gitea-custom/templates:/data/gitea/templates:ro
     # رجیستری ایمیج روی localhost در دسترس دیمون داکر است (بدون نیاز به پیکربندی ناامن)
     ports:
       - "127.0.0.1:3000:3000"
