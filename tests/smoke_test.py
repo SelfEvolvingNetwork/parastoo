@@ -1272,6 +1272,10 @@ check("نام‌گذاری کانتینر/شبکه/volume پروژه‌محور 
       and _dok.volume_name(12, "dbdata") == "parastoo-p12-dbdata")
 check("فیلتر داکر با لیبل پروژه است (هیچ استعلامی بین پروژه‌ها قاطی نمی‌شود)",
       _dok._project_filter(7) == {"label": "parastoo.project=7"})
+_dok_src = (ROOT / "core/app/dockerops.py").read_text()
+check("سرویس عمومی traefik.enable=true می‌گیرد (exposedByDefault=false؛ میدان v0.4.0: بدون آن 404)",
+      '"traefik.enable"] = "true"' in _dok_src.replace('kwargs["labels"]["traefik.enable"] = "true"', '"traefik.enable"] = "true"')
+      or 'traefik.enable' in _dok_src)
 
 # مانیفست: پارس امن با لیست سفید
 GOOD = """

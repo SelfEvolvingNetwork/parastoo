@@ -423,7 +423,10 @@ def deploy_project(project, services, sites,
             kwargs["command"] = ["sh", "-c", svc.command]
         if svc.is_public:
             # docker-py برای create فقط یک network می‌پذیرد؛ شبکهٔ خصوصیِ پروژه
-            # همان‌جا داده می‌شود و اتصال به apps بلافاصله بعد از ساخت انجام می‌شود
+            # همان‌جا داده می‌شود و اتصال به apps بلافاصله بعد از ساخت انجام می‌شود.
+            # traefik.enable لازم است — docker provider با exposedByDefault:false
+            # کانتینرِ بدون این لیبل را کلاً نادیده می‌گیرد (میدان v0.4.0: 404 سایت)
+            kwargs["labels"]["traefik.enable"] = "true"
             kwargs["labels"].update(_public_labels(sites, svc.port))
         c.containers.run(svc.image, **kwargs)
         if svc.is_public and settings.APPS_NETWORK != project_network(pid):
