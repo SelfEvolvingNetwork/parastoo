@@ -185,6 +185,18 @@ def cmd_build(a):
     print(f"بیلد #{payload['build_id']} صف شد — پیگیری: python3 pst.py log")
 
 
+def _push_eligible(remote_sha: str, cwd=None) -> bool:
+    """درس میدانی v0.4.5 (سفر کامل پل): pst پیکربندی را از والدین هم می‌جوید؛
+    اگر از پوشهٔ والدِ کلون (داخل یک مخزن گیتِ دیگر) اجرا شود، HEADِ مخزنِ
+    اشتباه پوش می‌شود و گیت سمت پل آن را «fetch first» رد می‌کند — پیامی
+    گمراه‌کننده. شایستگی: main ریموت باید جدِ HEAD محلی باشد (یا مخزن خالی)."""
+    if not remote_sha:
+        return True  # مخزن ریموت هنوز کامیتی ندارد (اولین پوش)
+    chk = subprocess.run(["git", "merge-base", "--is-ancestor", remote_sha, "HEAD"],
+                         capture_output=True, timeout=15, cwd=cwd)
+    return chk.returncode == 0
+
+
 def cmd_push(a):
     url, token = load_conf()
     branch = ""
@@ -195,6 +207,16 @@ def cmd_push(a):
         pass
     if not branch or branch == "HEAD":
         print("داخل یک مخزن گیت (با شاخه) نیستید — اول clone یا git init + commit.", file=sys.stderr)
+        raise SystemExit(2)
+    st, payload = call("GET", "/api/bridge/status", conf=(url, token))
+    if st != 200:
+        fail(st, payload)
+    remote_sha = (payload.get("project") or {}).get("latest_sha") or ""
+    if not _push_eligible(remote_sha):
+        print("پوش رد شد: مخزنِ جاری با مخزن پروژه هم‌خوان نیست.", file=sys.stderr)
+        print("  یا از پوشهٔ والدِ کلون اجرا کرده‌اید (HEADِ مخزن دیگری پوش می‌شد)،", file=sys.stderr)
+        print("  یا کلون از main عقب است. داخل کلون پروژه بروید و در صورت نیاز:", file=sys.stderr)
+        print("  git pull --ff-only  و دوباره pst push", file=sys.stderr)
         raise SystemExit(2)
     ref = a.ref or f"HEAD:refs/heads/{branch}"
     git_url = f"{url}/bridge/git/{_slug()}.git"
@@ -214,12 +236,23 @@ def _slug():
     return payload["project"]["slug"]
 
 
+def _clean_origin(dest: str, clean_url: str) -> None:
+    """درس میدانی v0.4.5 (سفر کامل پل): `git clone` با URL توکار، توکن را در
+    .git/config باقی می‌گذارد (مسیر push چنین نمی‌کند). ریموت را پاک می‌کنیم —
+    push خودش توکن را گذرا و فقط در حافظهٔ همان دستور می‌آورد."""
+    subprocess.run(["git", "-C", dest, "remote", "set-url", "origin", clean_url],
+                   capture_output=True, timeout=15)
+
+
 def cmd_clone(a):
     url, token = load_conf()
     git_url = f"{url}/bridge/git/{_slug()}.git"
     authed = git_url.replace("://", f"://pst:{token}@", 1)
     target = a.dir or ""
     r = subprocess.run(["git", "clone", authed] + ([target] if target else []))
+    if r.returncode == 0:
+        dest = target or git_url.rsplit("/", 1)[-1].removesuffix(".git")
+        _clean_origin(dest, git_url)
     raise SystemExit(r.returncode)
 
 

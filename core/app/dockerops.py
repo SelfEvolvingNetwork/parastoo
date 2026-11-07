@@ -352,6 +352,12 @@ def _public_labels(sites, port: int) -> dict:
     """
     tls_on = tls_enabled_now()  # پویا — پس از فعال‌سازی HTTPS در ویزارد اعمال می‌شود
     labels: dict = {}
+    # درس میدانی v0.4.5 (سفر کامل پل، دور دوم آزمون زنده): کانتینر سرویس عمومی
+    # روی دو شبکه است (خصوصیِ پروژه در create + apps در connectِ پس از start)؛
+    # بدون `traefik.docker.network`، ترافیک IP بک‌اند را از شبکهٔ اشتباه برمی‌دارد
+    # (مثلاً 172.23.x به‌جای 172.19.x) و سایت سکه‌اندازی ۵۰/۵۰ هنگ می‌کند — با
+    # کانتینر سالم و روترِ درست. این لیبل منبع IP را قطعی می‌کند.
+    labels["traefik.docker.network"] = settings.APPS_NETWORK
     for site in sites:
         router = f"parastoo-site-{site.slug}"
         labels[f"traefik.http.routers.{router}.rule"] = f"Host(`{site.subdomain}`)"

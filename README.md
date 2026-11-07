@@ -1,4 +1,4 @@
-# پرستو (Parastoo) v0.3.16
+# پرستو (Parastoo) v0.4.5
 
 [![CI](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml/badge.svg)](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml)
 

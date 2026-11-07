@@ -401,6 +401,46 @@ with TestClient(app, follow_redirects=False) as c:
     check("CLI پل در /static/pst.py سرو می‌شود",
           r.status_code == 200 and "پل عامل" in r.text and "api/bridge/status" in r.text)
 
+    # درس میدانی v0.4.5 (سفر کامل پل، دور دوم آزمون زنده) — روتینگ/گاردها
+    import subprocess as _sub
+    import tempfile as _tmpmod
+
+    from app.config import settings as _st
+    from app.dockerops import _public_labels as _pl
+    _fake_site = type("S", (), {"slug": "s1", "subdomain": "s1.apps.example.ir"})()
+    check("لیبل‌های سرویس عمومی traefik.docker.network را قطعی می‌کنند",
+          _pl([_fake_site], 3000).get("traefik.docker.network") == _st.APPS_NETWORK)
+
+    from app.web.static.pst import _clean_origin as _co, _push_eligible as _pe
+
+    _tmp = _tmpmod.mkdtemp()
+    _c1 = f"{_tmp}/c1"
+    _sub.run(["git", "init", "-q", _c1], capture_output=True)
+    _sub.run(["git", "-C", _c1, "commit", "--allow-empty", "-q", "-m", "a"],
+             capture_output=True)
+    _old = _sub.run(["git", "-C", _c1, "rev-parse", "HEAD"],
+                    capture_output=True, text=True).stdout.strip()
+    _sub.run(["git", "-C", _c1, "commit", "--allow-empty", "-q", "-m", "b"],
+             capture_output=True)
+    _new = _sub.run(["git", "-C", _c1, "rev-parse", "HEAD"],
+                    capture_output=True, text=True).stdout.strip()
+    check("گارد push: مخزن خالی یا ریموتِ جدِ HEAD → مجاز",
+          _pe("", _c1) and _pe(_old, _c1))
+    _sub.run(["git", "-C", _c1, "checkout", "-q", _old], capture_output=True)
+    check("گارد push: کلون عقب‌تر از ریموت → رد", not _pe(_new, _c1))
+    _sub.run(["git", "-C", _c1, "checkout", "-q", "main"], capture_output=True)
+    _other = f"{_tmp}/other"
+    _sub.run(["git", "init", "-q", _other], capture_output=True)
+    _sub.run(["git", "-C", _other, "commit", "--allow-empty", "-q", "-m", "x"],
+             capture_output=True)
+    check("گارد push: مخزن بیگانه (بی‌شجره از ریموت) → رد", not _pe(_old, _other))
+    _sub.run(["git", "-C", _c1, "remote", "add", "origin",
+              "https://pst:SECRET@panel.example.ir/bridge/git/x.git"], capture_output=True)
+    _co(_c1, "https://panel.example.ir/bridge/git/x.git")
+    _cfg = open(f"{_c1}/.git/config", encoding="utf-8").read()
+    check("پس از clone، توکن از .git/config پاک می‌شود", "SECRET" not in _cfg)
+
+
     # ابطال از پنل + کاسکاد حذف پروژه
     db = SessionLocal()
     _tid = db.query(_AT).filter(_AT.token_hash != "", _AT.project_id ==

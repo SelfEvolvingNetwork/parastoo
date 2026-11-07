@@ -81,6 +81,10 @@ def publish_from_project(db: Session, owner: User, project, site_slug_raw: str,
     db.refresh(site)
     try:
         _deploy(db, project)
+        # درس میدانی v0.4.5 (سفر کامل پل): get_db در پایان فقط close می‌کند؛
+        # بدون کامیت صریح، running شدن سرویس‌ها در مسیر موفق گم می‌شد و
+        # pst status پس از publish «stopped» نشان می‌داد با کانتینرِ زنده.
+        db.commit()
         return site, ""
     except Exception:
         site.status = "error"
