@@ -73,26 +73,11 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _html(self, code, body, headers=()):
-        self.send_response(code)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        for k, v in headers:
-            self.send_header(k, v)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
     def log_message(self, *a):
         pass
 
     def do_GET(self):
         path = unquote(self.path)
-        if path == "/user/login":
-            # فرم ورود وب گیتا (برای SSO پنل) — فیلد CSRF + کوکی جفت آن
-            body = (b'<html><form method="post" action="/user/login">'
-                    b'<input type="hidden" name="_csrf" value="csrf-test-1">'
-                    b'<input name="user_name"><input name="password"></form></html>')
-            return self._html(200, body, [("Set-Cookie", "_csrf=csrf-test-1; Path=/")])
         if path == "/api/healthz":
             return self._json(200, {"status": "pass"})
         user, scopes, basic_user = _auth(self)
@@ -117,26 +102,6 @@ class Handler(BaseHTTPRequestHandler):
         import json
         path = unquote(self.path)
         raw = self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b""
-        if path == "/user/login":
-            # قاعدهٔ واقعی گیتا: کوکی _csrf باید با فیلد فرم بخواند + اعتبار درست
-            from urllib.parse import parse_qs
-            form = parse_qs(raw.decode())
-            csrf = (form.get("_csrf") or [""])[0]
-            uname = (form.get("user_name") or [""])[0]
-            pwd = (form.get("password") or [""])[0]
-            ok_cookie = "_csrf=csrf-test-1" in (self.headers.get("Cookie") or "")
-            if (csrf == "csrf-test-1" and ok_cookie
-                    and uname in USERS and USERS[uname]["password"] == pwd):
-                sid = secrets.token_hex(16)
-                with LOCK:
-                    HITS.append(f"web-login {uname}")
-                return self._html(303, b"", [
-                    ("Set-Cookie", f"i_like_gitea={sid}; Path=/"),
-                    ("Location", "/"),
-                ])
-            with LOCK:
-                HITS.append(f"web-login DENY {uname}")
-            return self._html(200, b"<html>signin</html>")
         payload = json.loads(raw or b"{}")
         user, scopes, basic_user = _auth(self)
 
@@ -350,7 +315,7 @@ with TestClient(app, follow_redirects=False) as c:
           u.gitea_username == gname and u.gitea_token)
     db.close()
 
-    # --- SSO مالک به وب گیتا (v0.5.5) — پایان نمایش توکن گیتا ---
+    # --- SSO استاندارد OAuth2 (v0.5.7) — پایان ترفند کوکی‌ریلی ---
     r = c.post("/login", data={"email": "ali@test.ir", "password": "secret1"},
                follow_redirects=False)
     check("ورود علی برای بخش SSO", r.status_code == 303)
@@ -365,21 +330,76 @@ with TestClient(app, follow_redirects=False) as c:
     check("صفحهٔ پروژه دکمهٔ ورود SSO به گیت دارد", "ورود به گیت (SSO)" in r.text)
     check("صفحهٔ حساب هم دکمهٔ SSO دارد", "ورود به گیت (SSO)" in c.get("/account").text)
 
-    r = c.get("/git/sso")
-    check("صفحهٔ میانی SSO با فرم CSRF پنل باز می‌شود",
-          r.status_code == 200 and 'action="/git/sso"' in r.text and 'name="csrf"' in r.text)
-    r = c.post("/git/sso", data={"csrf": security.csrf_token(uid)}, follow_redirects=False)
-    check("SSO: ریدایرکت به پروفایل خود کاربر در وب گیتا (فهرست مخزن‌ها)",
-          r.status_code == 303 and r.headers["location"] == f"http://git.{os.environ['BASE_DOMAIN']}/{gname}",
+    # منبع SSO در گیتا با CLI رسمی ثبت و اعتبار کلاینت در settings ذخیره شد
+    db = SessionLocal()
+    from app.models import Setting
+    cid = db.get(Setting, "oauth_client_id")
+    csec = db.get(Setting, "oauth_client_secret")
+    db.close()
+    check("اعتبار کلاینت OAuth2 در settings ذخیره شد",
+          bool(cid and csec and cid.value and csec.value))
+
+    r = c.get("/git/sso", follow_redirects=False)
+    check("SSO: ریدایرکت به جریان رسمی OAuth2 گیتا (بدون هیچ کوکی دستکاری‌شده)",
+          r.status_code == 302
+          and "/user/oauth2/parastoo" in r.headers["location"],
           f"loc={r.headers.get('location')}")
-    sc = " ".join(r.headers.get_list("set-cookie"))
-    check("SSO: کوکی نشست گیتا روی دامنهٔ پایهٔ مشترک نشسته",
-          "i_like_gitea=" in sc and "Domain=" in sc, f"set-cookie={sc[:120]}")
-    with LOCK:
-        hits = list(HITS)
-    check("ورود وب واقعاً سمت گیتا با اعتبار کاربر انجام شد (نه رندر دوباره)",
-          any(h == f"web-login {gname}" for h in hits) and not any(h.startswith("web-login DENY") for h in hits),
-          f"hits={hits[-4:]}")
+
+    # جریان کامل از زبان گیتا (کلاینت OAuth2): authorize → callback → token → userinfo
+    from urllib.parse import quote
+    from app import gitea as gitea_mod
+    cb = gitea_mod.sso_redirect_uri()
+    au = (f"/oauth/authorize?response_type=code&client_id={cid.value}"
+          f"&redirect_uri={quote(cb, safe='')}&state=s%2Ft")
+    r = c.get(au, follow_redirects=False)
+    loc = r.headers.get("location", "")
+    check("authorize: کد صادر و به callback دقیق گیتا برگشت (state محفوظ)",
+          r.status_code == 302 and loc.startswith(cb)
+          and "state=s%2Ft" in loc, f"loc={loc}")
+    code = loc.split("code=")[1].split("&")[0] if "code=" in loc else ""
+
+    r = c.post("/oauth/token", data={"grant_type": "authorization_code",
+                                     "code": code, "redirect_uri": cb,
+                                     "client_id": cid.value, "client_secret": csec.value})
+    check("token: تبادل کد با اعتبار درست → bearer", r.status_code == 200
+          and r.json().get("token_type") == "bearer" and "access_token" in r.json(),
+          f"{r.status_code} {r.text[:120]}")
+    at = r.json().get("access_token", "")
+
+    r = c.get(f"/oauth/userinfo?access_token={at}")
+    ui = r.json() if r.status_code == 200 else {}
+    check("userinfo: هویت همان کاربر گیتای علی (قرارداد goth)",
+          ui.get("login") == gname and ui.get("email") == "ali@test.ir"
+          and isinstance(ui.get("id"), int), f"{r.status_code} {ui}")
+
+    r = c.post("/oauth/token", data={"grant_type": "authorization_code",
+                                     "code": code, "redirect_uri": cb,
+                                     "client_id": cid.value, "client_secret": csec.value})
+    check("کد authorization یک‌بارمصرف است (replay → 400)", r.status_code == 400)
+    r = c.post("/oauth/token", data={"grant_type": "authorization_code",
+                                     "code": "forged", "redirect_uri": cb,
+                                     "client_id": cid.value, "client_secret": csec.value})
+    check("کد جعلی رد می‌شود", r.status_code == 400)
+    r = c.post("/oauth/token", data={"grant_type": "authorization_code",
+                                     "code": code, "redirect_uri": cb,
+                                     "client_id": cid.value, "client_secret": "wrong"})
+    check("سکرت کلاینت اشتباه → 401", r.status_code == 401)
+    r = c.get("/oauth/authorize?response_type=code&client_id=x"
+              f"&redirect_uri={quote(cb, safe='')}", follow_redirects=False)
+    check("callback غیرثبت‌شده → 400", r.status_code == 400)
+    r = c.get(f"/oauth/userinfo?access_token={at}x")
+    check("توکن دستکاری‌شده → 401", r.status_code == 401)
+    with TestClient(app, follow_redirects=False) as c2:
+        r = c2.get(au, follow_redirects=False)
+        check("authorize بدون نشست پنل → ورود با برگشت به همان جریان",
+              r.status_code == 303 and r.headers["location"].startswith("/login?m=login_required")
+              and "next=" in r.headers["location"])
+        r = c2.get(f"/oauth/userinfo?access_token={at}")
+        check("userinfo بدون کوکی پنل کار می‌کند (گیتا = کلاینت سرور-به-سرور)",
+              r.status_code == 200 and r.json().get("login") == gname,
+              f"{r.status_code}")
+        r = c2.get("/oauth/userinfo")
+        check("userinfo بدون توکن → 401", r.status_code == 401)
 
 srv.shutdown()
 

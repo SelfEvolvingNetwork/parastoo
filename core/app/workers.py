@@ -74,6 +74,7 @@ def bootstrap_once() -> None:
         if not db.query(User).filter(User.is_admin.is_(True)).first():
             return  # هنوز ویزارد تکمیل نشده
         if db.get(Setting, "gitea_system_token"):
+            gitea.ensure_sso_source(db)   # خودترمیم منبع SSO (v0.5.7) — idempotent
             _sync_pending(db)
             return
         if not gitea.GiteaClient().healthy():
@@ -81,6 +82,7 @@ def bootstrap_once() -> None:
         print("[parastoo] bootstrapping gitea...")
         gitea.bootstrap_system_admin()
         gitea.get_system_token()
+        gitea.ensure_sso_source(db)
         print("[parastoo] gitea bootstrap done")
         _sync_pending(db)
     finally:

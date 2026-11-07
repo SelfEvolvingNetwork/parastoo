@@ -4,6 +4,7 @@
 <div class="auth-card card">
   <h1>ورود به پرستو</h1>
   <form method="post" action="/login">
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
     <label>ایمیل
       <input type="email" name="email" required placeholder="you@example.com">
     </label>

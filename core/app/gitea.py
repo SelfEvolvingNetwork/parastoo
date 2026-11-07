@@ -1,13 +1,9 @@
 """کلاینت API گیتا — همه چیز با HTTP API رسمی Gitea انجام می‌شود (بدون ssh)."""
-import re
 import secrets
 
 import httpx
 
 from .config import settings
-
-# کوکی نشست وب گیتا (پیش‌فرض گیتا؛ نصب ما کانفیگ جلسهٔ سفارشی ندارد)
-SESSION_COOKIE = "i_like_gitea"
 
 
 class GiteaError(Exception):
@@ -34,33 +30,6 @@ class GiteaClient:
             return r.status_code == 200
         except Exception:
             return False
-
-    # ---------- ورود وب (SSO پنل → گیتا، v0.5.5) ----------
-
-    def form_login(self, username: str, password: str) -> str:
-        """ورود به فرم وب گیتا — مقدار کوکی نشست گیتا را برمی‌گرداند.
-
-        مصرف‌کننده: /git/sso (SSO مالک به وب گیتا). گیتا کوکی نشست را فقط
-        پس از POST /user/login با توکن CSRF صفحهٔ ورود صادر می‌کند؛ همین دو
-        درخواست با یک cookie jar انجام می‌شود و اعتبار فقط داخل هسته می‌ماند.
-        تشخیص موفقیت = صدور کوکی نشست (ورود ناموفق صفحه را دوباره رندر می‌کند).
-        """
-        with httpx.Client(base_url=self.base, timeout=15) as c:
-            page = c.get("/user/login")
-            if page.status_code != 200:
-                raise GiteaError(f"login page: {page.status_code}")
-            m = (re.search(r'name="_csrf"[^>]*value="([^"]+)"', page.text)
-                 or re.search(r'value="([^"]+)"[^>]*name="_csrf"', page.text))
-            if not m:
-                raise GiteaError("csrf field missing on login page")
-            c.post("/user/login", data={
-                "_csrf": m.group(1), "user_name": username, "password": password,
-            })
-            sid = c.cookies.get(SESSION_COOKIE)
-            if not sid:
-                raise GiteaError("form login failed (no session cookie)")
-            return sid
-
 
     # ---------- کاربران ----------
 
@@ -194,6 +163,91 @@ class GiteaClient:
 USER_TOKEN_SCOPES = ["write:repository", "write:package"]
 SYSTEM_TOKEN_SCOPES = ["write:repository", "write:package", "write:user",
                        "write:organization", "write:admin", "read:user"]
+
+
+# ---------- SSO پنل → گیتا (v0.5.7، مسیر استاندارد OAuth2) ----------
+
+# نام منبع احراز هویت OAuth2 در گیتا — در URL جریان هم می‌آید:
+# {git-domain}/user/oauth2/parastoo
+SSO_SOURCE_NAME = "parastoo"
+
+
+def sso_client_creds(db=None) -> tuple[str, str]:
+    """client_id/secret کلاینت OAuth2 گیتا در پنل — یک‌بار تولید، در settings.
+
+    پنل خودش Provider است؛ این جفت، اعتبار کلاینتی است که گیتا با CLI رسمی
+    (admin auth add-oauth) برایش ساخته می‌شود (ensure_sso_source).
+    """
+    from .db import SessionLocal
+    from .models import Setting
+
+    own = db is None
+    s = db or SessionLocal()
+    try:
+        def _get(key: str) -> str:
+            row = s.get(Setting, key)
+            return row.value if row else ""
+        cid, csec = _get("oauth_client_id"), _get("oauth_client_secret")
+        if not cid or not csec:
+            cid = cid or "pst-idp-" + secrets.token_hex(12)
+            csec = csec or secrets.token_hex(24)
+            for k, v in (("oauth_client_id", cid), ("oauth_client_secret", csec)):
+                row = s.get(Setting, k)
+                if row is None:
+                    s.add(Setting(key=k, value=v))
+                else:
+                    row.value = v
+            s.commit()
+        return cid, csec
+    finally:
+        if own:
+            s.close()
+
+
+def sso_redirect_uri() -> str:
+    """callback دقیق گیتا — منبع SSO با همین رشتهٔ دقیق ثبت می‌شود."""
+    from . import domains
+    scheme = "https" if domains.tls() else "http"
+    return f"{scheme}://{domains.git()}/user/oauth2/{SSO_SOURCE_NAME}/callback"
+
+
+def ensure_sso_source(db=None) -> None:
+    """ایجاد idempotent منبع احراز هویت OAuth2 در گیتا — فقط با CLI رسمی.
+
+    معادل همان کاری که ادمین از UI گیتا می‌کند (Auth Source از نوع OAuth2
+    با custom URLs به اندپوینت‌های OAuth2 پنل)، خودکار و بازتولیدپذیر؛
+    در هر سیکل بوت‌استرپ صدا زده می‌شود تا پس از بازسازی گیتا هم خودترمیم
+    شود. اگر منبع با همین نام فعال باشد، دست نمی‌زند.
+    """
+    from . import dockerops, domains
+
+    token = system_token(db)
+    if not token:
+        return
+    gh = GiteaClient(token=token)
+    r = gh.client.get("/api/v1/admin/auths")
+    if r.status_code == 200:
+        for src in r.json():
+            if src.get("name") == SSO_SOURCE_NAME and src.get("is_active", False):
+                return  # از قبل هست — دست‌زدن ممنوع
+    cid, csec = sso_client_creds(db)
+    scheme = "https" if domains.tls() else "http"
+    panel = f"{scheme}://{domains.panel()}"
+    cmd = [
+        "gitea", "admin", "auth", "add-oauth",
+        "--name", SSO_SOURCE_NAME,
+        "--provider", "gitea",
+        "--key", cid,
+        "--secret", csec,
+        "--use-custom-urls", "true",
+        "--custom-auth-url", f"{panel}/oauth/authorize",
+        "--custom-token-url", f"{panel}/oauth/token",
+        "--custom-profile-url", f"{panel}/oauth/userinfo",
+    ]
+    code, out = dockerops.exec_in_gitea(cmd)
+    if code != 0:
+        raise GiteaError(f"add-oauth source: {out[:300]}")
+    print("[parastoo] gitea SSO source ready (/user/oauth2/parastoo)")
 
 
 def bootstrap_system_admin() -> None:

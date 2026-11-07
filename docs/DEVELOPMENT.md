@@ -40,7 +40,8 @@ core/app/
   tpl.py        Jinja2 + فلش‌پیام‌های فارسی + فیلترهای قالب
   devlog.py     رینگ‌بافر لاگ در حافظه (منبع /api/dev/logs)
   deps.py       resolve_user/get_current_user / csrf_guard / render / redirect / set_session
-  gitea.py      کلاینت Gitea API + provision کاربر/مخزن + seed بذر اولیه + توکن سیستمی
+  gitea.py      کلاینت Gitea API + provision کاربر/مخزن + seed بذر اولیه + توکن سیستمی + ensure_sso_source (ثبت منبع OAuth2 با CLI رسمی)
+  oauthidp.py   منطق OAuth2 Provider: کد یک‌بارمصرف ۱۲۰ثانیه‌ای + access/refresh امضاشده با itsdangerous (بدون حالت)
   dockerops.py  بیلد/push سرویس‌ها + deploy_project (کل-یا-هیچ) + شبکهٔ خصوصی پروژه + پین /etc/hosts + exec/logs
   stacks.py     داکرفایل قالبی برای static/node/python/docker + پیش‌بازرسی فایل کلید استک + دستور اجرای پیش‌فرض پایتون
   scaffolds.py  بذر جهانی مخزن تازه (یک قالب واحد: سایت استاتیک + README پنج‌مسیری) — فقط مخزن خالی
@@ -59,7 +60,8 @@ core/app/
     setup.py        ویزارد سه‌گامی: توکن نصب ← مدیر ← دامنه/HTTPS
     auth.py         ثبت‌نام/ورود/خروج + ضد brute-force
     account.py      صفحهٔ /account + تغییر رمز
-    gitsso.py       /git/sso — SSO مالک به وب گیتا (v0.5.5): نشست گیتا با اعتبار ذخیره‌شدهٔ حساب گیت؛ توکن گیتا هرگز نمایش داده نمی‌شود و پوش فقط از ریموت پل است
+    gitsso.py       /git/sso — درِ ورود به جریان استاندارد OAuth2 گیتا (v0.5.7): مرورگر به /user/oauth2/parastoo گیتا می‌رود و هویت پنل با ACCOUNT_LINKING=auto به حساب گیتای هم‌ایمیل می‌خورد (جایگزین ترفند کوکی‌ریلی v0.5.5)
+    oauthidp.py     /oauth/authorize|token|userinfo — تأمین‌کنندهٔ OAuth2 استاندارد پنل (RFC 6749) که گیتا با Auth Source رسمی خودش به آن وصل است؛ قرارداد پروفایل = client «gitea» در goth v1.80.0
     dashboard.py    / (خانه) و /dashboard
     health.py       healthz + /api/version (عمومی و سبک)
     agentdocs.py    /docs/agent — سند عمومی راهنمای عامل کاربر (تک‌منبع همیشه‌به‌روز؛ بدون رمز)

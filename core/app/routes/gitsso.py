@@ -1,61 +1,43 @@
-"""SSO مالک به وب گیتا (v0.5.5) — پایان نمایش توکن گیتا به کاربر.
+"""SSO مالک به وب گیتا (v0.5.7) — مسیر استاندارد OAuth2.
 
-مالک مثل گیت‌هاب از پنل وارد مخزن گیت می‌شود: هسته با اعتبار ذخیره‌شدهٔ
-حساب گیتِ کاربر (رمز فقط داخل هسته می‌ماند) یک نشست وب گیتا می‌سازد و
-کوکی نشست گیتا را روی دامنهٔ پایهٔ مشترک می‌نشاند؛ مرورگر مستقیم به
-git.<دامنه> می‌رود و کاربر وارد است. توکن گیتا هرگز از پنل بیرون نمی‌رود
-(فقط ورکر بیلد/پل/مارکت داخلی مصرفش می‌کنند) و پوش از خط فرمان هم از
-ریموت پل با توکن عامل همان پروژه انجام می‌شود.
-
-امنیت: GET فقط صفحهٔ میانی با CSRF را رندر می‌کند و عملیات واقعی روی POST
-با csrf_guard انجام می‌شود؛ کوکی فقط پس از ورود موفق سمت گیتا و فقط برای
-حساب خودِ کاربر ست می‌شود (login-CSRF ندارد). کوکیِ خودِ گیتا (host-only)
-در صورت وجود، مقدم بر این کوکی دامنه‌محور است — ورود معمول گیتا باز هم کار می‌کند.
+تاریخچه: v0.5.5/0.5.6 نشست گیتا را با شبیه‌سازی فرم ورود (استخراج CSRF +
+POST اعتبار ذخیره‌شده) و نشاندن کوکی نشست روی دامنهٔ پایه می‌ساخت — ترفندی
+شکننده که کوکی گیتا را به همهٔ زیردامنه‌ها از جمله اپ‌های کاربران درز می‌داد
+و هر تغییر شکل فرم گیتا را می‌شکست. اکنون (فرمان مالک: «اصولی و بدون ترفند»)
+پنل یک OAuth2 Provider استاندارد است و گیتا با قابلیت رسمی خودش (Auth
+Source از نوع OAuth2 با custom URLs — خودکار با ensure_sso_source ساخته
+می‌شود) به آن متصل است: این endpoint فقط مرورگر را به جریان رسمی
+/user/oauth2/parastoo گیتا می‌فرستد و هویت پنل با ACCOUNT_LINKING=auto
+به حساب گیتای همان کاربر (هم‌ایمیل) پیوند می‌خورد. هیچ کوکی‌ای اینجا
+دستکاری نمی‌شود و توکن گیتا هرگز از پنل بیرون نمی‌رود.
 """
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
+from sqlalchemy.orm import Session
 
 from .. import domains, gitea
 from ..db import get_db
-from ..deps import ctx, csrf_guard, redirect, render
+from ..deps import redirect, require_login
+from ..models import User
 
 router = APIRouter()
 
 
-def _git_ready(user) -> bool:
-    return bool(user.gitea_username and user.gitea_password)
-
-
 @router.get("/git/sso")
 def sso_start(request: Request,
-              user=Depends(csrf_guard),
-              db=Depends(get_db)):
-    """صفحهٔ میانی SSO — فرم خودارسال با CSRF پنل."""
-    if not _git_ready(user):
-        return redirect("/dashboard", "git_account_pending")
-    return render("gitsso.html", ctx(request, user))
-
-
-@router.post("/git/sso")
-def sso_go(request: Request,
-           user=Depends(csrf_guard),
-           db=Depends(get_db)):
-    """ورود سمت گیتا با اعتبار ذخیره‌شده + نشاندن کوکی نشست روی دامنهٔ پایه."""
-    if not _git_ready(user):
-        return redirect("/dashboard", "git_account_pending")
-    try:
-        sid = gitea.GiteaClient().form_login(user.gitea_username,
-                                             user.gitea_password)
-    except Exception:
-        return redirect("/dashboard", "git_sso_failed")
+              user: User = Depends(require_login),
+              db: Session = Depends(get_db)):
+    """ورود به جریان رسمی OAuth2 گیتا (کلاینت «parastoo» روی گیتا)."""
+    if not user.gitea_username:
+        # حساب گیت هنوز ساخته نشده (کاربر تازه قبل از اولین پروژه) —
+        # همان مسیر idempotent ورکرها؛ بدون آن، لینک‌کردن هویت ناقص می‌ماند
+        try:
+            gitea.provision_user_git(user)
+            db.commit()
+        except Exception:
+            db.rollback()
+            return redirect("/dashboard", "git_account_pending")
     scheme = "https" if domains.tls() else "http"
-    # مقصد: صفحهٔ پروفایل خود کاربر (فهرست مخزن‌هایش) — آشناترین صفحه برای مالک
-    resp = RedirectResponse(f"{scheme}://{domains.git()}/{user.gitea_username}",
-                            status_code=303)
-    resp.set_cookie(
-        gitea.SESSION_COOKIE, sid,
-        domain=f".{domains.base()}",
-        httponly=True, samesite="lax",
-        secure=domains.tls(), max_age=60 * 60 * 8,
-    )
-    return resp
+    return RedirectResponse(
+        f"{scheme}://{domains.git()}/user/oauth2/{gitea.SSO_SOURCE_NAME}",
+        status_code=302)

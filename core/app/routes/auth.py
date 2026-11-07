@@ -113,14 +113,24 @@ def register_submit(
 
 # ---------- ورود / خروج ----------
 
+def _safe_next(nxt: str | None) -> str | None:
+    """فقط مسیر محلی — گارد open-redirect برای برگشت از جریان‌هایی مثل
+    /oauth/authorize (SSO گیتا). «//host» و schemeها رد می‌شوند."""
+    if not nxt or not nxt.startswith("/") or nxt.startswith("//") \
+            or "://" in nxt or "\\" in nxt:
+        return None
+    return nxt
+
+
 @router.get("/login")
 def login_page(
     request: Request,
     user: User | None = Depends(get_current_user),
+    nxt: str = "",
 ):
     if user:
-        return redirect("/")
-    return render("login.html", ctx(request, None))
+        return redirect(_safe_next(nxt) or "/")
+    return render("login.html", ctx(request, None, next=_safe_next(nxt)))
 
 
 @router.post("/login")
@@ -128,6 +138,7 @@ def login_submit(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
+    next: str = Form(""),
     db: Session = Depends(get_db),
 ):
     email = email.strip().lower()
@@ -140,7 +151,7 @@ def login_submit(
         login_record_fail(key)
         return redirect("/login?m=bad_login")
     login_reset(key)
-    resp = redirect("/")
+    resp = redirect(_safe_next(next) or "/")
     set_session(resp, user.id)
     return resp
 
