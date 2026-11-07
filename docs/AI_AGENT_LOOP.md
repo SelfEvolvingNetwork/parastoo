@@ -21,21 +21,17 @@
    ```
    اگر کلون از قبل هست: `git pull --ff-only`. سپس این سند + `WORKLOG.md` + `docs/LESSONS.md` را بخوان.
 2. **ذخیرهٔ امن سه مقدار:** `parastoo/.secrets/access-agent.env` با همین سه کلید بساز (chmod 600، gitignored). قرارداد کامل اتصال: `docs/AGENT_PROTOCOL.fa.md` در مخزن access-agent.
-3. **اتصال پین‌شده و سلامت:** الگوی پین در §۲ همان پروتکل — هش گواهیِ دریافتی باید == `CERT_SHA256` شود (در تولید هرگز اعتماد کورکورانه `-k` نه). سپس `GET /healthz` → `GET /api/status`؛ فیلد `parastoo_install_path` می‌گوید پرستو کجای سرور است.
-4. **نصب پرستو اگر نیست (سرور نو):** از همان پل access-agent:
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/SelfEvolvingNetwork/parastoo/main/bootstrap.sh | sudo bash
-   ```
-   در ایران اگر گیت‌هاب باز نشد، همان دستور با پیشوند پروکسی (gh-proxy). نصب‌کننده صفر-سؤال است (IP عمومی، دامنهٔ nip.io، secrets، Traefik، آپدیتر خودکار). معیار پایان: `/api/version` پنل پاسخ دهد.
-5. **توکن پوش گیت‌هاب:** پات مالک روی سرور در access-agent است — با هدف ثبت‌شده از broker بگیر (`POST /api/github/token`، purpose ≥ ۸ کاراکتر)، در `.secrets/github.env` (chmod 600، خارج از گیت) بنویس تا credential-helper پوش بخواند؛ هرگز در کد/کامیت/لاگ/گزارش نمی‌آید (§۷).
+3. **اتصال پین‌شده و سلامت:** هش گواهیِ دریافتی باید == `CERT_SHA256` شود (در تولید هرگز اعتماد کورکورانه `-k` نه). سپس `GET /healthz` → `GET /api/status`؛ فیلد `parastoo_install_path` می‌گوید پرستو کجای سرور است.
+4. **نصب پرستو اگر نیست (سرور نو):** از همان پل access-agent با دستور تک‌خطی README (در ایران با پیشوند gh-proxy). معیار پایان: `/api/version` پنل پاسخ دهد.
+5. **توکن پوش گیت‌هاب:** از broker بگیر (`POST /api/github/token`، purpose ≥ ۸ کاراکتر)، در `.secrets/github.env` (chmod 600، خارج از گیت) بنویس تا credential-helper پوش بخواند؛ هرگز در کد/کامیت/لاگ/گزارش نمی‌آید (§۷).
 6. **ادامه:** از این‌جا M0 همین سند است. به مالک گزارش شروع بده (نسخهٔ مستقر، وضعیت دامنه/DNS، نکته‌های باز) و منتظر فرمان بمان.
 
-**دو درس میدانی بازسازی کامل سرور (2026-11-05) — در شروع سرد رعایت کن:**
+**دو قاعدهٔ بازسازی کامل سرور (جزئیات و دفاع‌ها در LESSONS):**
 
-- **قانون گواهی ماندگار (v0.3.32) — گواهی‌ها هرگز حذف نمی‌شوند و پیش از هر درخواست چک می‌شوند.** هویت TLS سرور در فروشگاه ماندگار `/var/lib/parastoo/tls/acme.json` است (0700/0600): `scripts/tls-store.sh` آن را از ولوم `traefik_certs` همگام می‌کند (تایمر هر ۱۰ دقیقه) و نصب/ریست کارخانه/تست پیش از هر فعالیت ACME با `ensure` از همان بازیابی می‌کنند — **فقط گواهی واقعاً غایب از CA خواسته می‌شود**؛ نصب‌های تازهٔ مکرر دیگر هرگز به سقف نرخ لت‌انکریپت نمی‌خورند. برای بازسازی کامل OS: پیش از بازسازی فروشگاه را از طریق پل به `.secrets/backup-acme-<تاریخ>.json` sandbox منتقل کن و پس از نصب برگردان (chmod 600) → **صفر صدور مجدد**، بدون ریسک rate-limit. نسخه‌های قدیمی روی همین دیسک (`backups/acme-*.json`) با بازسازی OS می‌سوزند — نسخهٔ برون‌سروری فقط دست عامل است.
-- **فعال‌سازی دامنه بدون ویزارد = از داخل کانتینر core، یک‌باره و به‌ترتیب.** وقتی ادمین هنوز ساخته نشده و ویزارد اجرا نشده، از داخل کانتینر اجرا کن: `sudo docker exec -e PYTHONPATH=/app parastoo-core python -c "..."` — ماژول‌ها: `app.traefik_ops` (apply_domain و sync_base_zone) و `app.services.dnsops` (provision_zone). **ترتیب الزامی:** اول `apply_domain` (ثبت settings دامنه)، بعد `provision_zone(kind="base")` (ساخت زون PDNS)، بعد `sync_base_zone` (بازنویسی Aهای ریشه/www/panel/git/apps با IP زنده). **`PYTHONPATH=/app` حیاتی است:** پکیج در `/app/app` است و اجرای `python <مسیر-اسکریپت>`، `sys.path` را با مسیر اسکریپت خراب می‌کند و import شکست می‌خورد — اجرای heredoc/`-c` با env، مسیر درست است.
+- **قانون گواهی ماندگار (v0.3.32):** فروشگاه `/var/lib/parastoo/tls` هرگز حذف نمی‌شود و پیش از هر فعالیت ACME با `scripts/tls-store.sh ensure` از آن بازیابی می‌شود — فقط گواهی واقعاً غایب از CA خواسته می‌شود. برای بازسازی کامل OS: پیش از بازسازی، فروشگاه را از طریق پل به `.secrets/backup-acme-<تاریخ>.json` sandbox منتقل کن و پس از نصب برگردان (chmod 600) → **صفر صدور مجدد**؛ نسخه‌های روی دیسک سرور با بازسازی OS می‌سوزند — نسخهٔ برون‌سروری فقط دست عامل است.
+- **فعال‌سازی دامنه بدون ویزارد = از داخل کانتینر core، یک‌باره و به‌ترتیب.** `sudo docker exec -e PYTHONPATH=/app parastoo-core python -c "..."` — ماژول‌ها: `app.traefik_ops` (apply_domain و sync_base_zone) و `app.services.dnsops` (provision_zone). **ترتیب الزامی:** اول `apply_domain`، بعد `provision_zone(kind="base")`، بعد `sync_base_zone`. **`PYTHONPATH=/app` حیاتی است** — اجرای اسکریپت با مسیر فایل، import را می‌شکند؛ `-c`/heredoc با env درست است.
 
-> بلوک تحویل خودِ access-agent تولید می‌شود (v0.1.3) — عامل آن را نمی‌سازد؛ مالک فقط کپی می‌کند.
+> بلوک تحویل خودِ access-agent تولید می‌شود — عامل آن را نمی‌سازد؛ مالک فقط کپی می‌کند.
 
 ---
 
@@ -45,25 +41,23 @@
 |---|---|
 | مخزن گیت‌هاب | `https://github.com/SelfEvolvingNetwork/parastoo` — شاخهٔ انتشار: `main` |
 | کلون محلی کاری | `/home/z/my-project/parastoo` (sandbox؛ بین جلسات حفظ می‌شود) |
-| **پنل زندهٔ پرستو** | **`https://panel.zeolitecenter.ir`** (دامنهٔ رسمی فعال؛ قبل از ویزارد: `http://panel.193.151.142.128.nip.io`) |
+| **پنل زندهٔ پرستو** | **`https://panel.zeolitecenter.ir`** |
 | گیت داخلی سرور | `https://git.zeolitecenter.ir` |
-| الگوی سایت‌های کاربران | `https://<slug>.apps.zeolitecenter.ir` (وایلکارد `*.apps` در زون) |
-| دامنهٔ پایهٔ سرور (BASE_DOMAIN) | **`zeolitecenter.ir` — فعال** (glue ایرنیک → ns1/ns2 روی همین سرور، زون PDNS کامل، ۴ گواهی LE از acme.json پشتیبان بازگردانی‌شده؛ سرور 2026-11-05 از صفر بازسازی شد و دامنه دوباره فعال شد) |
-| فایل امن محلی (توکن‌ها) | `/home/z/my-project/parastoo/.secrets/github.env` — chmod 600، gitignored، مستثنا از rsync انتشار |
-| **ایجنت دسترسی مستقل (access-agent)** | مخزن `https://github.com/SelfEvolvingNetwork/access-agent` (v0.1.3)؛ کلون محلی `/home/z/my-project/access-agent`؛ **روی سرور نصب و راستی‌آزمایی شده (2026-11-05)** — سرویس systemd مستقل از پرستو و داکر؛ مقادیر اتصال (URL + اثرانگشت گواهی + توکن عامل) در `.secrets/access-agent.env` — بلوک آمادهٔ این سه مقدار: `sudo access-agent handoff` روی سرور؛ تنها مسیر اجرای دستور عامل از همین پس |
-| CI مخزن | `.github/workflows/ci.yml` (۴ سوئیت دودی + سینتکس شل، روی هر push به main) |
+| الگوی سایت‌های کاربران | `https://<slug>.apps.zeolitecenter.ir` (وایلکارد `*.apps`) |
+| دامنهٔ پایه (BASE_DOMAIN) | `zeolitecenter.ir` — زون PDNS روی همین سرور (glue ایرنیک → ns1/ns2) |
+| سرور | `193.151.142.128` (ایران) |
+| **ایجنت دسترسی مستقل (access-agent)** | مخزن `https://github.com/SelfEvolvingNetwork/access-agent`؛ سرویس systemd مستقل از پرستو و داکر؛ مقادیر اتصال در `.secrets/access-agent.env`؛ بلوک آماده: `sudo access-agent handoff`؛ **تنها مسیر اجرای دستور عامل روی سرور** |
+| CI مخزن | `.github/workflows/ci.yml` (سوئیت‌های دودی + سینتکس شل، روی هر push به main) |
 | هارنس راستی‌آزمایی زندهٔ عمومی | `tests/e2e_live.py` (لایهٔ الف/ب گام M6؛ فقط خواندنی) |
 | هارنس کاربر-محور زنده | `tests/e2e_user.py` (لایهٔ جِ M6؛ نوشتاری فقط در حالت dev، با پاکسازی خودکار) |
 
-فایل `.secrets/github.env` این کلیدها را دارد: `GITHUB_TOKEN` (پوش به مخزن)، `PARASTOO_PANEL_URL`، `PARASTOO_GIT_URL`، `PARASTOO_BASE_DOMAIN`، `PARASTOO_DEV_TOKEN` (توضیح در §۲). بارگذاری آن:
+فایل `.secrets/github.env` این کلیدها را دارد: `GITHUB_TOKEN` (پوش به مخزن؛ از broker گرفته می‌شود)، `PARASTOO_PANEL_URL`، `PARASTOO_GIT_URL`، `PARASTOO_BASE_DOMAIN`، `PARASTOO_DEV_TOKEN` (در صورت ثبت). بارگذاری:
 
 ```bash
 set -a; . /home/z/my-project/parastoo/.secrets/github.env; set +a
 ```
 
 اگر توکن گیت‌هاب عوض شد، فقط همین فایل را به‌روز کن — گیتِ کلون با credential-helper (`store --file=.secrets/.git-credentials`) خودکار از آن می‌خواند و توکن هرگز در URL ریموت یا تاریخچه نمی‌نشیند.
-
-فایل `.secrets/access-agent.env` هم سه مقدار اتصال به ایجنت دسترسی را دارد: `ACCESS_AGENT_URL`، `ACCESS_AGENT_CERT_SHA256`، `ACCESS_AGENT_AGENT_TOKEN` (پس از نصب مالک پر می‌شود؛ قرارداد کامل اتصال: `docs/AGENT_PROTOCOL.fa.md` در مخزن access-agent).
 
 ---
 
@@ -99,7 +93,7 @@ docker compose up -d --build core   # یا: sudo bash scripts/auto-update.sh --f
 
 1. **یک منظوره:** هر چرخه دقیقاً یک تغییر (قابلیت/رفع/ریفکتور). تغییر بزرگ = چند چرخهٔ پشت‌سرهم.
 2. **بومپ نسخه:** هر تغییرِ کارکردی `VERSION` در `core/app/config.py` را +۰.۰.۱ می‌کند و `README.md` و `bootstrap.sh` (نام zip) هم‌نسخه می‌شوند — چک‌های محافظ خودشان گرفتنشان. تغییر صرفاً مستنداتی/کتاب‌نگارتی بومپ نمی‌خواهد؛ تشخیص استقرار با **SHA کامیت** است نه نسخه.
-3. **پیام کامیت:** فارسی و فشرده — حداکثر ~۶۰۰ کاراکتر: `پرستو v0.3.X — <تغییر اصلی>: <جزئیات کلیدی>؛ <تست‌ها>`. داستان‌گویی در پیام کامیت ممنوع؛ جزئیات در کد و تست‌هاست.
+3. **پیام کامیت:** فارسی و فشرده — حداکثر ~۶۰۰ کاراکتر: `پرستو vX.Y.Z — <تغییر اصلی>: <جزئیات کلیدی>؛ <تست‌ها>`. داستان‌گویی در پیام کامیت ممنوع؛ جزئیات در کد و تست‌هاست.
 4. **ثبت در ورکلاگ:** پایان هر چرخه فقط **یک خط** در `WORKLOG.md` §۵ (تاریخ + نسخه + یک جمله ≤۲۰۰ کاراکتر) — ورکلاگ شاخص است نه حافظهٔ روایی؛ درس ماندگار فقط در `docs/LESSONS.md`.
 5. **پاسخ به مالک:** فارسی، خلاصهٔ تغییر + نتیجهٔ راستی‌آزمایی زنده + اگر چیزی مانده.
 6. **محرمانگی:** توکن/رمز هرگز در کد، کامیت، لاگ یا پاسخ نمی‌آید؛ تنها محل مجاز: `.secrets/` (خارج از گیت).
@@ -122,11 +116,11 @@ python3 tests/e2e_live.py        # وضعیت زنده؛ dev_mode و commit مس
 
 ### M1 — انتخاب تغییر و معیار پذیرش
 
-تغییر کوچکِ یک‌منظوره انتخاب کن و **قبل از کدنویسی** معیار پذیرش را مشخص کن (مثلاً «ثبت‌نام با ایمیل تکراری فلش X می‌دهد و ۲ چک جدید در smoke سبز می‌شود»). اگر تغییر از درخواست مالک است، عیناً همان؛ اگر ابتکار خودت است، با قاعدهٔ میانه‌روی (پیشینهٔ v0.3.1) توجیه کن.
+تغییر کوچکِ یک‌منظوره انتخاب کن و **قبل از کدنویسی** معیار پذیرش را مشخص کن (مثلاً «ثبت‌نام با ایمیل تکراری فلش X می‌دهد و ۲ چک جدید در smoke سبز می‌شود»). اگر تغییر از درخواست مالک است، عیناً همان؛ اگر ابتکار خودت است، با قاعدهٔ میانه‌روی توجیه کن.
 
 ### M2 — پیاده‌سازی طبق معماری
 
-قواعد طلایی `docs/DEVELOPMENT.md` (۷ قاعده) الزامی است؛ خلاصهٔ سخت‌گیرانه‌ها: منطق کسب‌وکار فقط در `services/`، مسیرها نازک، اعتبارسنجی از `validation.py`، تک‌منبع بودن هر قاعده، idempotent و خودترمیم، پیکربندی فقط از env.
+قواعد طلایی `docs/DEVELOPMENT.md` الزامی است؛ خلاصهٔ سخت‌گیرانه‌ها: منطق کسب‌وکار فقط در `services/`، مسیرها نازک، اعتبارسنجی از `validation.py`، تک‌منبع بودن هر قاعده، idempotent و خودترمیم، پیکربندی فقط از env.
 
 ### M3 — چک‌های محلی (دروازهٔ پوش — بدون سبز، پوش ممنوع)
 
@@ -140,7 +134,7 @@ python tests/smoke_test.py && python tests/smoke_wizard.py \
 ruff check core --select F401,F811,F841 && bash -n install.sh scripts/*.sh bin/parastoo
 ```
 
-معیار عبور: **تمام سوئیت‌ها سبز** (مجموع فعلی ~۲۸۰ چک؛ عدد دقیق را خروجی خود سوئیت‌ها می‌دهد) + ruff تمیز. قرمز = برگرد به M2؛ هرگز با «امیدوارم سرور درست باشد» پوش نکن.
+معیار عبور: **تمام سوئیت‌ها سبز** (جمع فعلی ~۵۴۰ چک؛ عدد دقیق را خروجی خود سوئیت‌ها می‌دهد) + ruff تمیز. قرمز = برگرد به M2؛ هرگز با «امیدوارم سرور درست باشد» پوش نکن.
 
 ### M4 — بومپ، ورکلاگ، کامیت، پوش
 
@@ -154,7 +148,7 @@ ruff check core --select F401,F811,F841 && bash -n install.sh scripts/*.sh bin/p
 SHA=$(git -C /home/z/my-project/parastoo rev-parse HEAD)
 for i in $(seq 1 16); do
   sleep 30
-  curl -fsS http://panel.193.151.142.128.nip.io/api/version 2>/dev/null | grep -q "\"commit\":\"$SHA\"" && { echo "deployed ✓"; break; }
+  curl -fsS https://panel.zeolitecenter.ir/api/version 2>/dev/null | grep -q "\"commit\":\"$SHA\"" && { echo "deployed ✓"; break; }
 done
 python3 tests/e2e_live.py --expect-commit "$SHA"
 ```
@@ -171,7 +165,7 @@ python3 tests/e2e_live.py --expect-commit "$SHA"
 
 سه لایه، به ترتیب:
 
-- **الف) لایهٔ عمومی:** `python3 tests/e2e_live.py` — ۱۲ چک استاندارد (نسخه/سلامت/گاردها/هدرها/وب‌هوک).
+- **الف) لایهٔ عمومی:** `python3 tests/e2e_live.py` — چک‌های استاندارد (نسخه/سلامت/گاردها/هدرها/وب‌هوک/پل).
 - **ب) لایهٔ توسعه‌دهنده (فقط حالت dev):** `PARASTOO_DEV_TOKEN=... python3 tests/e2e_live.py` — گزارش کامل `/api/dev/report` (سلامت db/docker/gitea، دیسک، کانتینرها، بیلدهای ناموفق با دمِ لاگ، تاریخچهٔ آپدیت) + `/api/dev/updates`.
 - **ج) سناریوی کاربر واقعی** — فقط در حالت dev: `python3 tests/e2e_user.py` — چرخهٔ کامل خودکار (ثبت‌نام → پروژه → کیف پول آزمایشی → بیلد/انتشار → پاکسازی). با `--fast` بیلد/انتشار حذف می‌شود. برای سناریوی اضافیِ خاصِ یک تغییر، کلاس `Browser` همین فایل را گسترش بده؛ برای تغییرِ زیرساختی، لایهٔ الف/ب کافی است.
 
@@ -198,7 +192,7 @@ python3 tests/e2e_live.py --expect-commit "$SHA"
 ```python
 # با requests (یا urllib)؛ کوکی‌ها را در یک Session نگه دار
 s = requests.Session()
-r = s.post("http://panel.193.151.142.128.nip.io/login",
+r = s.post("https://panel.zeolitecenter.ir/login",
            data={"email": "...", "password": "..."})  # ورود موفق → 303 به /dashboard؛ ناموفق → 200 با فلش
 # از این پس برای هر POST واردشده: فیلد مخفی csrf را از فرم صفحه بگیر و همراه بفرست
 csrf = re.search(r'name="csrf" value="([^"]+)"', s.get(".../projects/new").text).group(1)
@@ -210,12 +204,12 @@ csrf = re.search(r'name="csrf" value="([^"]+)"', s.get(".../projects/new").text)
 2. ساخت پروژه `POST /projects/new` (title/slug/stack) → جزئیات پروژه؛ مخزن گیت باید اسکفولد بگیرد.
 3. محتوا: یا از اسکفولد پیش‌فرض، یا push به مخزن گیت داخلی (`git.<BASE_DOMAIN>`) با توکن حساب گیت کاربر.
 4. بیلد: خودکار با وب‌هوک؛ وضعیت از صفحهٔ پروژه/`/api/dev/report` (بیلدهای ناموفق با دمِ لاگ).
-5. انتشار `POST /projects/<slug>/publish` → `GET http://<slug>.apps.193.151.142.128.nip.io` باید 200 با محتوای موردانتظار بدهد.
+5. انتشار `POST /projects/<slug>/publish` → `GET https://<slug>.apps.<BASE_DOMAIN>` باید 200 با محتوای موردانتظار بدهد.
 6. پاکسازی: حذف سایت و پروژه (منطقهٔ خطر با تأیید تایپی slug) → هر دو URL باید 404 شوند.
 
 **پرداخت آزمایشی (فقط dev):** `POST /wallet/charge` → صفحهٔ `/pay/mock/<token>` → دکمهٔ پرداخت → callback → موجودی + یک `WalletTx` رسیددار؛ پخش دوبارهٔ callback باید با `pay_dup` رد شود (idempotency).
 
-**نکتهٔ هارنس:** دکمه‌های فرم‌ها `type=submit` ندارند (سلکتور: `button`)؛ دیالوگهای `confirm()` باید accept شوند؛ پس از انیمیشن منوی موبایل ~۴۰۰ms صبر کن. (LESSONS/WORKLOG)
+**نکتهٔ هارنس:** دکمه‌های فرم‌ها `type=submit` ندارند (سلکتور: `button`)؛ دیالوگهای `confirm()` باید accept شوند؛ پس از انیمیشن منوی موبایل ~۴۰۰ms صبر کن.
 
 ---
 
@@ -234,69 +228,69 @@ csrf = re.search(r'name="csrf" value="([^"]+)"', s.get(".../projects/new").text)
 
 فیلدهای کلیدی `/api/dev/report`: `app.{version,commit,deployed_at,dev_mode}` · `health.{db,docker,gitea,disk_percent}` · `usage.{users,projects,sites_running,builds_failed_total,recent_failed_builds}` · `updates[]` · `errors[]` (گزارش هرگز رمز برنمی‌گرداند — فقط پرچم‌ها).
 
-### پل دسترسی عامل — netcheck/sql در حالت توسعه (v0.3.7) + حذف exec (v0.3.11)
+### پل‌های netcheck/sql — فقط حالت توسعه
 
-هدف: عامل هیچ‌چیز را حدس نزند. دو ابزار زیر فقط وقتی `dev_mode=true` است وجود دارند (در حالت تجاری 404 — همان گارد همهٔ `/api/dev/*`). منطق در `services/agentops.py` است؛ هر فراخوانی در `DATA_DIR/dev/agent-audit.jsonl` ثبت می‌شود. پل exec (معادل SSH، v0.3.7~0.3.10) از v0.3.11 به دستور مالک کامل حذف شده — حتی با توکن dev هم 404 می‌دهد؛ تنها مسیر اجرای دستور عامل، access-agent مستقل است.
-
-**۱) `GET /api/dev/netcheck` — دسترسی جهانی از داخل سرور (ایران):**
+هر فراخوانی در `DATA_DIR/dev/agent-audit.jsonl` ثبت می‌شود. **۱) `GET /api/dev/netcheck`:**
 
 ```bash
 curl -s -H "X-Dev-Token: $PARASTOO_DEV_TOKEN" \
-     "http://panel.<base-domain>/api/dev/netcheck?groups=github,dockerhub"
+     "https://panel.zeolitecenter.ir/api/dev/netcheck?groups=github,dockerhub"
 # groups=pip,npm,infra,proxy,configured | یا url دلخواه: &url=https://example.com
 # ← {ok:true, targets:[{url,ok,status,latency_ms,ip,error}], n_ok, n_total}
 ```
 
 - «ok» یعنی پاسخ HTTP رسید (هر وضعیتی — حتی 401/403، چون مثلاً `registry-1.docker.io/v2/` سالم هم 401 می‌دهد)؛ خطای DNS/تایم‌اوت یعنی واقعاً بسته است.
-- گروه `configured` همان پراکسی/آینه‌های ثبت‌شده در `.env` (`PARASTOO_GH_PROXY`، آینهٔ pip/npm) را می‌سنجد.
+- گروه `configured` همان پراکسی/آینه‌های ثبت‌شده در `.env` را می‌سنجد.
 
 **۲) `POST /api/dev/sql` — بازرسی داده بدون حدس (فقط‌خواندنی):**
 
 ```bash
 curl -s -H "X-Dev-Token: $PARASTOO_DEV_TOKEN" -H "Content-Type: application/json" \
      -d '{"sql":"SELECT slug,status FROM sites ORDER BY id DESC LIMIT 5"}' \
-     http://panel.<base-domain>/api/dev/sql
+     https://panel.zeolitecenter.ir/api/dev/sql
 # ← {ok:true, columns:[...], rows:[[...]], n_rows, has_more}
 ```
 
-- فقط `SELECT`/`WITH` تک‌دستوری؛ هر کلیدواژهٔ تغییردهنده (insert/update/delete/drop/…) و «;» میانی → 400. اجرا همیشه rollback می‌شود. سقف ۲۰۰ ردیف/سلول ۳۰۰ کاراکتر؛ انواع اصلی JSON (عدد/بولی) حفظ می‌شوند.
+- فقط `SELECT`/`WITH` تک‌دستوری؛ هر کلیدواژهٔ تغییردهنده و «;» میانی → 400. اجرا همیشه rollback می‌شود. سقف ۲۰۰ ردیف/سلول ۳۰۰ کاراکتر.
 
-**قاعدهٔ استفاده:** قبل از فراخوانی هر دو مسیر، `dev_mode` را از `/api/version` چک کن؛ اگر false است، این ابزارها اصلاً وجود ندارند (404) و عامل باید مانند گذشته فقط لایهٔ عمومی را ببیند و نیاز سروری را برای مالک گزارش کند. اجرای دستور روی سرور فقط از access-agent است.
+**قاعدهٔ استفاده:** قبل از فراخوانی، `dev_mode` را از `/api/version` چک کن؛ اگر false است، این ابزارها اصلاً وجود ندارند (404) و نیاز سروری را برای مالک گزارش کن. اجرای دستور روی سرور فقط از access-agent است.
 
-### مسیر مستقل access-agent — تنها مسیر اجرای دستور عامل (مستقر، 2026-11-05)
+### مسیر مستقل access-agent — تنها مسیر اجرای دستور عامل
 
-از مخزن `SelfEvolvingNetwork/access-agent` (v0.1.2): سرویس systemd مستقل روی سرور که به عامل exec/status/token می‌دهد — **چرخهٔ توسعه–تست با کرش پرستو نمی‌شکند** و عامل نصب/تعمیر/بازراه‌اندازی خودِ پرستو را خودگردان انجام می‌دهد. نصب و راستی‌آزمایی کامل شد (۴ چک M0 سبز: اثرانگشت گواهی + healthz + status + exec)؛ توکن عامل از کانال HTTPS پین‌شده چرخش شد و توکن ادمین فقط روی خود سرور است (`sudo access-agent show-admin-token`). قرارداد اتصال کامل (پین گواهی با اثرانگشت، endpoints، سقف‌ها، خطوط قرمز ویژه): `docs/AGENT_PROTOCOL.fa.md` همان مخزن؛ مقادیر اتصال در `.secrets/access-agent.env`. قاعدهٔ عامل: اگر `/api/version` پرستو پاسخ نداد، اول وضعیت را از access-agent بگیر (`/healthz` → `/api/status` → `/api/exec`)، علت را با لاگ سرور پیدا کن، تعمیر را انجام بده و نتیجهٔ کامل را به مالک گزارش کن.
+سرویس systemd مستقل روی سرور که به عامل exec/status/token می‌دهد — **چرخهٔ توسعه–تست با کرش پرستو نمی‌شکند** و عامل نصب/تعمیر/بازراه‌اندازی خودِ پرستو را خودگردان انجام می‌دهد. قرارداد اتصال کامل (پین گواهی با اثرانگشت، endpoints، سقف‌ها، خطوط قرمز): `docs/AGENT_PROTOCOL.fa.md` همان مخزن؛ مقادیر اتصال در `.secrets/access-agent.env`. توکن ادمین فقط روی خود سرور است (`sudo access-agent show-admin-token`). قاعدهٔ عامل: اگر `/api/version` پرستو پاسخ نداد، اول وضعیت را از access-agent بگیر (`/healthz` → `/api/status` → `/api/exec`)، علت را با لاگ سرور پیدا کن، تعمیر را انجام بده و نتیجهٔ کامل را به مالک گزارش کن.
 
 ---
 
 ## ۷) خطوط قرمز ایمنی (غیرقابل مذاکره)
 
 1. توکن/رمز فقط در `.secrets/`؛ هرگز در کد/کامیت/لاگ/گزارش. (مخزن عمومی است — اسکنر گیت‌هاب توکن لو رفته را ابطال می‌کند.)
-2. از راه دور هرگز `.env`، `config/`، `backups/`، `logs/` سرور را تغییر نده — حتی auto-update اینها را دست نمی‌زند. **این قاعده با پل exec عامل هم برقرار است** (حالا فقط از طریق access-agent): بدون تأیید صریح مالک این مسیرها باز نمی‌شوند و خروجی پل توانِ تشخیصی است نه تغییرِ زیرساخت.
-3. بدون تأیید مالک: `factory-reset`، `uninstall`، تغییر دامنه/TLS، تغییر کاربر ادمین، اتصال درگاه واقعی — و هر دستور تخریبی دیگر (از هر پل — access-agent هم شامل است). دستکاری `/etc/access-agent/**` از طریق exec مگر با درخواست صریح مالک ممنوع.
-4. در حالت تجاری فقط تست خواندنی؛ هیچ نوشتن‌حالتی روی دادهٔ کاربران واقعی. پل netcheck/sql در حالت تجاری 404 است؛ پل exec از v0.3.11 کلاً حذف شده — عامل نباید به هیچ راه دیگر دنبال دورزدنش باشد.
+2. از راه دور هرگز `.env`، `config/`، `backups/`، `logs/` سرور را تغییر نده — حتی auto-update اینها را دست نمی‌زند. **این قاعده با access-agent هم برقرار است:** بدون تأیید صریح مالک این مسیرها باز نمی‌شوند.
+3. بدون تأیید مالک: `factory-reset`، `uninstall`، تغییر دامنه/TLS، تغییر کاربر ادمین، اتصال درگاه واقعی — و هر دستور تخریبی دیگر (access-agent هم شامل است). دستکاری `/etc/access-agent/**` از طریق exec مگر با درخواست صریح مالک ممنوع.
+4. در حالت تجاری فقط تست خواندنی؛ هیچ نوشتن‌حالتی روی دادهٔ کاربران واقعی. پل netcheck/sql در حالت تجاری 404 است — عامل نباید به هیچ راه دیگر دنبال دورزدنش باشد.
 5. پوش بدون چک‌های سبز M3 ممنوع؛ پوش نیروی انتشار است.
 6. اگر بعد از استقرار چیز شکست: اول پروتکل M5؛ اگر باگ کد بود، `git revert` + پوش (سرور خودش برمی‌گردد) — بکاپ کد خودکار در `backups/code-*.tar.gz` سرور هست، اما بازگشتِ اولیه همیشه از طریق گیت است.
-7. هر فراخوانی پل‌های عامل ثبت می‌شود — netcheck/sql در `DATA_DIR/dev/agent-audit.jsonl` پرستو و همهٔ فراخوانی‌های access-agent در `audit.jsonl` خودش؛ عامل حق پاک‌کردن/ویرایش هیچ‌کدام را ندارد؛ شفافیت کامل با مالک.
+7. هر فراخوانی پل‌های عامل ثبت می‌شود — netcheck/sql در `agent-audit.jsonl` پرستو و همهٔ فراخوانی‌های access-agent در `audit.jsonl` خودش؛ عامل حق پاک‌کردن/ویرایش هیچ‌کدام را ندارد؛ شفافیت کامل با مالک.
 
 ---
 
 ## ۸) وضعیت پیاده‌سازی این چرخه
 
-**فعال و مستقر ✓ (وضعیت جاری، بدون تاریخچه):**
+**فعال و مستقر ✓ (وضعیت جاری):**
 
 - پل انتشار: push به main → تایمر systemd + `scripts/auto-update.sh` (فلاک، بکاپ کد، جایگزینی فقط-کد، گیت سلامت، تاریخچهٔ `updates.jsonl`)؛ تأیید استقرار با `commit` در `/api/version`.
-- چک‌های محلی: ۵ سوئیت دودی (۳۶۶ چک: ۲۴۱ اصلی + ۴۶ ویزارد + ۵۰ تحریم‌ها در اجرای زنده — در حالت آفلاین CI بخش زندهٔ آینه‌ها رد می‌شود — + ۱۷ گیت + ۱۲ ریست کارخانه) + CI گیت‌هاب‌اکشنز + ruff F + `bash -n`.
-- هارنس‌های زنده: `tests/e2e_live.py` (عمومی، ۱۲ چک + ۳ چک dev که بدون توکن dev SKIP تمیز می‌دهند) و `tests/e2e_user.py` (نوشتاری، فقط حالت dev، با پاکسازی خودکار).
-- پل‌های عامل در حالت dev: `netcheck` + `sql` با audit JSONL؛ پل exec حذف‌شده (§۶/§۷) و تنها مسیر اجرای دستور، access-agent مستقل (v0.1.3، systemd بدون داکر؛ قرارداد: `docs/AGENT_PROTOCOL.fa.md` همان مخزن؛ مقادیر در `.secrets/access-agent.env`).
-- نیم‌سرور اختصاصی: PowerDNS در compose + `services/dnsops.py` + UI/API `/api/dns/*` + راهنمای مالک (`docs/DOMAIN_DNS_GUIDE.fa.md`) + فعال‌سازی خودگردان دامنهٔ معلق (ورکر ۶۰ثانیه‌ای v0.3.14) + خودترمیمی زون پایه و پروب HTTPS (v0.3.15) + نظافت خودکار پوشهٔ داینامیک ترافیک و اعتبارسنجی پسوند عمومی ایمیل ACME (v0.3.16 — درس میدانی زندهٔ دامنه).
-- شروع سرد استاندارد شد: بلوک handoff در access-agent (v0.1.3) + §۰ این سند — مسیر «سیستم‌عامل نو → یک دستور → عامل بی‌خبر» قراردادِ نوشته دارد.
+- چک‌های محلی: ۵ سوئیت دودی (۴۱۳ اصلی + ۴۸ ویزارد + ۴۹ تحریم آفلاین/۵۰ زنده + ۱۷ گیت + ۱۲ ریست کارخانه) + CI گیت‌هاب‌اکشنز + ruff F + `bash -n`.
+- هارنس‌های زنده: `tests/e2e_live.py` (عمومی + چک‌های dev با SKIP تمیز + چک‌های پل/پین اختیاری با env) و `tests/e2e_user.py` (نوشتاری، فقط حالت dev، با پاکسازی خودکار).
+- معماری سرویس‌محور: مانیفست `parastoo.yml`، شبکهٔ خصوصی هر پروژه، بیلد کل-یا-هیچ، Site=روتر (قرارداد: DEVELOPMENT.md).
+- پل عامل پروژه: توکن `pst_` + شیم گیت + `/api/bridge/*` + `pst.py` + audit JSONL (قرارداد: `docs/AGENT_BRIDGE.fa.md`).
+- نیم‌سرور اختصاصی: PowerDNS در compose + `services/dnsops.py` + UI/API `/api/dns/*` + فعال‌سازی خودگردان دامنهٔ معلق + خودترمیمی زون پایه + راهنمای مالک (`docs/DOMAIN_DNS_GUIDE.fa.md`).
+- گواهی وایلدکارد (سه گواهی DNS-01 برای کل استک) + فروشگاه ماندگار `tls-store.sh` + DNS خوداتکا (پین `/etc/hosts`).
+- شروع سرد استاندارد: بلوک handoff در access-agent + §۰ این سند.
 - حالت توسعه روی نصب زنده روشن است (`dev_mode=true` از `/api/version` قابل تشخیص).
-- اسناد: DEVELOPMENT.md (نقشهٔ معماری) · این سند (پروتکل) · WORKLOG.md (شاخص رخدادها) · LESSONS.md (دام‌های ماندگار).
+- اسناد: DEVELOPMENT.md (نقشهٔ معماری + قرارداد ارتباط سرویس‌ها) · این سند (پروتکل) · WORKLOG.md (شاخص رخدادها) · LESSONS.md (دام‌های ماندگار).
 
 **شکاف‌ها / گام‌های اصولی بعدی ✗ (اولویت‌دار):**
 
-1. **کانال انتشار حالت تجاری:** پین‌کردن `PARASTOO_UPDATE_CHANNEL` به تگ پایدار (مثلاً `v0.3-stable`) تا main فقط در حالت dev منتشر کند.
+1. **کانال انتشار حالت تجاری:** پین‌کردن `PARASTOO_UPDATE_CHANNEL` به تگ پایدار تا main فقط در حالت dev منتشر کند.
 2. **رمزنگاری توکن‌های دیتابیس** (gitea_token و مانند آن با Fernet/SECRET_KEY) — ایدهٔ ثبت‌شدهٔ DEVELOPMENT.md.
 
 > نگهداری این سند: هرگاه قرارداد عوض شد، همین فایل در همان چرخه به‌روز و پوش شود — سندِ کهنه بدتر از نبودن سند است.

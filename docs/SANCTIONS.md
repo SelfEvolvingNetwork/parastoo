@@ -122,7 +122,7 @@ sudo bash install.sh
    - pip (ایرانی، به ترتیب): `package-mirror.liara.ir/repository/pypi/simple` ← `mirror.abrha.net/repository/pypi/simple` (پارس‌پک) ← `mirror.kargadan.ir/repository/pypi-group/simple` ← `mirrors.arvancloud.ir/pypi/simple`
    - pip (پشتیبان بین‌المللی): `pypi.tuna.tsinghua.edu.cn/simple` ← `mirrors.aliyun.com/pypi/simple` ← `pypi.mirrors.ustc.edu.cn/simple` ← `mirrors.cloud.tencent.com/pypi/simple`
    - npm: `registry.npmjs.ir` ← `registry.npmmirror.com`
-   - **از v0.3.27 پروب آینه «دانلود واقعی» است، نه فقط ایندکس:** حادثهٔ میدانی 2026-11-06 — ایندکس `mirror-pypi.runflare.com` پاسخ 200 می‌داد ولی تک‌تک فایل‌های `/packages/...` خطای **402 Payment Required** می‌دادند؛ پروب قدیمی فقط ایندکس را چک می‌کرد، runflare را «زنده» اعلام کرد و بیلد هسته روی `pip install fastapi` مرد. پروب جدید صفحهٔ `/six/` را می‌گیرد، لینک wheel واقعی را با `urllib.parse.urljoin` حل می‌کند (عمق لینک نسبی در هر آینه متفاوت است) و خود فایل را دانلود می‌کند. `mirror-pypi.runflare.com` فعلاً مرده است (402 روی فایل‌ها) و از فهرست pip حذف شد؛ `mirror.abrha.net` هم در همان روز 406 می‌داد (فقط دانلود) ولی چون ممکن است برگردد در فهرست مانده است — پروب واقعی خودش آن را رد می‌کند.
+   - **پروب آینه «دانلود واقعی» است، نه فقط ایندکس:** آینه‌ای دیده شده که ایندکس 200 می‌داد ولی فایل‌های واقعی 402 می‌دادند و بیلد می‌مرد؛ پروب صفحهٔ `/six/` را می‌گیرد، لینک wheel واقعی را حل می‌کند و خود فایل را دانلود می‌کند — آینهٔ مرده روی فایل‌ها، خودش از فهرست رد می‌شود.
 3. همان مقدار به build-arg هسته (`PIP_INDEX_URL`) هم می‌رسد — پس بیلد هسته همان لحظه از آینه نصب می‌کند.
 4. اولویت: env صریح ← مقدار موجود `.env` (مجدداً بررسی می‌شود؛ اگر مرده باشد با تشخیص تازه جایگزین می‌شود) ← تشخیص خودکار ← خالی (پیش‌فرض رسمی).
 

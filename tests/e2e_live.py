@@ -317,7 +317,7 @@ def main() -> int:
         check("dev-dns-status", "/api/dns/status — سرویس نیم‌سرور", c_dev_dns_status)
         check("dev-dns-roundtrip", "/api/dns/zones — ساخت/رکورد/حذف زون موقت", c_dev_dns_roundtrip)
 
-    # ---------- لایهٔ پل عامل (v0.4.6) — قرارداد SERVICE_COMMS ----------
+    # ---------- لایهٔ پل عامل (v0.4.6) — قرارداد ارتباط سرویس‌ها در DEVELOPMENT.md ----------
     bridge_token = os.environ.get("PARASTOO_BRIDGE_TOKEN", "").strip()
     cross_target = os.environ.get("PARASTOO_CROSS_TARGET", "").strip()
     bridge_svc = (os.environ.get("PARASTOO_BRIDGE_SVC", "web").strip() or "web")
