@@ -2,7 +2,7 @@
 {% block title %}مارکت‌پلیس{% endblock %}
 {% block content %}
 <h1>مارکت‌پلیس پرستو</h1>
-<p class="muted">ایمیج‌های آماده‌ای که دیگران ساخته‌اند. فعال‌سازی = یک سایت اختصاصی روی زیردامنه خودتان. هزینه ساعتی منابع از کیف پول شما کسر می‌شود.</p>
+<p class="muted">اپ‌های آماده‌ای که دیگران ساخته‌اند — تک‌کانتینری یا چند-کانتینری. فعال‌سازی = نمونهٔ کامل و ایزولهٔ خودتان روی زیردامنه اختصاصی؛ هزینه ساعتی منابع سرویس‌ها از کیف پول شما کسر می‌شود.</p>
 
 {% if items %}
 <div class="grid grid-3">
@@ -18,12 +18,12 @@
     </div>
     <p class="muted small">{{ p.description|truncate(90) or 'بدون توضیح' }}</p>
     <div class="mp-meta">
-      <span>{{ stack_label(p.stack) }}</span>
+      <span>{{ counts[p.id] }} کانتینر — {{ money(costs[p.id]) }} {{ settings.CURRENCY }}/ساعت</span>
       <span class="muted">توسط {{ p.owner.name or p.owner.email }}</span>
       <span class="muted">{{ p.installs }} نصب</span>
     </div>
     {% if p.owner_id == user.id %}
-      <p class="muted small">این ایمیج مال شماست — فعال‌سازی رایگان است.</p>
+      <p class="muted small">این اپ مال شماست — فعال‌سازی رایگان است.</p>
     {% endif %}
     <form method="post" action="/marketplace/{{ p.id }}/use" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -33,19 +33,12 @@
           <span>.{{ domains.apps() }}</span>
         </div>
       </label>
-      <label class="small">پلن منابع
-        <select name="tier">
-          {% for key, t in settings.TIERS.items() %}
-          <option value="{{ key }}">{{ t.label }} — {{ money(t.price) }} {{ settings.CURRENCY }}/ساعت</option>
-          {% endfor %}
-        </select>
-      </label>
       <button class="btn btn-primary btn-block" type="submit">فعال‌سازی{% if p.price > 0 %} و پرداخت{% endif %}</button>
     </form>
   </div>
   {% endfor %}
 </div>
 {% else %}
-<div class="card"><p>فعلاً ایمیجی در مارکت‌پلیس نیست. اولین نفری باشید که ایمیج خودش را منتشر می‌کند!</p></div>
+<div class="card"><p>فعلاً اپی در مارکت‌پلیس نیست. اولین نفری باشید که اپ خودش را منتشر می‌کند!</p></div>
 {% endif %}
 {% endblock %}

@@ -212,24 +212,29 @@ def sync_host_env() -> bool:
 
 # ---------- بیلد و رجیستری ----------
 
-def _tag(owner: str, slug: str, ref: str) -> str:
-    return f"{settings.REGISTRY_INTERNAL}/{owner}/{slug}:{ref}"
+def _tag(owner: str, slug: str, svc: str, ref: str) -> str:
+    # رجیستری گیتا مسیرهای تو در تو (owner/slug/svc) را می‌پذیرد
+    return f"{settings.REGISTRY_INTERNAL}/{owner}/{slug}/{svc}:{ref}"
 
 
-def build_and_push(build_dir: Path, owner: str, slug: str, sha: str,
+def build_and_push(build_dir: Path, owner: str, slug: str, svc: str, sha: str,
                    docker_username: str, docker_password: str,
                    log) -> str:
-    """بیلد کانتکست در build_dir، push به رجیستری گیتا؛ برمی‌گرداند: تگ کامل ایمیج."""
-    c = client()
-    image_tag = _tag(owner, slug, (sha or "latest")[:7])
-    latest_tag = _tag(owner, slug, "latest")
+    """بیلد کانتکست یک سرویس، push به رجیستری گیتا؛ برمی‌گرداند: تگ کامل ایمیج.
 
-    log(f"[build] شروع بیلد از {build_dir}")
+    v0.4.0: بیلد به دانهٔ سرویس است — هر سرویس پروژه تگ خودش را می‌گیرد.
+    """
+    c = client()
+    image_tag = _tag(owner, slug, svc, (sha or "latest")[:7])
+    latest_tag = _tag(owner, slug, svc, "latest")
+
+    log(f"[build:{svc}] شروع بیلد از {build_dir}")
     stream = c.api.build(
         path=str(build_dir),
         tag=image_tag,
         rm=True,
-        labels={"parastoo.slug": slug, "parastoo.owner": owner},
+        labels={"parastoo.slug": slug, "parastoo.owner": owner,
+                "parastoo.service": svc},
         decode=True,
     )
     for chunk in stream:
@@ -284,38 +289,85 @@ def pull_image(image: str, username: str, password: str) -> None:
     c.images.pull(image)
 
 
-# ---------- اجرای سایت‌ها ----------
+# ---------- اجرای پروژه‌ها (سرویس‌محور v0.4.0) ----------
+#
+# هندسهٔ ایزولگی: هر پروژه شبکهٔ خصوصی خودش را دارد (parastoo-proj-<id>) و
+# کانتینرهایش فقط همان‌جا زندگی می‌کنند؛ کانتینرهای دو پروژهٔ مختلف به‌ساختاری
+# هم را نمی‌بینند. تنها سرویسِ عمومیِ پروژه به شبکهٔ apps هم وصل می‌شود تا
+# ترافیک (که روی apps است) به آن برسد. نام سرویس‌ها داخل شبکهٔ خصوصی به‌عنوان
+# نام میزبان DNS داکر به هم می‌رسند (مثلاً db:5432 از داخل web).
+# مالکیت در نام‌ها و لیبل‌ها نیز صریح است: نام کانتینر parastoo-p<id>-<svc> و
+# لیبل parastoo.project=<id> — هر استعلام با فیلتر لیبل به دانهٔ پروژه محکوم است.
 
-def _site_labels(slug: str, subdomain: str, port: int) -> dict:
-    router = f"parastoo-site-{slug}"
+PROJECT_LABEL = "parastoo.project"
+SERVICE_LABEL = "parastoo.service"
+
+
+def project_network(pid: int) -> str:
+    return f"parastoo-proj-{pid}"
+
+
+def service_container(pid: int, svc_name: str) -> str:
+    return f"parastoo-p{pid}-{svc_name}"
+
+
+def volume_name(pid: int, vol: str) -> str:
+    # volumeهای کاربر namespace می‌گیرند تا هیچ پروژه‌ای volume دیگری را صدا نزند
+    return f"parastoo-p{pid}-{vol}"
+
+
+def _project_filter(pid: int) -> dict:
+    return {"label": f"{PROJECT_LABEL}={pid}"}
+
+
+def ensure_network(pid: int):
+    """شبکهٔ خصوصی پروژه — اگر نبود می‌سازد؛ شیء شبکه برمی‌گرداند."""
+    c = client()
+    name = project_network(pid)
+    try:
+        return c.networks.get(name)
+    except Exception:
+        return c.networks.create(
+            name, driver="bridge",
+            labels={PROJECT_LABEL: str(pid)},
+        )
+
+
+def delete_network(pid: int) -> None:
+    try:
+        c = client()
+        net = c.networks.get(project_network(pid))
+        net.remove()
+    except Exception:
+        pass  # نبودن شبکه = کاری نداریم
+
+
+def _public_labels(sites, port: int) -> dict:
+    """لیبل‌های ترافیک سرویس عمومی — یک روتر به‌ازای هر سایتِ پروژه.
+
+    همان الگوی ساب‌دامنهٔ بی‌نهایت (v0.3.33/34): در حالت وایلدکارد همهٔ
+    روترها روی رزولور wild با وایلدکارد `*.apps.<دامنه>` می‌مانند و صدومین
+    سایت هم هیچ سفارش ACME تازه‌ای نمی‌گشاید؛ بیرون از وایلدکارد مسیر قدیمی
+    HTTP-01 به‌ازای هر هاست.
+    """
     tls_on = tls_enabled_now()  # پویا — پس از فعال‌سازی HTTPS در ویزارد اعمال می‌شود
-    labels = {
-        "traefik.enable": "true",
-        "parastoo.site": slug,
-        f"traefik.http.routers.{router}.rule": f"Host(`{subdomain}`)",
-        f"traefik.http.routers.{router}.entrypoints": (
-            "web,websecure" if tls_on else "web"
-        ),
-        f"traefik.http.services.{router}.loadbalancer.server.port": str(port),
-    }
-    if tls_on:
-        # v0.3.33/34 — الگوی ساب‌دامنهٔ بی‌نهایت: در حالت وایلدکارد (زون روی
-        # PDNS خودمان) سایت دیگر گواهی اختصاصی نمی‌خواهد؛ هر روتر سایت روی
-        # رزولور wild (DNS-01) با همان وایلدکارد `*.apps.<دامنه>` می‌ماند —
-        # صدومین سایت هم هیچ سفارش ACME تازه‌ای نمی‌گشاید. وایلدکارد از خود
-        # subdomain مشتق می‌شود نه از env — تا حتی بی‌ری‌استارت هسته (پس از
-        # تغییر دامنه در ویزارد) همیشه با دامنهٔ فعال هم‌گام بماند.
-        # بیرون از حالت وایلدکارد (nip.io/دامنهٔ بیرونی): مسیر قدیمی — HTTP-01
-        # به‌ازای هر هاست (چالش DNS-01 آنجا ناممکن است).
-        labels[f"traefik.http.routers.{router}.tls"] = "true"
-        if wildcard_mode_now():
-            labels[f"traefik.http.routers.{router}.tls.certresolver"] = "wild"
-            _rest = (subdomain or "").strip().lower().rstrip(".").split(".", 1)
-            if len(_rest) == 2:
-                labels[f"traefik.http.routers.{router}.tls.domains[0].main"] = (
-                    f"*.{_rest[1]}")
-        else:
-            labels[f"traefik.http.routers.{router}.tls.certresolver"] = "le"
+    labels: dict = {}
+    for site in sites:
+        router = f"parastoo-site-{site.slug}"
+        labels[f"traefik.http.routers.{router}.rule"] = f"Host(`{site.subdomain}`)"
+        labels[f"traefik.http.routers.{router}.entrypoints"] = (
+            "web,websecure" if tls_on else "web")
+        labels[f"traefik.http.services.{router}.loadbalancer.server.port"] = str(port)
+        if tls_on:
+            labels[f"traefik.http.routers.{router}.tls"] = "true"
+            if wildcard_mode_now():
+                labels[f"traefik.http.routers.{router}.tls.certresolver"] = "wild"
+                _rest = (site.subdomain or "").strip().lower().rstrip(".").split(".", 1)
+                if len(_rest) == 2:
+                    labels[f"traefik.http.routers.{router}.tls.domains[0].main"] = (
+                        f"*.{_rest[1]}")
+            else:
+                labels[f"traefik.http.routers.{router}.tls.certresolver"] = "le"
     return labels
 
 
@@ -327,73 +379,107 @@ def _tier_limits(tier: str) -> dict:
     }
 
 
-def run_site(image: str, slug: str, subdomain: str, port: int, tier: str,
-             pull_creds: tuple[str, str] | None = None) -> str:
-    """اجرای کانتینر سایت با محدودیت منابع و برچسب‌های ترافیک. برمی‌گرداند: نام کانتینر."""
-    c = client()
-    name = f"parastoo-site-{slug}"
-    # حذف نسخه قبلی در صورت وجود
-    remove_site(slug, quiet=True)
-
+def _pull_if_needed(image: str, pull_creds: tuple[str, str] | None) -> None:
     if pull_creds:
         pull_image(image, *pull_creds)
 
-    kwargs = dict(
-        name=name,
-        detach=True,
-        labels=_site_labels(slug, subdomain, port),
-        network=settings.APPS_NETWORK,
-        restart_policy={"Name": "unless-stopped"},
-        **_tier_limits(tier),
-    )
-    c.containers.run(image, **kwargs)
-    return name
+
+def deploy_project(project, services, sites,
+                   pull_creds: tuple[str, str] | None = None) -> None:
+    """استقرار کامل پروژه از روی ردیف‌های Service — دانهٔ پروژه، همیشه از صفر.
+
+    همهٔ کانتینرهای قدیمیِ پروژه (فیلتر لیبل) حذف و همه از نو ساخته می‌شوند:
+    اول سرویس‌های غیرعمومی، بعد سرویس عمومی. فراخواننده تضمین می‌کند ایمیج‌ها
+    بیلد/موجودند. هر استثنایی بالا می‌آید تا فراخواننده وضعیت را error کند.
+    """
+    c = client()
+    pid = project.id
+    ensure_network(pid)
+    remove_project(pid, quiet=True)
+
+    ordered = sorted(services, key=lambda s: (bool(s.is_public), s.name))
+    for svc in ordered:
+        if not svc.image:
+            continue
+        _pull_if_needed(svc.image, pull_creds)
+        kwargs = dict(
+            name=service_container(pid, svc.name),
+            detach=True,
+            labels={
+                PROJECT_LABEL: str(pid),
+                SERVICE_LABEL: svc.name,
+                "parastoo.owner": str(project.owner_id),
+                "parastoo.slug": project.slug,
+            },
+            network=project_network(pid),
+            restart_policy={"Name": "unless-stopped"},
+            environment={k: v for k, v in svc.env().items()},
+            **_tier_limits(svc.tier),
+        )
+        binds = [f"{volume_name(pid, vname)}:{path}" for vname, path in svc.volumes()]
+        if binds:
+            kwargs["volumes"] = binds
+        if svc.command:
+            kwargs["command"] = ["sh", "-c", svc.command]
+        if svc.is_public:
+            # docker-py برای create فقط یک network می‌پذیرد؛ شبکهٔ خصوصیِ پروژه
+            # همان‌جا داده می‌شود و اتصال به apps بلافاصله بعد از ساخت انجام می‌شود
+            kwargs["labels"].update(_public_labels(sites, svc.port))
+        c.containers.run(svc.image, **kwargs)
+        if svc.is_public and settings.APPS_NETWORK != project_network(pid):
+            try:
+                net = c.networks.get(settings.APPS_NETWORK)
+                net.connect(service_container(pid, svc.name))
+            except Exception:
+                pass
 
 
-def recreate_site(site) -> str:
-    """به‌روزرسانی خودکار سایت با ایمیج جدید (مطابق نیازمندی: با هر تغییر، بروزرسانی خودکار)."""
-    return run_site(
-        image=site.image,
-        slug=site.slug,
-        subdomain=site.subdomain,
-        port=site.internal_port,
-        tier=site.tier,
-        pull_creds=None,  # ایمیج از قبل روی دیمون محلی موجود است
-    )
-
-
-def remove_site(slug: str, quiet: bool = False) -> None:
-    try:
-        c = client()
-        container = c.containers.get(f"parastoo-site-{slug}")
-        container.remove(force=True)
-    except (NotFound, DockerUnavailable):
-        if not quiet:
-            raise
-    except Exception:
-        if not quiet:
-            raise
-
-
-def stop_site(slug: str) -> None:
+def remove_project(pid: int, quiet: bool = False) -> None:
+    """حذف همهٔ کانتینرهای پروژه (فیلتر لیبل) — هرگز کانتینر دیگری را نمی‌بیند."""
     c = client()
     try:
-        c.containers.get(f"parastoo-site-{slug}").stop(timeout=10)
-    except NotFound:
-        pass
+        containers = c.containers.list(all=True, filters=_project_filter(pid))
+    except DockerUnavailable:
+        if quiet:
+            return
+        raise
+    for ctr in containers:
+        try:
+            ctr.remove(force=True)
+        except Exception:
+            if not quiet:
+                raise
 
 
-def start_site(slug: str) -> None:
+def stop_project(pid: int) -> None:
     c = client()
-    c.containers.get(f"parastoo-site-{slug}").start()
+    for ctr in c.containers.list(all=True, filters=_project_filter(pid)):
+        try:
+            ctr.stop(timeout=10)
+        except Exception:
+            pass
 
 
-def container_status(slug: str) -> str | None:
+def start_project(pid: int) -> None:
+    c = client()
+    for ctr in c.containers.list(all=True, filters=_project_filter(pid)):
+        try:
+            ctr.start()
+        except Exception:
+            pass
+
+
+def project_container_status(pid: int) -> dict[str, str]:
+    """نقشهٔ نام سرویس → وضعیت کانتینر زنده (خالی = داکر در دسترس نیست)."""
     try:
         c = client()
-        return c.containers.get(f"parastoo-site-{slug}").status
-    except Exception:
-        return None
+        out = {}
+        for ctr in c.containers.list(all=True, filters=_project_filter(pid)):
+            svc = (ctr.labels or {}).get(SERVICE_LABEL, ctr.name)
+            out[svc] = ctr.status
+        return out
+    except DockerUnavailable:
+        return {}
 
 
 def system_stats() -> dict:

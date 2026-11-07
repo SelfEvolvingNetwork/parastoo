@@ -129,7 +129,7 @@ SCAFFOLDS: dict[str, dict[str, str]] = {
             ),
             growth=[
                 "چند صفحه؟ فایل‌های HTML جدید اضافه کنید و به هم لینک بدهید.",
-                "منطق سمت سرور لازم شد؟ پروژهٔ جدید را با مدل Node یا Python بسازید (مدل بعداً قابل تغییر نیست).",
+                "منطق سمت سرور لازم شد؟ فایل parastoo.yml به مخزن اضافه کنید یا یک پروژهٔ جدید با قالب Node/Python بسازید (محدودیت فناوری در پرستو وجود ندارد).",
                 "فریم‌ورکی مثل React/Vue که مرحلهٔ build دارد؟ مدل «داکرفایل اختصاصی»: در Dockerfile خودتان build کنید و خروجی `dist/` را با nginx سرو کنید.",
             ],
             structure=(
@@ -408,7 +408,7 @@ def files_for(project, clone_url: str) -> dict[str, str] | None:
         "__NAME__": project.name or project.slug,
         "__SLUG__": project.slug,
         "__CLONE_URL__": clone_url,
-        "__START_CMD__": project.start_cmd or DEFAULT_START_CMD.get(project.stack, ""),
+        "__START_CMD__": DEFAULT_START_CMD.get(project.stack, ""),
         "__STACK_LABEL__": label,
     }
     files: dict[str, str] = {}

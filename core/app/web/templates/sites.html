@@ -3,18 +3,18 @@
 {% block content %}
 <div class="card-head">
   <h1>سایت‌های من</h1>
-  <div class="muted">هزینه جاری: {{ money(monthly) }} {{ settings.CURRENCY }}/ماه (کسر ساعتی)</div>
+  <div class="muted">هزینه جاری: {{ money(monthly) }} {{ settings.CURRENCY }}/ماه (کسر ساعتی به ازای هر سرویس)</div>
 </div>
 
 {% if items %}
 <table>
-  <thead><tr><th>شناسه</th><th>آدرس</th><th>پلن منابع</th><th>وضعیت</th><th>وضعیت کانتینر</th><th>عملیات</th></tr></thead>
+  <thead><tr><th>شناسه</th><th>آدرس</th><th>پروژه</th><th>وضعیت</th><th>وضعیت کانتینر</th><th>عملیات</th></tr></thead>
   <tbody>
   {% for s in items %}
     <tr>
-      <td><b>{{ s.slug }}</b><div class="muted small">{{ stack_label(s.project.stack) }}</div></td>
+      <td><b>{{ s.slug }}</b><div class="muted small">{{ s.project.services|length }} کانتینر</div></td>
       <td><a href="http{{ 's' if domains.tls() else '' }}://{{ s.subdomain }}" target="_blank" rel="noopener">{{ s.subdomain }}</a></td>
-      <td>{{ tier_label(s.tier) }}</td>
+      <td><a href="/projects/{{ s.project.slug }}">{{ s.project.name }}</a></td>
       <td><span class="badge badge-{{ {'running':'ok','stopped':'wait','paused':'warn','error':'err'}.get(s.status, 'wait') }}">{{ {'running':'روشن','stopped':'خاموش','paused':'متوقف (بدهی)','error':'خطا'}.get(s.status, s.status) }}</span></td>
       <td class="mono small">{{ live.get(s.id) or '—' }}</td>
       <td class="actions">
@@ -31,7 +31,7 @@
 </table>
 {% else %}
 <div class="card">
-  <p>سایتی منتشر نکرده‌اید. از صفحه پروژه‌ها سایت خود را منتشر کنید یا از مارکت‌پلیس ایمیج آماده فعال کنید.</p>
+  <p>سایتی منتشر نکرده‌اید. از صفحه پروژه‌ها سایت خود را منتشر کنید یا از مارکت‌پلیس اپ آماده فعال کنید.</p>
   <div class="row gap">
     <a href="/projects" class="btn btn-primary">پروژه‌های من</a>
     <a href="/marketplace" class="btn btn-ghost">مارکت‌پلیس</a>

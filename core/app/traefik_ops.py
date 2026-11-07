@@ -540,18 +540,28 @@ def apply_domain(db, base_domain: str, acme_email: str, tls_enabled: bool) -> di
     except Exception as e:
         result["errors"].append(f"بازسازی گیتا: {e}")
 
-    # ۴) سایت‌های موجود: زیردامنه جدید + بازسازی کانتینر با لیبل‌های جدید
+    # ۴) سایت‌های موجود: زیردامنهٔ جدید + استقرار مجدد پروژهٔ هر سایت
+    # (سرویس‌محور v0.4.0: روتر ترافیک روی کانتینرهای پروژه است؛ با دامنهٔ
+    # تازه باید همان پروژه‌ها دوباره مستقر شوند — یک‌بار برای هر پروژه)
     if Site is not None and dockerops.available():
+        handled: set[int] = set()
         for site in db.query(Site).all():
             new_sub = f"{site.slug}.{apps_d}"
             if site.subdomain == new_sub:
                 continue
             site.subdomain = new_sub
+            if site.project_id in handled:
+                continue
+            handled.add(site.project_id)
             try:
-                dockerops.recreate_site(site)
+                project = site.project
+                dockerops.deploy_project(project, project.services, project.sites)
+                for svc in project.services:
+                    if svc.image:
+                        svc.status = "running"
                 result["sites_updated"] += 1
             except Exception as e:
-                result["errors"].append(f"بازسازی سایت {site.slug}: {e}")
+                result["errors"].append(f"بازاستقرار پروژه {site.project_id}: {e}")
         db.commit()
     return result
 

@@ -1,7 +1,12 @@
-"""مدل‌های دیتابیس پرستو.
+"""مدل‌های دیتابیس پرستو — معماری سرویس‌محور (v0.4.0).
 
-created_at در همهٔ مدل‌ها با default ستونی db_now پر می‌شود — تا v0.2.24 هر
-مدل یک __init__ اضافه داشت فقط برای همین کار (boilerplate چهار باره).
+قاعدهٔ طلایی معماری جدید: موتور فقط یک اسم می‌شناسد — «سرویس».
+پروژه مالک ۱ تا N سرویس است (N=1 حالت پیش‌فرضِ بدون مانیفست)؛ هر سرویس
+در اجرا یک کانتینر است که فقط روی شبکهٔ خصوصی همان پروژه زندگی می‌کند.
+«سایت» دیگر کانتینر نیست؛ فقط نقطهٔ ورود عمومی (زیردامنه) است که به
+سرویسِ عمومیِ پروژه روت می‌شود. منابع و صورتحساب در سطح سرویس است.
+
+created_at در همهٔ مدل‌ها با default ستونی db_now پر می‌شود.
 """
 from datetime import datetime
 
@@ -35,14 +40,22 @@ class User(Base):
 
 
 class Project(Base):
+    """پروژه = گروه سرویس‌ها + (اختیاری) مخزن گیت + (اختیاری) تعریف مارکت.
+
+    stack فقط «قالب شروع» است (بذر مخزن خالی + برچسب نمایشی) — موتور آن را
+    نمی‌خواند؛ تشخیص فناوری در زمان بیلد از محتوای مخزن انجام می‌شود و
+    parastoo.yml همیشه بر همه چیز مقدم است.
+    source_project_id: پرستوی نصب‌شده از مارکت‌پلیس — پروژهٔ مالکِ خریدار که
+    سرویس‌هایش کپی همان سرویس‌های پروژهٔ فروشنده است (بدون مخزن گیت).
+    manifest_json: عکس لحظه‌ای مانیفست آخرین بیلد موفق (برای UI و انتشار).
+    """
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     slug: Mapped[str] = mapped_column(String(60), unique=True, index=True)
-    stack: Mapped[str] = mapped_column(String(20))          # static | node | python | docker
-    start_cmd: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    stack: Mapped[str] = mapped_column(String(20), default="static")   # قالب شروع — نمایشی
     description: Mapped[str] = mapped_column(Text, default="")
 
     # مارکت‌پلیس
@@ -50,20 +63,91 @@ class Project(Base):
     price: Mapped[int] = mapped_column(Integer, default=0)            # 0 = رایگان
     installs: Mapped[int] = mapped_column(Integer, default=0)
 
-    # مخزن گیت
+    # نصب مارکت‌پلیس (پروژهٔ خریدار → پروژهٔ فروشنده)
+    source_project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id"), nullable=True)
+
+    # مخزن گیت (نصب‌های مارکت مخزن ندارند — repo_status=ready می‌ماند)
     repo_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|ready|error
     webhook_secret: Mapped[str] = mapped_column(String(64))
 
     # آخرین وضعیت بیلد
-    latest_image: Mapped[str | None] = mapped_column(String(255), nullable=True)
     latest_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    build_count: Mapped[int] = mapped_column(Integer, default=0)
+    manifest_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
 
     owner: Mapped["User"] = relationship()
     builds: Mapped[list["Build"]] = relationship(back_populates="project")
     sites: Mapped[list["Site"]] = relationship(back_populates="project")
+    services: Mapped[list["Service"]] = relationship(back_populates="project")
+
+
+class Service(Base):
+    """سرویس = تعریف یک کانتینرِ پروژه؛ تنها واحدی که موتور می‌شناسد.
+
+    منابع (tier) و کسر ساعتی در همین سطح است؛ جمع سرویس‌های runningِ
+    پروژه = هزینهٔ پروژه. is_public فقط یک سرویس است و به ترافیک روت می‌شود.
+    status: stopped (فقط تعریف/آماده) | running | paused (بدهی) | error
+    env_json: دیکشنری {"KEY": "val"} — volumes_json: لیست جفت‌های [نام, مسیر].
+    """
+    __tablename__ = "services"
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_service_proj_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(String(40))
+    image: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    port: Mapped[int] = mapped_column(Integer, default=3000)
+    command: Mapped[str] = mapped_column(Text, default="")
+    env_json: Mapped[str] = mapped_column(Text, default="{}")
+    volumes_json: Mapped[str] = mapped_column(Text, default="[]")
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+    tier: Mapped[str] = mapped_column(String(20), default="nano")
+    status: Mapped[str] = mapped_column(String(20), default="stopped")
+    container_name: Mapped[str] = mapped_column(String(120), default="")
+    last_charged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
+
+    project: Mapped["Project"] = relationship(back_populates="services")
+
+    def env(self) -> dict:
+        import json
+        try:
+            return json.loads(self.env_json or "{}")
+        except Exception:
+            return {}
+
+    def volumes(self) -> list[tuple[str, str]]:
+        import json
+        try:
+            return [(a, b) for a, b in json.loads(self.volumes_json or "[]")]
+        except Exception:
+            return []
+
+
+class Site(Base):
+    """سایت = نقطهٔ ورود عمومی یک پروژه (زیردامنه) — دیگر کانتینر نیست.
+
+    هر تعداد سایت می‌تواند به سرویس عمومیِ همان پروژه روت شود؛ افزودن/حذف
+    سایت فقط روتینگ را بازتولید می‌کند (بازآفرینی کانتینرهای پروژه با لیبل
+    ترافیک تازه). منابع و صورتحساب در سرویس‌ها است، نه اینجا.
+    status آینهٔ وضعیت کانتینرهای پروژه است.
+    """
+    __tablename__ = "sites"
+    __table_args__ = (UniqueConstraint("slug", name="uq_site_slug"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)  # مالک سایت (ممکن است خریدار باشد)
+    slug: Mapped[str] = mapped_column(String(60))
+    subdomain: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(20), default="running")  # running|stopped|paused|error
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
+
+    project: Mapped["Project"] = relationship(back_populates="sites")
+    owner: Mapped["User"] = relationship()
 
 
 class Build(Base):
@@ -73,35 +157,11 @@ class Build(Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="queued")  # queued|running|success|failed
     commit_sha: Mapped[str] = mapped_column(String(40), default="")
-    image_tag: Mapped[str | None] = mapped_column(String(255), nullable=True)
     log: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     project: Mapped["Project"] = relationship(back_populates="builds")
-
-
-class Site(Base):
-    """سایت منتشرشده = یک کانتینر در حال اجرا روی سرور پرستو."""
-    __tablename__ = "sites"
-    __table_args__ = (UniqueConstraint("slug", name="uq_site_slug"),)
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
-    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)  # مالک سایت (ممکن است خریدار باشد)
-    slug: Mapped[str] = mapped_column(String(60))
-    subdomain: Mapped[str] = mapped_column(String(255))
-    container_name: Mapped[str] = mapped_column(String(120))
-    internal_port: Mapped[int] = mapped_column(Integer, default=3000)
-    tier: Mapped[str] = mapped_column(String(20), default="nano")  # nano|small|medium
-    status: Mapped[str] = mapped_column(String(20), default="running")  # running|stopped|paused|error
-    image: Mapped[str | None] = mapped_column(String(255), nullable=True)
-
-    last_charged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
-
-    project: Mapped["Project"] = relationship(back_populates="sites")
-    owner: Mapped["User"] = relationship()
 
 
 class WalletTx(Base):

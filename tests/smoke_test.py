@@ -128,14 +128,20 @@ with TestClient(app, follow_redirects=False) as c:
     r = c.get("/admin")
     check("کاربر عادی به ادمین دسترسی ندارد", r.status_code == 303)
 
-    print("— صورت‌حساب ساعتی —")
+    print("— صورت‌حساب ساعتی (سرویس‌محور v0.4.0) —")
     # مونکی‌پچ توقف داکر (در تست داکر نداریم)
-    dockerops.stop_site = lambda slug: None
+    dockerops.stop_project = lambda pid: None
     db = SessionLocal()
-    s = Site(project_id=pid, owner_id=uid, slug="demo-site", subdomain="demo.apps.test",
-             container_name="parastoo-site-demo-site", internal_port=3000, tier="nano",
-             status="running", image="127.0.0.1:3000/u/x:latest")
-    db.add(s)
+    from app.models import Service as _Service
+    import json as _sj
+    _svc_row = _Service(project_id=pid, name="web", image="127.0.0.1:3000/u/x:latest",
+                        port=3000, is_public=True, tier="nano", status="running",
+                        env_json=_sj.dumps({"A": "1"}),
+                        volumes_json=_sj.dumps([["data", "/data"]]),
+                        container_name="parastoo-p1-web")
+    db.add(_svc_row)
+    db.add(Site(project_id=pid, owner_id=uid, slug="demo-site",
+                subdomain="demo.apps.test", status="running"))
     db.commit()
     db.close()
     billing_once()
@@ -143,7 +149,8 @@ with TestClient(app, follow_redirects=False) as c:
     db = SessionLocal()
     u = db.get(User, uid)
     check("یک بار هزینه نانو کسر شد (800-)", u.balance == -800, f"balance={u.balance}")
-    check("سایت به‌خاطر بدهی متوقف شد", db.query(Site).filter(Site.slug == "demo-site").first().status == "paused")
+    check("سرویس به‌خاطر بدهی متوقف شد", db.query(_Service).filter(_Service.name == "web").first().status == "paused")
+    check("سایت هم آینهٔ توقف پروژه است", db.query(Site).filter(Site.slug == "demo-site").first().status == "paused")
     check("تراکنش ثبت شد", db.query(WalletTx).filter(WalletTx.user_id == uid, WalletTx.kind == "charge").count() == 1)
     db.close()
 
@@ -280,9 +287,8 @@ with TestClient(app, follow_redirects=False) as c:
     # سایتِ خریدارِ خارجی → مسدود (سایت زندهٔ دیگران نباید بشکند)
     db = SessionLocal()
     ap = db.query(Project).filter(Project.slug == "admin-shop").first()
-    buyer_site = Site(project_id=ap.id, owner_id=uid, slug="buyer-site", subdomain="buyer.apps.test",
-                      container_name="parastoo-site-buyer-site", internal_port=80, tier="nano",
-                      status="running", image="img:latest")
+    buyer_site = Site(project_id=ap.id, owner_id=uid, slug="buyer-site",
+                      subdomain="buyer.apps.test", status="running")
     db.add(buyer_site)
     db.commit()
     db.close()
@@ -319,11 +325,12 @@ check("سقف starlette (<0.42) صریح در requirements", "<0.42" in req)
 deps_src = (ROOT / "core/app/deps.py").read_text()
 check("render با امضای جدید TemplateResponse (request اول)",
       "TemplateResponse(request, name" in deps_src)
-# از v0.3.0 منطق مارکت در services/market.py است (مسیر routes نازک شده)
+# از v0.4.0 مارکت = نمونه‌سازی سرویس‌ها برای خریدار (نه اجرای یک ایمیج با پورت فروشنده)
 mk_src = ((ROOT / "core/app/services/market.py").read_text()
           + (ROOT / "core/app/routes/marketplace.py").read_text())
-check("پورت مارکت‌پلیس از استک/سایت فروشنده (نه هاردکد 3000)",
-      "default_port(project.stack)" in mk_src and "internal_port=3000" not in mk_src)
+check("نصب مارکت = پروژهٔ خریدار با کپی سرویس‌ها (بدون پورت هاردکد/استک)",
+      "source_project_id=project.id" in mk_src
+      and "internal_port" not in mk_src and "default_port" not in mk_src)
 
 print()
 print("— مقاوم‌سازی نصب‌کننده —")
@@ -403,15 +410,17 @@ check("CLI دستور reset به اسکریپت مقاوم factory-reset واگ�
       "reset)" in cli and "factory-reset.sh" in cli)
 check("reset تایید صریح دارد (Type 'reset')",
       "Type 'reset'" in reset_sh)
-check("reset کانتینرهای سایت (خارج از استک) را قبل از down حذف می‌کند",
+check("reset کانتینرهای پروژه (داخل و خارج استک) را قبل از down حذف می‌کند",
       "filter name=parastoo-site-" in reset_sh
-      and reset_sh.index("parastoo-site-") < reset_sh.index("down -v"))
+      and "filter label=parastoo.project" in reset_sh
+      and reset_sh.index("filter label=parastoo.project") < reset_sh.index("down -v"))
 check("reset ولوم‌ها و ایمیج‌های پروژه‌ها را هم پاک می‌کند",
       "down -v --remove-orphans" in reset_sh and "label=parastoo.slug" in reset_sh)
 check("reset توکن نصب را از .env برمی‌گرداند",
       "PARASTOO_SETUP_TOKEN" in reset_sh)
-check("uninstall.sh (حالت ولوم‌ها) هم سایت‌ها و ایمیج‌ها را پاک می‌کند",
-      "filter name=parastoo-site-" in uni and "label=parastoo.slug" in uni)
+check("uninstall.sh (حالت ولوم‌ها) هم پروژه‌ها و ایمیج‌ها را پاک می‌کند",
+      "filter name=parastoo-site-" in uni and "filter label=parastoo.project" in uni
+      and "filter name=parastoo-p" in uni)
 check("README روش ریست کارخانه را مستند کرده",
       "parastoo reset" in rme and "تنظیمات کارخانه" in rme)
 
@@ -452,8 +461,8 @@ check("اسکرول‌بار بلوک‌های کد پنهان نیست (دست�
 check("کارت‌های آمار داشبورد در موبایل ۲×۲ می‌شوند",
       ".grid-4 { grid-template-columns: repeat(2, 1fr); }" in _css)
 _newp = (ROOT / "core/app/web/templates/project_new.html").read_text()
-check("فیلد «دستور اجرا» فقط برای استک Python نشان داده می‌شود",
-      'id="startcmd-label"' in _newp and "sel.value === 'python'" in _newp)
+check("فرم ساخت پروژه دیگر «دستور اجرا» ندارد — قالب شروع کافی است و موتور محتوا را می‌خواند",
+      "start_cmd" not in _newp and "parastoo.yml" in _newp)
 _au = (ROOT / "scripts/auto-update.sh").read_text()
 check("auto-update متادیتای استقرار را صریح صادر می‌کند (وگرنه healthz یک چرخه عقب می‌افتد)",
       "set -a; . ./.env; set +a" in _au
@@ -572,10 +581,9 @@ _u = db.query(User).filter(User.email == "ali@test.ir").first()
 db.close()
 db = SessionLocal()
 _p, _flash = projects_svc.create_project(db, _u, "ای‌پی‌آی تست", "py-api-check", "python")
-check("پروژهٔ پایتون بدون دستور اجرا ساخته شد (pending بدون گیتا)", _p is not None and _flash == "git_pending")
-check("دستور اجرای پیش‌فرض پایتون = gunicorn با ورکر uvicorn",
-      _p is not None and _p.start_cmd == scaffolds.DEFAULT_START_CMD["python"],
-      f"start_cmd={getattr(_p, 'start_cmd', None)!r}")
+check("پروژه با قالب شروع پایتون ساخته شد (pending بدون گیتا)", _p is not None and _flash == "git_pending")
+check("استک فقط قالب شروع است؛ مدل دیگر start_cmd ندارد",
+      _p is not None and _p.stack == "python" and not hasattr(_p, "start_cmd"))
 if _p is not None:
     projects_svc.delete_project(db, _p, _u)  # پاکسازی — بدون اثر باقی‌مانده
 db = SessionLocal()
@@ -597,7 +605,11 @@ with tempfile.TemporaryDirectory() as _td:
 
 workers_src = (ROOT / "core/app/workers.py").read_text()
 check("مسیر pending (ورکر) هم اسکفولد می‌کارد", "seed_scaffold" in workers_src)
-check("بیلد قبل از ساخت قالب، پیش‌بازرسی استک می‌کند", "missing_marker" in workers_src)
+check("بیلدور سرویس‌محور است: مانیفست/تشخیص خودکار + کل‌یا-هیچ + همگام‌سازی سرویس‌ها",
+      "manifest.resolve" in workers_src and "_sync_services" in workers_src
+      and "_propagate_installs" in workers_src
+      and workers_src.index("images[spec.name] = dockerops.build_and_push")
+          < workers_src.index("_sync_services(db, project, specs, images"))
 
 # ---------------- پل دسترسی عامل: netcheck/sql — فقط حالت توسعه ----------------
 # (مسیر exec «معادل SSH» در v0.3.11 به دستور مالک کامل حذف شد؛ تنها مسیر اجرای
@@ -947,26 +959,27 @@ check("حالت le (nip.io/دامنهٔ بیرونی): دقیقاً رفتار �
       and _rd("p.nip.io", "g.nip.io", True).count("certResolver: le") == 2)
 _oltls = _ddo.tls_enabled_now
 _olw = _ddo.wildcard_mode_now
+from types import SimpleNamespace as _NS
+_fake_sites = [_NS(slug="shop", subdomain="shop.apps.example.com")]
 _ddo.tls_enabled_now = lambda: True
 _ddo.wildcard_mode_now = lambda db=None: True
-_l = _ddo._site_labels("shop", "shop.apps.example.com", 8080)
-_ddo.tls_enabled_now = _oltls
-_ddo.wildcard_mode_now = _olw
+_l = _ddo._public_labels(_fake_sites, 8080)
 _r = "traefik.http.routers.parastoo-site-shop"
-check("لیبل سایت در حالت وایلدکارد: رزولور wild + وایلدکارد مشتق‌شده از خود subdomain",
+check("لیبل سرویس عمومی در حالت وایلدکارد: رزولور wild + وایلدکارد مشتق‌شده از خود subdomain",
       _l.get(f"{_r}.tls.certresolver") == "wild"
-      and _l.get(f"{_r}.tls.domains[0].main") == "*.apps.example.com")
+      and _l.get(f"{_r}.tls.domains[0].main") == "*.apps.example.com"
+      and _l.get(f"{_r}.rule") == "Host(`shop.apps.example.com`)"
+      and _l.get("traefik.http.services.parastoo-site-shop.loadbalancer.server.port") == "8080")
 _ddo.tls_enabled_now = lambda: True
 _ddo.wildcard_mode_now = lambda db=None: False
-_l4 = _ddo._site_labels("shop", "shop.apps.example.com", 8080)
-_ddo.tls_enabled_now = _oltls
-_ddo.wildcard_mode_now = _olw
-check("لیبل سایت بیرون از حالت وایلدکارد: مسیر قدیمی le (nip.io/دامنهٔ بیرونی)",
+_l4 = _ddo._public_labels(_fake_sites, 8080)
+check("لیبل سرویس عمومی بیرون از حالت وایلدکارد: مسیر قدیمی le (nip.io/دامنهٔ بیرونی)",
       _l4.get(f"{_r}.tls.certresolver") == "le"
       and not any(k.endswith("domains[0].main") for k in _l4))
 _ddo.tls_enabled_now = lambda: False
-_l2 = _ddo._site_labels("shop", "shop.apps.example.com", 8080)
+_l2 = _ddo._public_labels(_fake_sites, 8080)
 _ddo.tls_enabled_now = _oltls
+_ddo.wildcard_mode_now = _olw
 check("بدون TLS: بدون certresolver (رفتار قدیمی)",
       not any("certresolver" in k for k in _l2))
 _c = (ROOT / "docker-compose.yml").read_text()
@@ -1242,6 +1255,123 @@ check("فروشگاه هرگز فروشگاه سالم را با فایل خرا
       "_json_valid" in _t32 and "refusing to archive garbage" in _t32)
 check("قانون در قرارداد حلقهٔ ایجنت ثبت است (AI_AGENT_LOOP §3 و §0)",
       "قانون گواهی ماندگار" in (ROOT / "docs/AI_AGENT_LOOP.md").read_text())
+
+
+print()
+print("— معماری سرویس‌محور v0.4.0 — تست‌های معماری جدید —")
+import tempfile as _tmp04  # noqa: E402
+from pathlib import Path as _P04  # noqa: E402
+
+from app import manifest as _mf  # noqa: E402
+from app import dockerops as _dok  # noqa: E402
+
+# نام‌گذاری و ایزولگی — هندسهٔ مالکیت
+check("نام‌گذاری کانتینر/شبکه/volume پروژه‌محور است",
+      _dok.service_container(12, "web") == "parastoo-p12-web"
+      and _dok.project_network(12) == "parastoo-proj-12"
+      and _dok.volume_name(12, "dbdata") == "parastoo-p12-dbdata")
+check("فیلتر داکر با لیبل پروژه است (هیچ استعلامی بین پروژه‌ها قاطی نمی‌شود)",
+      _dok._project_filter(7) == {"label": "parastoo.project=7"})
+
+# مانیفست: پارس امن با لیست سفید
+GOOD = """
+parastoo: 1
+services:
+  web:
+    build: .
+    port: 3000
+    public: true
+    env: [DATABASE_URL=postgres://db:5432/app, PORT=3000]
+    tier: small
+  db:
+    image: postgres:16-alpine
+    volume: dbdata:/var/lib/postgresql/data
+  worker:
+    build: ./worker
+    command: python worker.py
+"""
+with tempfile.TemporaryDirectory() as _td04:
+    _d04 = _P04(_td04)
+    (_d04 / "parastoo.yml").write_text(GOOD, encoding="utf-8")
+    specs, kind = _mf.resolve(_d04)
+    check("مانیفست ۳ سرویس می‌دهد و منبعش manifest است",
+          kind == "manifest" and len(specs) == 3)
+    _web = next(s for s in specs if s.name == "web")
+    check("سرویس عمومی web: پورت/env/tier درست",
+          _web.is_public and _web.port == 3000 and _web.tier == "small"
+          and dict(_web.env)["DATABASE_URL"].startswith("postgres://db:5432"))
+    _db04 = next(s for s in specs if s.name == "db")
+    check("سرویس داخلی db: ایمیج + volume نام‌دار",
+          _db04.image == "postgres:16-alpine" and not _db04.is_public
+          and tuple(_db04.volumes) == (("dbdata", "/var/lib/postgresql/data"),))
+    _wk = next(s for s in specs if s.name == "worker")
+    check("سرویس worker: build زیرپوشه + دستور اجرا",
+          _wk.build == "./worker" and _wk.command == "python worker.py")
+    check("همگام‌سازی JSON سرویس‌ها رفت‌وبرگشت سالم دارد",
+          _mf.json_dumps_env(_web) and "DATABASE_URL" in _mf.json_dumps_env(_web))
+
+def _bad(yml, why):
+    try:
+        _mf.parse_manifest(yml)
+        check(why, False, "پذیرفته شد!")
+    except _mf.ManifestError:
+        check(why, True)
+
+_bad("services:\n  web:\n    image: nginx", "بدون parastoo: 1 رد می‌شود")
+_bad("parastoo: 1\nservices: {}", "services خالی رد می‌شود")
+_bad("parastoo: 1\nservices:\n  web:\n    privileged: true", "کلید ممنوع privileged رد می‌شود")
+_bad("parastoo: 1\nservices:\n  web:\n    image: nginx\n    ports: [80:80]", "پورت هاست رد می‌شود")
+_bad("parastoo: 1\nservices:\n  a:\n    image: nginx\n  b:\n    image: redis",
+     "چند-سرویسی بدون public رد می‌شود")
+_bad("parastoo: 1\nservices:\n  a:\n    image: nginx\n    public: true\n  b:\n    image: redis\n    public: true",
+     "دو سرویس عمومی رد می‌شود")
+_bad("parastoo: 1\nservices:\n  Web:\n    image: nginx", "نام نامعتبر سرویس رد می‌شود")
+_bad("parastoo: 1\nservices:\n  web:\n    image: nginx\n    volume: ../host:/x",
+     "volume با .. رد می‌شود")
+_bad("parastoo: 1\nservices:\n  web:\n    image: nginx\n    tier: ابر",
+     "tier ناشناخته رد می‌شود")
+check("تک‌سرویس بدون public خودش عمومی است",
+      _mf.parse_manifest("parastoo: 1\nservices:\n  web:\n    image: nginx")[0].is_public)
+
+# تشخیص خودکار تک‌سرویسی — استک پروژه هیچ نقشی ندارد
+with tempfile.TemporaryDirectory() as _td04:
+    _d04 = _P04(_td04)
+    try:
+        _mf.resolve(_d04)
+        check("مخزن خالی خطای گویای فارسی می‌دهد", False)
+    except _mf.ManifestError as e:
+        check("مخزن خالی خطای گویای فارسی می‌دهد", "parastoo.yml" in str(e))
+    (_d04 / "package.json").write_text("{}", encoding="utf-8")
+    _sp, _k = _mf.resolve(_d04)
+    check("package.json → تک‌سرویس web با قالب node و پیش‌بازرسی",
+          _k == "auto" and len(_sp) == 1 and _sp[0].dockerfile_template
+          and _sp[0].marker[0] == "package.json")
+    (_d04 / "Dockerfile").write_text("FROM nginx", encoding="utf-8")
+    _sp2, _ = _mf.resolve(_d04)
+    check("Dockerfile کاربر → قالب نمی‌نویسد (داکرفایل خودش)",
+          _sp2[0].dockerfile_template is None)
+    (_d04 / "package.json").unlink()
+    check("تشخیص Dockerfile مقدم بر package.json است", _mf.detect_stack(_d04) == "docker")
+
+# مدل Service: خوانش امن JSON خراب
+db04 = SessionLocal()
+from app.models import Service as _S04  # noqa: E402
+_s04 = _S04(project_id=1, name="x", env_json="{broken", volumes_json="nope")
+check("env/volumes خراب → خالی (نه کرش)", _s04.env() == {} and _s04.volumes() == [])
+db04.close()
+
+# ریست اسکما: پس از اولین اجرای اپ، اسکیما جاری است و ریست دوباره کاری نمی‌کند
+from app.db import schema_is_current as _sic  # noqa: E402
+check("اسکیمای سرویس‌محور پس از راه‌اندازی جاری است", _sic() is True)
+
+# صورتحساب جمع سرویس‌ها
+from app.services import billing as _bl04  # noqa: E402
+from types import SimpleNamespace as _NS04  # noqa: E402
+_svcs = [_NS04(tier="nano"), _NS04(tier="small")]
+check("هزینهٔ ساعتی = جمع سرویس‌ها (800+1500)", _bl04.hourly_cost(_svcs) == 2300)
+check("گارد کیف پول جمعی کار می‌کند",
+      _bl04.balance_ok_total(_NS04(balance=2300), _svcs)
+      and not _bl04.balance_ok_total(_NS04(balance=1000), _svcs))
 
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")

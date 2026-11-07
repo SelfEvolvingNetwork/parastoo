@@ -25,12 +25,13 @@ import time
 import traceback
 from pathlib import Path
 
-from . import dockerops, domains, gitea, stacks, traefik_ops
+from . import dockerops, domains, gitea, manifest, stacks, traefik_ops
 from .config import settings
 from .db import SessionLocal, db_now
-from .models import Build, Project, Setting, Site, User
+from .models import Build, Project, Service, Setting, Site, User
 from .services import billing
 from .services import projects as projects_svc
+from .services import sites as sites_svc
 
 BUILD_ROOT = Path(settings.DATA_DIR) / "builds"
 LOG_TAIL = 60_000  # حداکثر کاراکترهای نگه‌داری‌شده در لاگ بیلد
@@ -148,6 +149,15 @@ def _log_fn(job, db):
 
 
 def _run_build(db, job: Build) -> None:
+    """بیلد سرویس‌محور (v0.4.0) — کل یا هیچ:
+
+    ۱) مانیفست (parastoo.yml) یا تشخیص خودکار تک‌سرویسی از محتوای مخزن؛
+    ۲) بیلد «همهٔ» ایمیج‌ها — اگر یکی مرد، اینجا تمام می‌شود و کانتینرهای
+       در حال اجرای پروژه دست‌نخورده می‌مانند (استقرار فقط بعد از سبز شدن کامل)؛
+    ۳) همگام‌سازی ردیف‌های Service با مانیفست (upsert + حذف سرویس‌های رفته);
+    ۴) استقرار کامل پروژه فقط اگر سایتی دارد (کانتینر بی‌روته هزینهٔ بی‌دلیل است)
+       + انتشار به‌روزرسانی به نصب‌های مارکت‌پلیسِ همین اپ.
+    """
     project = db.get(Project, job.project_id)
     owner = project.owner
     log = _log_fn(job, db)
@@ -174,51 +184,56 @@ def _run_build(db, job: Build) -> None:
             subprocess.run(["git", "checkout", job.commit_sha], cwd=build_dir,
                            capture_output=True, timeout=60)
 
-        # داکرفایل: فایل کاربر یا قالب پرستو
-        dockerfile = build_dir / "Dockerfile"
-        if stacks.wants_own_dockerfile(project.stack):
-            if not dockerfile.exists():
-                raise RuntimeError("برای فناوری «داکرفایل اختصاصی» باید فایل Dockerfile در ریشه مخزن باشد")
+        # ۱) سرویس‌های پروژه: مانیفست یا تشخیص خودکار (محدودیت فناوری وجود ندارد)
+        specs, src_kind = manifest.resolve(build_dir)
+        if src_kind == "manifest":
+            log(f"[manifest] {len(specs)} سرویس از parastoo.yml: "
+                + ", ".join(f"{s.name}{'*' if s.is_public else ''}" for s in specs))
         else:
-            # پیش‌بازرسی استک (v0.3.2): پیام فارسی گویا به‌جای خطای مبهم داکر
-            # (حادثهٔ ppp: استک node ولی مخزن بدون package.json → COPY failed)
-            marker_err = stacks.missing_marker(project.stack, build_dir)
-            if marker_err:
-                raise RuntimeError(marker_err)
-            content = stacks.dockerfile_for(project.stack, project.start_cmd)
-            if not dockerfile.exists() and content:
-                dockerfile.write_text(content)
-                log(f"[build] Dockerfile قالبی برای {project.stack} ساخته شد")
-        (build_dir / ".dockerignore").write_text(stacks.DOCKERIGNORE)
+            log(f"[auto] تک‌سرویس خودکار (تشخیص از محتوای مخزن: {manifest.detect_stack(build_dir)})")
 
-        image_tag = dockerops.build_and_push(
-            build_dir=build_dir,
-            owner=owner.gitea_username,
-            slug=project.slug,
-            sha=job.commit_sha,
-            docker_username=owner.gitea_username,
-            docker_password=owner.gitea_token,
-            log=log,
-        )
+        # ۲) بیلد همهٔ ایمیج‌ها — کل یا هیچ
+        images: dict[str, str] = {}
+        for spec in specs:
+            ctx = (build_dir / spec.build).resolve() if spec.build else build_dir
+            if spec.build and (not ctx.is_dir() or not str(ctx).startswith(str(build_dir.resolve()))):
+                raise RuntimeError(f"پوشهٔ بیلد سرویس «{spec.name}» پیدا نشد: {spec.build}")
+            has_own = (ctx / "Dockerfile").exists()
+            if spec.dockerfile_template and not has_own:
+                if spec.marker and not (ctx / spec.marker[0]).exists():
+                    raise RuntimeError(spec.marker[1])  # پیش‌بازرسی قالب — پیام فارسی stacks
+                (ctx / "Dockerfile").write_text(spec.dockerfile_template, encoding="utf-8")
+                log(f"[build:{spec.name}] Dockerfile قالبی ساخته شد")
+            (ctx / ".dockerignore").write_text(stacks.DOCKERIGNORE, encoding="utf-8")
+            images[spec.name] = dockerops.build_and_push(
+                build_dir=ctx,
+                owner=owner.gitea_username,
+                slug=project.slug,
+                svc=spec.name,
+                sha=job.commit_sha,
+                docker_username=owner.gitea_username,
+                docker_password=owner.gitea_token,
+                log=log,
+            )
 
-        job.image_tag = image_tag
-        project.latest_image = image_tag
+        # ۳) همگام‌سازی ردیف‌های Service با سرویس‌های اعلام‌شده
+        _sync_services(db, project, specs, images, src_kind)
+        project.manifest_json = manifest.specs_to_json(specs)
         project.latest_sha = job.commit_sha
-        project.build_count += 1
 
-        # به‌روزرسانی خودکار همه سایت‌های وابسته به این پروژه
-        for site in db.query(Site).filter(Site.project_id == project.id).all():
-            try:
-                site.image = image_tag
-                dockerops.recreate_site(site)
-                site.status = "running"
-                log(f"[deploy] سایت {site.slug} با ایمیج جدید به‌روزرسانی شد")
-            except Exception as e:
-                site.status = "error"
-                log(f"[deploy] به‌روزرسانی {site.slug} ناموفق: {e}")
+        # ۴) استقرار دانهٔ پروژه — فقط وقتی سایتی دارد (بی‌روته = خاموش و بی‌هزینه)
+        if project.sites:
+            sites_svc._deploy(db, project)
+            log("[deploy] همهٔ سرویس‌های پروژه با ایمیج جدید مستقر شدند")
+        else:
+            log("[deploy] پروژه سایتی ندارد — ایمیج‌ها آماده‌اند؛ با «انتشار سایت» اجرا می‌شوند")
 
+        _propagate_installs(db, project, log)
         job.status = "success"
         log("[done] بیلد موفق")
+    except manifest.ManifestError as e:
+        job.status = "failed"
+        log(f"[failed] {e}")
     except Exception as e:
         job.status = "failed"
         log(f"[failed] {e}")
@@ -236,6 +251,65 @@ def _run_build(db, job: Build) -> None:
         job.finished_at = db_now()
         db.commit()
         dockerops.cleanup_build_dir(build_dir)
+
+
+def _sync_services(db, project: Project, specs, images: dict[str, str],
+                   src_kind: str) -> None:
+    """ردیف‌های Service پروژه را با سرویس‌های اعلام‌شده هم‌راستا می‌کند.
+
+    tier در مسیر خودکار حفظ می‌شود (انتخاب کاربر هنگام انتشار)؛ در مسیر
+    مانیفست، tier اعلام‌شدهٔ مانیفست حرف می‌زند.
+    """
+    existing = {s.name: s for s in project.services}
+    for spec in specs:
+        row = existing.pop(spec.name, None)
+        if row is None:
+            row = Service(project_id=project.id, name=spec.name, status="stopped")
+            db.add(row)
+        row.image = images.get(spec.name) or spec.image
+        row.port = spec.port
+        row.command = spec.command
+        row.env_json = manifest.json_dumps_env(spec)
+        row.volumes_json = manifest.json_dumps_volumes(spec)
+        row.is_public = spec.is_public
+        if src_kind == "manifest" or row.tier not in settings.TIERS:
+            row.tier = spec.tier
+        row.container_name = dockerops.service_container(project.id, spec.name)
+    for gone in existing.values():
+        db.delete(gone)
+    db.commit()
+
+
+def _propagate_installs(db, project: Project, log) -> None:
+    """انتشار خودکار اپ به‌روز به نصب‌های مارکت‌پلیس (سرویس‌محور).
+
+    هر نصب، پروژهٔ مالکِ خریدار است؛ ایمیج‌های سرویس‌هایش با تگ تازهٔ فروشنده
+    هم‌راستا و اگر روشن بوده، دوباره مستقر می‌شود (روی شبکهٔ خصوصی خودش).
+    """
+    installs = (db.query(Project)
+                .filter(Project.source_project_id == project.id)
+                .all())
+    for inst in installs:
+        changed = False
+        for src in project.services:
+            svc = next((x for x in inst.services if x.name == src.name), None)
+            if svc and (svc.image != src.image or svc.tier != src.tier):
+                svc.image = src.image
+                svc.tier = src.tier
+                changed = True
+        if not changed:
+            continue
+        was_running = bool(inst.sites) and any(s.status == "running" for s in inst.sites)
+        try:
+            if was_running:
+                sites_svc._deploy(db, inst)
+                log(f"[market] نصب {inst.slug} با اپ تازه به‌روزرسانی شد")
+            else:
+                db.commit()
+                log(f"[market] نصب {inst.slug} ایمیج تازه گرفت (خاموش است — با روشن‌کردن اعمال می‌شود)")
+        except Exception as e:
+            db.rollback()
+            log(f"[market] به‌روزرسانی نصب {inst.slug} ناموفق: {e}")
 
 
 # ---------------------------------------------------------------- heal
@@ -403,7 +477,7 @@ def billing_once() -> None:
     """یک دور صورتحساب با نشست تازه — منطق کسر/توقف در services/billing.py."""
     db = SessionLocal()
     try:
-        billing.charge_running_sites(db)
+        billing.charge_running_services(db)
     finally:
         db.close()
 

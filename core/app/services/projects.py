@@ -1,8 +1,11 @@
-"""چرخهٔ حیات پروژه: ساخت، یافتن با چک مالکیت، اسکفولد استاندارد، صف بیلد، حذف آبشاری."""
+"""چرخهٔ حیات پروژه: ساخت، یافتن با چک مالکیت، اسکفولد استاندارد، صف بیلد، حذف آبشاری.
+
+حذف آبشاری (v0.4.0) به دانهٔ پروژه است: کانتینرهای همهٔ سرویس‌ها، شبکهٔ
+خصوصی، ردیف‌های سرویس/سایت/بیلد و مخزن گیت — همه با هم.
+"""
 from sqlalchemy.orm import Session
 
 from .. import dockerops, gitea, scaffolds
-from ..config import settings
 from ..models import Build, Project, Site, User
 from ..security import gen_secret, slugify
 from ..validation import project_slug_error
@@ -20,19 +23,16 @@ def create_project(db: Session, owner: User, name: str, slug_raw: str,
                    stack: str, start_cmd: str = "", description: str = ""):
     """ساخت پروژه + تلاش فوری برای مخزن گیت.
 
-    برمی‌گرداند: (project|None, flash_key) — project=None یعنی flash_key خطاست.
-    اگر گیتا آماده نباشد پروژه ساخته می‌شود (repo_status=pending) و ورکر
-    bootstrap بعداً مخزن را می‌سازد (خودترمیمی) — flash: git_pending.
+    «stack» از v0.4.0 فقط قالب شروع (بذر مخزن خالی) است — start_cmd هم بخشی از
+    مدل نیست (قالب پایتون خودش دستور اجرای استاندارد دارد؛ کنترل کامل با
+    parastoo.yml). start_cmd اینجا برای سازگاری امضا پذیرفته ولی نادیده گرفته
+    می‌شود. اگر گیتا آماده نباشد پروژه ساخته می‌شود (repo_status=pending) و
+    ورکر bootstrap بعداً مخزن را می‌سازد (خودترمیمی) — flash: git_pending.
     """
     name = name.strip()
     slug = slugify(slug_raw)
-    start_cmd = (start_cmd or "").strip()
-    # مدل پایتون از v0.3.2 با FastAPI متولد می‌شود؛ ورکر sync گورنیکون (پیش‌فرض
-    # قدیمی) با ASGI نمی‌سازد — پس دستور اجرای پیش‌فرض، ورکر uvicorn است.
-    if stack == "python" and not start_cmd:
-        start_cmd = scaffolds.DEFAULT_START_CMD["python"]
     err = project_slug_error(slug)
-    if err is None and (not name or stack not in settings.STACKS):
+    if err is None and (not name or stack not in settings_stacks()):
         err = "slug_invalid"
     if err:
         return None, err
@@ -44,7 +44,6 @@ def create_project(db: Session, owner: User, name: str, slug_raw: str,
         name=name,
         slug=slug,
         stack=stack,
-        start_cmd=start_cmd.strip() or None,
         description=description.strip(),
         webhook_secret=gen_secret(16),
         repo_status="pending",
@@ -66,8 +65,13 @@ def create_project(db: Session, owner: User, name: str, slug_raw: str,
     return project, flash
 
 
+def settings_stacks() -> dict:
+    from ..config import settings
+    return settings.STACKS
+
+
 def seed_scaffold(project: Project, owner: User) -> bool:
-    """کامیت اولیهٔ مدل استاندارد روی مخزن خالی (v0.3.2) — best-effort.
+    """کامیت اولیهٔ مدل استاندارد روی مخزن خالی — best-effort.
 
     قواعد در scaffolds.py: فقط مخزن خالی، هرگز بازنویسی محتوای کاربر،
     شکست فقط لاگ می‌شود (مسیر قدیمی «مخزن خالی» همچنان کار می‌کند).
@@ -96,32 +100,34 @@ def queue_build(db: Session, project: Project) -> str:
 
 
 def delete_project(db: Session, project: Project, acting_user: User) -> str | None:
-    """حذف کامل پروژه: سایت‌های خود مالک + بیلدها + مخزن گیت (best-effort).
+    """حذف کامل پروژه — دانهٔ حیات، پروژه است.
 
     قواعد حفاظتی:
     - اگر سایتی از این پروژه متعلق به کاربر دیگری باشد (خریدار مارکت‌پلیس)،
-      حذف مسدود می‌شود تا سایت زندهٔ دیگران نشکند — مالک باید صبر کند تا
-      خریداران سایتشان را حذف کنند؛ کلید خطا: project_in_use.
+      حذف مسدود می‌شود تا سایت زندهٔ دیگران نشکند — کلید خطا: project_in_use.
     - تأیید با تایپ شناسهٔ پروژه در مسیر (route) چک می‌شود، نه اینجا.
     """
     referencing = db.query(Site).filter(Site.project_id == project.id).all()
     if any(s.owner_id != acting_user.id for s in referencing):
         return "project_in_use"
 
-    # ۱) سایت‌های خود مالک را از داکر و دیتابیس پاک کن (best-effort در داکر)
-    for s in referencing:
-        try:
-            dockerops.remove_site(s.slug)
-        except Exception:
-            pass
-        db.delete(s)
+    # ۱) کانتینرهای همهٔ سرویس‌ها + شبکهٔ خصوصی (best-effort در داکر)
+    try:
+        dockerops.remove_project(project.id, quiet=True)
+    except Exception:
+        pass
+    dockerops.delete_network(project.id)
 
-    # ۲) بیلدها و پروژه
+    # ۲) ردیف‌های پروژه‌محور
+    for s in referencing:
+        db.delete(s)
+    for svc in list(project.services):
+        db.delete(svc)
     db.query(Build).filter(Build.project_id == project.id).delete()
 
     # ۳) مخزن گیت (best-effort — نبود گیتا مانع حذف پروژه نمی‌شود)
     owner = db.get(User, project.owner_id)
-    if owner:
+    if owner and not project.source_project_id:
         gitea.delete_project_repo(project, owner)
 
     db.delete(project)

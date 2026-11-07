@@ -1,4 +1,7 @@
-"""سایت‌های منتشرشده کاربر — لایهٔ نازک HTTP روی services/sites.py."""
+"""سایت‌های منتشرشده کاربر — لایهٔ نازک HTTP روی services/sites.py.
+
+از v0.4.0 هزینه از سرویس‌ها می‌آید؛ هر سایت آدرسِ یک پروژه است.
+"""
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
@@ -18,8 +21,14 @@ def sites_list(request: Request, user=Depends(csrf_guard), db: Session = Depends
              .order_by(Site.id.desc())
              .all())
     live = sites_svc.live_statuses(items)
-    running = [s for s in items if s.status == "running"]
-    monthly = billing_svc.monthly_cost(running)
+    # هزینهٔ جاری = سرویس‌های running پروژه‌هایِ سایت‌های این کاربر (بدون تکرار پروژه)
+    seen, running_services = set(), []
+    for s in items:
+        if s.project_id in seen:
+            continue
+        seen.add(s.project_id)
+        running_services += [x for x in s.project.services if x.status == "running"]
+    monthly = billing_svc.monthly_cost(running_services)
     return render("sites.html", ctx(request, user, items=items, live=live, monthly=monthly))
 
 

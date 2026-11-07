@@ -119,9 +119,13 @@ bash "$APP_DIR/scripts/tls-store.sh" save || true
 
 # ---------- 1/5) teardown: every container Parastoo owns ----------
 mark "1/5) stopping and removing everything Parastoo owns"
-# site containers live OUTSIDE the compose stack (created via Docker SDK,
-# restart=unless-stopped) — compose down never touches them, remove first
+# project containers live OUTSIDE the compose stack (created via Docker SDK,
+# restart=unless-stopped) — compose down never touches them, remove first.
+# v0.4.0 naming: parastoo-p<id>-<svc> with label parastoo.project=<id>;
+# legacy pre-0.4 sites are parastoo-site-<slug> — both are swept here.
 docker ps -aq --filter name=parastoo-site- | xargs -r docker rm -f >/dev/null 2>&1 || true
+docker ps -aq --filter label=parastoo.project | xargs -r docker rm -f >/dev/null 2>&1 || true
+docker network ls -q --filter name=parastoo-proj- | xargs -r docker network rm >/dev/null 2>&1 || true
 docker compose down -v --remove-orphans || warn "compose down reported an error (continuing — the sweep below finishes the job)"
 # stale recreate orphans ("<hash>_parastoo-<svc>") + ANY container still
 # claiming a parastoo name or compose project label (belt and braces)

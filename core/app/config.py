@@ -9,7 +9,7 @@ def _bool(name: str, default: str = "false") -> bool:
 class Settings:
     # --- پایه ---
     APP_NAME: str = "پرستو"
-    VERSION: str = "0.3.36"
+    VERSION: str = "0.4.0"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me")
 
     # --- دیتابیس ---
@@ -110,13 +110,19 @@ class Settings:
         "medium": {"label": "متوسط", "cpus": 1.0,  "mem": 1024, "price": 3000},
     }
 
-    # فناوری‌های مجاز برای ساخت پروژه (لیست محدود برای مدیریت‌پذیری)
+    # قالب‌های شروع (v0.4.0): فقط بذر مخزن خالی و برچسب نمایشی‌اند — موتور آن‌ها را
+    # نمی‌خواند؛ در زمان بیلد محتوای مخزن (parastoo.yml / Dockerfile / package.json
+    # / requirements.txt / index.html) تعیین‌کننده است. محدودیت «نوع پروژه» حذف شده:
+    # هر ران‌تایم و هر ترکیب چند-کانتینری با parastoo.yml ممکن است.
     STACKS: dict = {
-        "static":  {"label": "استاتیک (HTML/CSS/JS — nginx)"},
-        "node":    {"label": "Node.js 20 (باید روی پورت 3000 گوش دهد)"},
-        "python":  {"label": "Python 3.12 (باید روی پورت 3000 گوش دهد)"},
-        "docker":  {"label": "داکرفایل اختصاصی خودم (پورت 3000)"},
+        "static":  {"label": "قالب استاتیک (HTML/CSS/JS)"},
+        "node":    {"label": "قالب Node.js 20"},
+        "python":  {"label": "قالب Python (FastAPI)"},
+        "docker":  {"label": "قالب داکرفایل اختصاصی"},
     }
+
+    # معماری سرویس‌محور (v0.4.0): سقف سرویس به‌ازای هر پروژه
+    MAX_SERVICES: int = int(os.environ.get("PARASTOO_MAX_SERVICES", "8"))
 
     # زیردامنه‌های رزروشده که نباید به کاربر داده شود
     RESERVED_SLUGS = {

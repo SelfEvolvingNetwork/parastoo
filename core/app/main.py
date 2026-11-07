@@ -17,7 +17,7 @@ from starlette.responses import JSONResponse
 
 from . import devlog, workers
 from .config import settings
-from .db import Base, SessionLocal, engine
+from .db import Base, SessionLocal, engine, reset_project_data
 from .deps import render, resolve_user
 from .routes import ROUTERS
 
@@ -28,6 +28,8 @@ WEB_STATIC = pathlib.Path(__file__).parent / "web" / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # v0.4.0: شناسایی اسکیمای پیش از سرویس‌محور → پاک‌سازی دادهٔ پروژه (فاز تست)
+    reset_project_data()
     Base.metadata.create_all(engine)
     workers.start_workers()
     yield

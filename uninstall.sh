@@ -14,16 +14,23 @@ read -r -p "Are you sure? [y/N]: " CONFIRM || true
 [ "${CONFIRM:-n}" = "y" ] || { echo "Cancelled."; exit 0; }
 
 if [ "${DEL_VOLS:-n}" = "y" ]; then
-  # site containers live OUTSIDE the compose stack (created via Docker SDK,
-  # restart=unless-stopped) — compose down never touches them, remove first
-  echo "Removing deployed site containers..."
+  # project containers live OUTSIDE the compose stack (created via Docker SDK,
+  # restart=unless-stopped) — compose down never touches them, remove first.
+  # v0.4.0 naming: parastoo-p<id>-<svc> with label parastoo.project=<id>;
+  # legacy pre-0.4 sites are parastoo-site-<slug> — both are swept here.
+  echo "Removing deployed project containers..."
   docker ps -aq --filter name=parastoo-site- | xargs -r docker rm -f
+  docker ps -aq --filter label=parastoo.project | xargs -r docker rm -f
+  docker network ls -q --filter name=parastoo-proj- | xargs -r docker network rm
   docker compose down -v --remove-orphans
   echo "Removing project images..."
   # -n1 + tolerate failure: layered images may already be gone as dependencies
   # of an earlier removal — a hard error here aborted nothing important but
   # scared the user with "No such image" (v0.3.24)
   docker images -q --filter label=parastoo.slug | xargs -r -n1 docker rmi -f 2>/dev/null || true
+  # user volumes of project services (parastoo-p<id>-<name>) — compose prefix
+  # is "parastoo_" (underscore) so platform volumes never match this filter
+  docker volume ls -q --filter name=parastoo-p | grep -v '^parastoo_' | xargs -r docker volume rm
 else
   docker compose down --remove-orphans
 fi

@@ -4,18 +4,47 @@
 <div class="card-head">
   <div>
     <h1>{{ p.name }} <span class="muted small mono">{{ p.slug }}</span></h1>
-    <p class="muted">{{ stack_label(p.stack) }}{% if p.description %} — {{ p.description }}{% endif %}</p>
+    <p class="muted">
+      {% if p.source_project_id %}نصب مارکت‌پلیس{% else %}{{ stack_label(p.stack) }}{% endif %}
+      {% if p.description %} — {{ p.description }}{% endif %}
+    </p>
   </div>
+  {% if has_repo %}
   <form method="post" action="/projects/{{ p.slug }}/rebuild">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <button class="btn btn-ghost" type="submit" title="بیلد مجدد با آخرین کامیت">بیلد مجدد</button>
   </form>
+  {% endif %}
 </div>
 
 <section class="card">
+  <h2>سرویس‌های پروژه ({{ services|length }} کانتینر)</h2>
+  {% if services %}
+  <table>
+    <thead><tr><th>سرویس</th><th>ایمیج</th><th>پلن</th><th>نقش</th><th>وضعیت</th></tr></thead>
+    <tbody>
+    {% for svc in services %}
+      <tr>
+        <td><b class="mono">{{ svc.name }}</b></td>
+        <td class="mono small">{{ (svc.image or '—').split('/')[-1] }}</td>
+        <td>{{ tier_label(svc.tier) }}</td>
+        <td>{% if svc.is_public %}<span class="badge badge-info">عمومی (روت دامنه)</span>{% else %}<span class="muted">داخلی</span>{% endif %}</td>
+        <td><span class="badge badge-{{ {'running':'ok','stopped':'wait','paused':'warn','error':'err'}.get(svc.status, 'wait') }}">{{ {'running':'روشن','stopped':'آماده','paused':'متوقف (بدهی)','error':'خطا'}.get(svc.status, svc.status) }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if hourly %}<p class="muted small">هزینهٔ جاری: {{ money(hourly) }} {{ settings.CURRENCY }}/ساعت (کسر ساعتی از کیف پول)</p>{% endif %}
+  {% else %}
+  <p class="muted">هنوز بیلدی انجام نشده. با اولین push، سرویس‌های پروژه از parastoo.yml (یا تشخیص خودکار محتوا) ساخته می‌شوند.</p>
+  {% endif %}
+</section>
+
+{% if has_repo %}
+<section class="card">
   <h2>مخزن گیت و توکن دسترسی</h2>
   {% if git_ready %}
-  <p>مخزن خصوصی شما آماده است — با یک کامیت اولیهٔ استاندارد (README و ساختار پایه) سبز شروع شده. کدتان را این‌طور بفرستید:</p>
+  <p>مخزن خصوصی شما آماده است — با یک کامیت اولیهٔ استاندارد سبز شروع شده. کدتان را این‌طور بفرستید:</p>
   <pre class="code" dir="ltr">git clone http{{ 's' if domains.tls() else '' }}://{{ user.gitea_username }}:YOUR_TOKEN@{{ clone_url }} {{ p.slug }}
 cd {{ p.slug }}
 # ... فایل‌ها را تغییر دهید ...
@@ -25,17 +54,33 @@ git add -A && git commit -m "تغییرات" && git push</pre>
     <pre class="code" dir="ltr">REMOTE=http{{ 's' if domains.tls() else '' }}://{{ user.gitea_username }}:{{ user.gitea_token }}@{{ clone_url }}</pre>
     <p class="muted small">این توکن مثل رمز عبور است؛ با آن می‌توان به مخزن‌های شما push و pull کرد.</p>
   </details>
-  <p class="muted small">با هر push به شاخهٔ <b>main</b>، بیلد خودکار شروع می‌شود و ایمیج بروزرسانی می‌گردد.</p>
+  <p class="muted small">با هر push به شاخهٔ <b>main</b>، بیلد خودکار شروع می‌شود و همهٔ سرویس‌های پروژه با ایمیج جدید مستقر می‌شوند.</p>
+  <details>
+    <summary class="btn-link">چند-کانتینری: تعریف سرویس‌ها با parastoo.yml</summary>
+    <pre class="code" dir="ltr"># parastoo.yml در ریشهٔ مخزن — هر تعداد سرویس
+parastoo: 1
+services:
+  web:                # فقط سرویس عمومی دامنه می‌گیرد
+    build: .
+    port: 3000
+    public: true
+    env: [DATABASE_URL=postgres://db:5432/app]
+  db:                 # داخلی — فقط داخل شبکهٔ خصوصی همین پروژه
+    image: postgres:16-alpine
+    volume: dbdata:/var/lib/postgresql/data</pre>
+    <p class="muted small">نام هر سرویس داخل شبکهٔ خصوصی پروژه به‌عنوان نام میزبان به بقیه می‌رسد (مثلاً <span class="mono">db:5432</span>). سرویس‌های داخلی از اینترنت در دسترس نیستند.</p>
+  </details>
   {% else %}
   <p class="muted">{{ FLASHES.git_pending }}</p>
   {% endif %}
 </section>
+{% endif %}
 
 <div class="two-col">
   <section class="card">
     <h2>انتشار سایت</h2>
-    {% if p.latest_image %}
-    <p class="muted small">آخرین ایمیج: <span class="mono">{{ p.latest_image }}</span></p>
+    {% if services and services|selectattr('image')|list %}
+    <p class="muted small">سایت = زیردامنه‌ای که به سرویس عمومی پروژه روت می‌شود. هر تعداد سایت می‌توانید برای همین پروژه بسازید.</p>
     <form method="post" action="/projects/{{ p.slug }}/publish" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <label>زیردامنه (سایت روی آن منتشر می‌شود)
@@ -44,6 +89,7 @@ git add -A && git commit -m "تغییرات" && git push</pre>
           <span>.{{ domains.apps() }}</span>
         </div>
       </label>
+      {% if not p.manifest_json %}
       <label>پلن منابع (هزینه ساعتی از کیف پول)
         <select name="tier">
           {% for key, t in settings.TIERS.items() %}
@@ -51,9 +97,9 @@ git add -A && git commit -m "تغییرات" && git push</pre>
           {% endfor %}
         </select>
       </label>
-      <label>پورت داخلی اپ (پیش‌فرض: {{ default_port }})
-        <input type="number" name="port" min="1" max="65535" value="{{ default_port }}">
-      </label>
+      {% else %}
+      <p class="muted small">پلن منابع سرویس‌ها از parastoo.yml خوانده می‌شود (کلید tier هر سرویس).</p>
+      {% endif %}
       <button class="btn btn-primary" type="submit">انتشار سایت</button>
     </form>
     {% else %}
@@ -63,13 +109,12 @@ git add -A && git commit -m "تغییرات" && git push</pre>
     {% if sites %}
     <h3 class="mt">سایت‌های این پروژه</h3>
     <table>
-      <thead><tr><th>شناسه</th><th>آدرس</th><th>پلن</th><th>وضعیت</th></tr></thead>
+      <thead><tr><th>شناسه</th><th>آدرس</th><th>وضعیت</th></tr></thead>
       <tbody>
       {% for s in sites %}
       <tr>
         <td><b>{{ s.slug }}</b></td>
         <td><a href="http{{ 's' if domains.tls() else '' }}://{{ s.subdomain }}" target="_blank" rel="noopener">{{ s.subdomain }}</a></td>
-        <td>{{ tier_label(s.tier) }}</td>
         <td><span class="badge badge-{{ {'running':'ok','stopped':'wait','paused':'warn','error':'err'}[s.status] }}">{{ {'running':'روشن','stopped':'خاموش','paused':'متوقف','error':'خطا'}[s.status] }}</span></td>
       </tr>
       {% endfor %}
@@ -80,7 +125,8 @@ git add -A && git commit -m "تغییرات" && git push</pre>
 
   <section class="card">
     <h2>مارکت‌پلیس</h2>
-    <p class="muted small">با انتشار در مارکت‌پلیس، دیگران می‌توانند ایمیج شما را (رایگان یا پولی) روی حساب خودشان فعال کنند. به‌روزرسانی ایمیج برای همه خریداران خودکار است.</p>
+    <p class="muted small">با انتشار در مارکت‌پلیس، دیگران می‌توانند اپ شما را — تک‌کانتینری یا چند-کانتینری — روی حساب خودشان فعال کنند. هر خریدار نمونهٔ کامل و ایزولهٔ خودش را می‌گیرد؛ به‌روزرسانی اپ برای همهٔ خریداران خودکار است.</p>
+    {% if has_repo %}
     <form method="post" action="/projects/{{ p.slug }}/marketplace" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <label class="check">
@@ -93,8 +139,9 @@ git add -A && git commit -m "تغییرات" && git push</pre>
       <p class="muted small">سهم شما از هر فروش: {{ 100 - settings.COMMISSION_PERCENT }}٪ (کمیسیون پرستو: {{ settings.COMMISSION_PERCENT }}٪)</p>
       <button class="btn btn-ghost" type="submit">ذخیره تنظیمات مارکت‌پلیس</button>
     </form>
+    {% endif %}
     {% if p.is_public %}
-      <p class="badge badge-info">این ایمیج در مارکت‌پلیس عمومی است — {{ p.installs }} نصب</p>
+      <p class="badge badge-info">این اپ در مارکت‌پلیس عمومی است — {{ p.installs }} نصب</p>
     {% endif %}
   </section>
 </div>
@@ -130,7 +177,7 @@ git add -A && git commit -m "تغییرات" && git push</pre>
 
 <section class="card danger-zone">
   <h2>منطقهٔ خطر</h2>
-  <p class="muted small">حذف پروژه برگشت‌پذیر نیست: مخزن گیت، تاریخچهٔ بیلدها و <b>همهٔ سایت‌هایی که خودتان از این پروژه منتشر کرده‌اید</b> پاک می‌شوند. اگر دیگران این پروژه را از مارکت‌پلیس خریده باشند، حذف تا حذف‌شدن سایت‌های آن‌ها مسدود می‌شود تا هیچ سایت زنده‌ای نشکند.</p>
+  <p class="muted small">حذف پروژه برگشت‌پذیر نیست: مخزن گیت، تاریخچهٔ بیلدها، <b>همهٔ سرویس‌ها و کانتینرهایش</b> و سایت‌هایی که خودتان از این پروژه منتشر کرده‌اید پاک می‌شوند. اگر دیگران این اپ را از مارکت‌پلیس خریده باشند، حذف تا حذف‌شدن سایت‌های آن‌ها مسدود می‌شود تا هیچ سایت زنده‌ای نشکند.</p>
   <form method="post" action="/projects/{{ p.slug }}/delete" class="inline-form" onsubmit="return confirm('مطمئنید؟ این کار برگشت‌پذیر نیست.')">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label>برای تأیید، شناسهٔ پروژه را تایپ کنید: <span class="mono">{{ p.slug }}</span>

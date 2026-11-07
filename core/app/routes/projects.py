@@ -1,7 +1,8 @@
 """پروژه‌ها — لایهٔ نازک HTTP: اعتبارسنجی فرم → سرویس → ریدایرکت/رندر.
 
 منطق ساخت/حذف/بیلد در services/projects.py و انتشار سایت در
-services/sites.py است.
+services/sites.py است. از v0.4.0 پروژه گروه سرویس‌هاست — فرم ساخت فقط
+«قالب شروع» می‌پرسد (بذر مخزن خالی) و موتور در بیلد محتوای مخزن را می‌خواند.
 """
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.orm import Session
@@ -10,9 +11,9 @@ from .. import domains, traefik_ops
 from ..db import get_db
 from ..deps import ctx, csrf_guard, redirect, render
 from ..models import Build, Project, Site
+from ..services import billing as billing_svc
 from ..services import projects as projects_svc
 from ..services import sites as sites_svc
-from ..stacks import default_port
 
 router = APIRouter()
 
@@ -35,14 +36,14 @@ def project_new_page(request: Request, user=Depends(csrf_guard)):
 def project_create(
     name: str = Form(...),
     slug: str = Form(...),
-    stack: str = Form(...),
-    start_cmd: str = Form(""),
+    stack: str = Form("static"),
     description: str = Form(""),
     user=Depends(csrf_guard),
     db: Session = Depends(get_db),
 ):
+    # stack فقط قالب شروع (بذر مخزن خالی) است — موتور آن را نمی‌خواند
     project, flash = projects_svc.create_project(
-        db, user, name, slug, stack, start_cmd, description)
+        db, user, name, slug, stack, "", description)
     if project is None:
         return redirect(f"/projects/new?m={flash}")
     return redirect(f"/projects/{project.slug}?m={flash}")
@@ -63,12 +64,15 @@ def project_detail(request: Request, slug: str,
              .filter(Site.project_id == project.id)
              .order_by(Site.id.desc())
              .all())
-    git_ready = project.repo_status == "ready" and bool(user.gitea_token)
+    services = sorted(project.services, key=lambda s: (not s.is_public, s.name))
+    hourly = billing_svc.hourly_cost([s for s in services if s.status == "running"])
+    has_repo = not project.source_project_id
+    git_ready = has_repo and project.repo_status == "ready" and bool(user.gitea_token)
     clone_url = f"{domains.git()}/{user.gitea_username}/{project.slug}.git" if git_ready else ""
     return render("project_detail.html", ctx(
-        request, user, p=project, builds=builds, sites=sites,
+        request, user, p=project, builds=builds, sites=sites, services=services,
+        hourly=hourly, has_repo=has_repo,
         git_ready=git_ready, clone_url=clone_url,
-        default_port=default_port(project.stack),
     ))
 
 
@@ -124,13 +128,14 @@ def project_publish(
     request: Request, slug: str,
     site_slug: str = Form(...),
     tier: str = Form("nano"),
-    port: str = Form(""),
     user=Depends(csrf_guard), db: Session = Depends(get_db),
 ):
     project = projects_svc.project_for(db, user, slug)
     if project is None:
         return redirect("/projects?m=not_found")
-    site, flash = sites_svc.publish_from_project(db, user, project, site_slug, tier, port)
+    # tier برای پروژه‌های تک-سرویسیِ بدون مانیفست اعمال می‌شود؛ پروژه‌های
+    # مانیفست‌دار tier خود را از parastoo.yml دارند
+    site, flash = sites_svc.publish_from_project(db, user, project, site_slug, tier)
     if flash:
         return redirect(f"/projects/{slug}?m={flash}")
     # صداقت انتشار (v0.3.23): اگر ترافیک هنوز گواهی HTTPS این سایت را ندارد،
