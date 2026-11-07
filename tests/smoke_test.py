@@ -1569,6 +1569,21 @@ check("پین: حذف سایت از DB، از نقشهٔ پین بعدی هم م
 _do06.settings.PUBLIC_IP, _do06.settings.HOST_ENV_FILE = _ip06, _hef06
 import os as _os06  # noqa: E402
 _os06.unlink(_p06)
+# دام میدانی v0.4.6: قرارداد docker-py — extra_hosts فقط در host_config است،
+# create_container پارامتر hosts ندارد (TypeError فقط در بیلد واقعی دیده شد)
+_src06 = (ROOT / "core/app/dockerops.py").read_text(encoding="utf-8")
+check("پین از مسیر host_config/extra_hosts سیم‌کشی شده است",
+      '"extra_hosts": hosts_entries' in _src06 and "hosts=hosts_entries" not in _src06)
+try:
+    import inspect as _ins06
+    from docker.api.container import ContainerApiMixin as _CAM06
+    _fake06 = type("S", (), {"_version": "1.45"})()
+    _hc06 = _CAM06.create_host_config(_fake06, extra_hosts={"a.test": "10.0.0.1"})
+    _no_hosts06 = "hosts" not in _ins06.signature(_CAM06.create_container).parameters
+    check("قرارداد docker-py: ExtraHosts در host_config، پارامتر hosts در create_container غایب",
+          dict(_hc06).get("ExtraHosts") == ["a.test:10.0.0.1"] and _no_hosts06)
+except ImportError:
+    print("  − docker-py نصب نیست — چک قرارداد رد شد")
 
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")

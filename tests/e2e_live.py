@@ -350,7 +350,7 @@ def main() -> int:
         else:
             _ctx = ("c=ssl._create_unverified_context()\n" if _TLS_INSECURE else "")
             _kw = (",context=c" if _TLS_INSECURE else "")
-            _probe = (
+            _code = (
                 "import urllib.request as u,urllib.error as e"
                 + (",ssl" if _TLS_INSECURE else "") + "\n"
                 + _ctx
@@ -360,6 +360,8 @@ def main() -> int:
                 + "except e.HTTPError as x:\n"
                 + "    print('HTTP',x.code)\n"
             )
+            # bridge exec = sh -c؛ کد پایتون با heredoc نقل‌قول‌امن فرستاده می‌شود
+            _probe = "python3 - <<'PYEOF'\n" + _code + "PYEOF\n"
 
             def c_bridge_cross():
                 d, err = b_exec(_probe, 40)

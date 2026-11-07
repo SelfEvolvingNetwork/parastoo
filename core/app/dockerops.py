@@ -498,12 +498,16 @@ def deploy_project(project, services, sites,
             # کانتینرِ بدون این لیبل را کلاً نادیده می‌گیرد (میدان v0.4.0: 404 سایت)
             labels["traefik.enable"] = "true"
             labels.update(_public_labels(sites, svc.port))
+        # docker-py قرارداد (دام میدانی v0.4.6): extra_hosts فقط در host_config
+        # است — create_container پارامتر hosts ندارد (TypeError در بیلد واقعی)
+        host_kwargs: dict = {"extra_hosts": hosts_entries} if hosts_entries else {}
         host_config = c.api.create_host_config(
             binds=binds or None,
             restart_policy={"Name": "unless-stopped"},
             network_mode=net_name,
             mem_limit=t["mem"] * 1024 * 1024,
             nano_cpus=int(t["cpus"] * 1e9),
+            **host_kwargs,
         )
         networking_config = c.api.create_networking_config({
             net_name: c.api.create_endpoint_config(aliases=[svc.name]),
@@ -515,7 +519,6 @@ def deploy_project(project, services, sites,
             environment=svc.env(),
             host_config=host_config,
             networking_config=networking_config,
-            hosts=hosts_entries or None,  # DNS خوداتکا (v0.4.6) — /etc/hosts
             detach=True,
         )
         if svc.command:
