@@ -60,13 +60,13 @@
   <h2>همه سایت‌ها</h2>
   {% if sites %}
   <table>
-    <thead><tr><th>شناسه</th><th>مالک</th><th>پلن</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+    <thead><tr><th>شناسه</th><th>مالک</th><th>هزینه/ساعت</th><th>وضعیت</th><th>عملیات</th></tr></thead>
     <tbody>
     {% for s in sites %}
       <tr>
         <td><b>{{ s.slug }}</b><div class="muted small">{{ s.subdomain }}</div></td>
         <td>{{ s.owner.email }}</td>
-        <td>{{ tier_label(s.tier) }}</td>
+        <td>{{ money(hourly_by_site.get(s.id, 0)) }} {{ settings.CURRENCY }}</td>
         <td><span class="badge badge-{{ {'running':'ok','stopped':'wait','paused':'warn','error':'err'}[s.status] }}">{{ {'running':'روشن','stopped':'خاموش','paused':'متوقف','error':'خطا'}[s.status] }}</span></td>
         <td class="actions">
           <form method="post" action="/admin/sites/{{ s.id }}/action"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="{{ 'stop' if s.status == 'running' else 'start' }}"><button class="btn btn-ghost btn-sm">{{ 'خاموش' if s.status == 'running' else 'روشن' }}</button></form>

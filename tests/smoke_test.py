@@ -144,6 +144,11 @@ with TestClient(app, follow_redirects=False) as c:
                 subdomain="demo.apps.test", status="running"))
     db.commit()
     db.close()
+    # رگرسیون 500 کیف پول (v0.5.1): hourly_cost سرویس می‌خواهد نه سایت —
+    # پاس‌دادن Site یعنی 500 برای هر کاربری که سایت روشن دارد (میدان ۱۱-۰۷)
+    r = c.get("/wallet")
+    check("کیف پول با سایت روشن سالم است (رگرسیون Site.tier)",
+          r.status_code == 200 and "800" in r.text)
     billing_once()
     billing_once()  # بار دوم نباید دوباره کسر کند (< 1 ساعت)
     db = SessionLocal()
@@ -173,6 +178,55 @@ with TestClient(app, follow_redirects=False) as c:
     db.close()
     r = c2.get("/sites")
     check("ادمین صفحه سایت‌ها", r.status_code == 200)
+
+    # رگرسیون v0.5.1 (میدان ۱۱-۰۷): اکشن‌های سایت در پنل ادمین توابعِ
+    # حذف‌شدهٔ dockerops.stop_site/… را می‌خواند → AttributeError بی‌صدا →
+    # دکمه‌های خاموش/روشن/حذف ادمین کاملاً مرده بودند (m=publish_failed همیشه)
+    dockerops.start_project = lambda pid_: None  # stop از قبل مونکی‌پچ شده
+    db = SessionLocal()
+    _site_id = db.query(Site).filter(Site.slug == "demo-site").first().id
+    db.add(Site(project_id=pid, owner_id=uid, slug="admin-tmp",
+                subdomain="tmp.apps.test", status="stopped"))
+    db.commit()
+    _tmp_id = db.query(Site).filter(Site.slug == "admin-tmp").first().id
+    db.close()
+    r = c2.post(f"/admin/sites/{_site_id}/action", data={"action": "stop", "csrf": acsrf},
+                follow_redirects=False)
+    check("ادمین: خاموش‌کردن سایت → site_stopped", "m=site_stopped" in r.headers.get("location", ""))
+    db = SessionLocal()
+    check("پس از خاموشی ادمین، سرویس و سایت هم‌وضعیت‌اند",
+          db.query(_Service).filter(_Service.name == "web").first().status == "stopped"
+          and db.query(Site).filter(Site.slug == "demo-site").first().status == "stopped")
+    db.close()
+    r = c2.post(f"/admin/sites/{_site_id}/action", data={"action": "start", "csrf": acsrf},
+                follow_redirects=False)
+    check("ادمین: روشن‌کردن سایت → site_started", "m=site_started" in r.headers.get("location", ""))
+    db = SessionLocal()
+    check("پس از روشنی ادمین، سرویس و سایت هم‌وضعیت‌اند",
+          db.query(_Service).filter(_Service.name == "web").first().status == "running"
+          and db.query(Site).filter(Site.slug == "demo-site").first().status == "running")
+    db.close()
+    r = c2.post(f"/admin/sites/{_tmp_id}/action", data={"action": "delete", "csrf": acsrf},
+                follow_redirects=False)
+    check("ادمین: حذف سایت → site_deleted", "m=site_deleted" in r.headers.get("location", ""))
+    db = SessionLocal()
+    check("سایت حذف‌شدهٔ ادمین از DB رفته", db.query(Site).filter(Site.slug == "admin-tmp").first() is None)
+    db.close()
+    r = c2.post(f"/admin/sites/{_site_id}/action", data={"action": "explode", "csrf": acsrf},
+                follow_redirects=False)
+    check("ادمین: اکشن ناشناخته → error", "m=error" in r.headers.get("location", ""))
+
+    # رگرسیون v0.5.1: specs_to_json باید لیست دیکشنری بدهد نه لیست رشتهٔ JSON
+    # (کدگذاری دوم، خروجی /api/bridge/manifest را بی‌معنا می‌کرد)
+    from app import manifest as _mf
+    _row = json.loads(_mf.specs_to_json([_mf.ServiceSpec(name="web", build=".", port=80,
+                                                         is_public=True, tier="nano")]))[0]
+    check("specs_to_json دیکشنری می‌دهد (نه رشتهٔ دوبارکد)",
+          isinstance(_row, dict) and _row["name"] == "web" and _row["port"] == 80)
+    _src_admin = (ROOT / "core/app/routes/admin.py").read_text(encoding="utf-8")
+    check("ادمین دیگر توابع حذف‌شدهٔ dockerops را صدا نمی‌زند",
+          "dockerops.stop_site" not in _src_admin and "dockerops.remove_site" not in _src_admin
+          and "sites_svc.stop" in _src_admin)
 
     print("— پرداخت آنلاین کیف پول (درگاه آزمایشی v0.3.4) —")
     # اعتبارسنجی مبلغ — هیچ رکوردی نباید بماند

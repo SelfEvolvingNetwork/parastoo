@@ -77,13 +77,13 @@ class ServiceSpec:
     # پیش‌بازرسی استک قالبی (مثل package.json برای node) — پیام فارسی stacks
     marker: tuple[str, str] | None = None
 
-    def to_json(self) -> str:
-        return json.dumps({
+    def to_dict(self) -> dict:
+        return {
             "name": self.name, "image": self.image, "build": self.build,
             "port": self.port, "command": self.command, "env": dict(self.env),
             "volumes": [list(v) for v in self.volumes],
             "is_public": self.is_public, "tier": self.tier,
-        }, ensure_ascii=False)
+        }
 
 
 # ---------------------------------------------------------------- مانیفست
@@ -294,7 +294,10 @@ def resolve(repo_dir: Path) -> tuple[list[ServiceSpec], str]:
 
 
 def specs_to_json(specs: list[ServiceSpec]) -> str:
-    return json.dumps([s.to_json() for s in specs], ensure_ascii=False)
+    """عکس لحظه‌ای سرویس‌ها برای Project.manifest_json — لیست دیکشنری (نه
+    رشتهٔ JSON داخل رشته؛ درس میدانی v0.5.1: کدگذاری دوم، خروجی
+    /api/bridge/manifest را برای عامل بی‌معنا می‌کرد)."""
+    return json.dumps([s.to_dict() for s in specs], ensure_ascii=False)
 
 
 def json_dumps_env(spec: ServiceSpec) -> str:
