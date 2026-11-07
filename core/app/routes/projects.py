@@ -44,7 +44,7 @@ def project_create(
 ):
     # stack فقط قالب شروع (بذر مخزن خالی) است — موتور آن را نمی‌خواند
     project, flash = projects_svc.create_project(
-        db, user, name, slug, stack, "", description)
+        db, user, name, slug, stack, description)
     if project is None:
         return redirect(f"/projects/new?m={flash}")
     return redirect(f"/projects/{project.slug}?m={flash}")

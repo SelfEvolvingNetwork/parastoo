@@ -20,14 +20,13 @@ def project_for(db: Session, user: User, slug: str) -> Project | None:
 
 
 def create_project(db: Session, owner: User, name: str, slug_raw: str,
-                   stack: str, start_cmd: str = "", description: str = ""):
+                   stack: str, description: str = ""):
     """ساخت پروژه + تلاش فوری برای مخزن گیت.
 
-    «stack» از v0.4.0 فقط قالب شروع (بذر مخزن خالی) است — start_cmd هم بخشی از
-    مدل نیست (قالب پایتون خودش دستور اجرای استاندارد دارد؛ کنترل کامل با
-    parastoo.yml). start_cmd اینجا برای سازگاری امضا پذیرفته ولی نادیده گرفته
-    می‌شود. اگر گیتا آماده نباشد پروژه ساخته می‌شود (repo_status=pending) و
-    ورکر bootstrap بعداً مخزن را می‌سازد (خودترمیمی) — flash: git_pending.
+    «stack» فقط قالب شروع (بذر مخزن خالی) است — بخشی از مدل اجرا نیست
+    (کنترل کامل با parastoo.yml). اگر گیتا آماده نباشد پروژه ساخته می‌شود
+    (repo_status=pending) و ورکر bootstrap بعداً مخزن را می‌سازد (خودترمیمی)
+    — flash: git_pending.
     """
     name = name.strip()
     slug = slugify(slug_raw)

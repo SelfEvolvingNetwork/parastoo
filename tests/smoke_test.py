@@ -1518,9 +1518,13 @@ _s04 = _S04(project_id=1, name="x", env_json="{broken", volumes_json="nope")
 check("env/volumes خراب → خالی (نه کرش)", _s04.env() == {} and _s04.volumes() == [])
 db04.close()
 
-# ریست اسکما: پس از اولین اجرای اپ، اسکیما جاری است و ریست دوباره کاری نمی‌کند
-from app.db import schema_is_current as _sic  # noqa: E402
-check("اسکیمای سرویس‌محور پس از راه‌اندازی جاری است", _sic() is True)
+# اسکیمای تازه: جداول اصلی پس از راه‌اندازی وجود دارند (بدون مهاجرت — v0.5.0)
+import sqlalchemy as _sa05  # noqa: E402
+from app.db import engine as _engine05  # noqa: E402
+_tbl05 = set(_sa05.inspect(_engine05).get_table_names())
+check("اسکیمای تازه پس از راه‌اندازی ساخته شده (بدون مهاجرت)",
+      {"users", "projects", "services", "sites", "builds", "agent_tokens",
+       "wallet_tx", "payments", "settings"} <= _tbl05)
 
 # صورتحساب جمع سرویس‌ها
 from app.services import billing as _bl04  # noqa: E402
