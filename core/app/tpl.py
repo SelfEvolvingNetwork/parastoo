@@ -95,11 +95,6 @@ def tier_label(key: str) -> str:
     return f"{t['label']} ({t['cpus']} CPU / {t['mem']}MB)" if t else key
 
 
-def stack_label(key: str) -> str:
-    s = settings.STACKS.get(key)
-    return s["label"] if s else key
-
-
 templates.env.globals.update(
     settings=settings,
     domains=domains,
@@ -107,5 +102,4 @@ templates.env.globals.update(
     money=money,
     dt=dt,
     tier_label=tier_label,
-    stack_label=stack_label,
 )

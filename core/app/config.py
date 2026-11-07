@@ -9,7 +9,7 @@ def _bool(name: str, default: str = "false") -> bool:
 class Settings:
     # --- پایه ---
     APP_NAME: str = "پرستو"
-    VERSION: str = "0.5.1"
+    VERSION: str = "0.5.2"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me")
 
     # --- دیتابیس ---
@@ -108,17 +108,6 @@ class Settings:
         "nano":   {"label": "نانو",   "cpus": 0.25, "mem": 256,  "price": 800},
         "small":  {"label": "کوچک",  "cpus": 0.5,  "mem": 512,  "price": 1500},
         "medium": {"label": "متوسط", "cpus": 1.0,  "mem": 1024, "price": 3000},
-    }
-
-    # قالب‌های شروع (v0.4.0): فقط بذر مخزن خالی و برچسب نمایشی‌اند — موتور آن‌ها را
-    # نمی‌خواند؛ در زمان بیلد محتوای مخزن (parastoo.yml / Dockerfile / package.json
-    # / requirements.txt / index.html) تعیین‌کننده است. محدودیت «نوع پروژه» حذف شده:
-    # هر ران‌تایم و هر ترکیب چند-کانتینری با parastoo.yml ممکن است.
-    STACKS: dict = {
-        "static":  {"label": "قالب استاتیک (HTML/CSS/JS)"},
-        "node":    {"label": "قالب Node.js 20"},
-        "python":  {"label": "قالب Python (FastAPI)"},
-        "docker":  {"label": "قالب داکرفایل اختصاصی"},
     }
 
     # معماری سرویس‌محور (v0.4.0): سقف سرویس به‌ازای هر پروژه

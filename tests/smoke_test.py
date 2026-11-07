@@ -69,8 +69,8 @@ with TestClient(app, follow_redirects=False) as c:
     db.close()
     csrf = security.csrf_token(uid)
 
-    r = c.post("/projects/new", data={"name": "فروشگاه من", "slug": "my-shop", "stack": "python",
-                                      "start_cmd": "gunicorn -b 0.0.0.0:3000 main:app", "csrf": csrf},
+    r = c.post("/projects/new", data={"name": "فروشگاه من", "slug": "my-shop",
+                                      "csrf": csrf},
                follow_redirects=False)
     check("ساخت پروژه → ریدایرکت", r.status_code == 303 and "my-shop" in r.headers["location"])
     r = c.get("/projects/my-shop")
@@ -78,13 +78,13 @@ with TestClient(app, follow_redirects=False) as c:
     check("وضعیت مخزن pending نمایش داده شده", "در حال ساخت" in r.text)
     check("راهنمای گیت نمایش داده نشده (چون آماده نیست)", "git init" not in r.text)
 
-    r = c.post("/projects/new", data={"name": "x", "slug": "panel", "stack": "static", "csrf": csrf}, follow_redirects=False)
+    r = c.post("/projects/new", data={"name": "x", "slug": "panel", "csrf": csrf}, follow_redirects=False)
     check("slug رزرو رد شد", "slug_reserved" in r.headers.get("location", ""))
-    r = c.post("/projects/new", data={"name": "x", "slug": "my-shop", "stack": "static", "csrf": csrf}, follow_redirects=False)
+    r = c.post("/projects/new", data={"name": "x", "slug": "my-shop", "csrf": csrf}, follow_redirects=False)
     check("slug تکراری رد شد", "slug_taken" in r.headers.get("location", ""))
 
     print("— محافظ CSRF —")
-    r = c.post("/projects/new", data={"name": "x", "slug": "no-csrf", "stack": "static"}, follow_redirects=False)
+    r = c.post("/projects/new", data={"name": "x", "slug": "no-csrf"}, follow_redirects=False)
     check("بدون CSRF → ریدایرکت m=csrf", "m=csrf" in r.headers.get("location", ""))
 
     print("— وب‌هوک گیتا —")
@@ -326,7 +326,7 @@ with TestClient(app, follow_redirects=False) as c:
 
     print("— حذف پروژه (v0.2.24) —")
     # پروژهٔ ادمین برای تست IDOR و مسدودسازی با سایتِ خریدار
-    r = c2.post("/projects/new", data={"name": "ادمین‌شاپ", "slug": "admin-shop", "stack": "static",
+    r = c2.post("/projects/new", data={"name": "ادمین‌شاپ", "slug": "admin-shop",
                                        "csrf": acsrf}, follow_redirects=False)
     check("ساخت پروژهٔ ادمین", r.status_code == 303 and "admin-shop" in r.headers["location"])
     # IDOR: علی حق حذف پروژهٔ ادمین را ندارد
@@ -366,7 +366,7 @@ with TestClient(app, follow_redirects=False) as c:
 
     r = c.post("/login", data={"email": "ali@test.ir", "password": "secret1"}, follow_redirects=False)
     check("ورود دوبارهٔ علی برای بخش پل", r.status_code == 303)
-    r = c.post("/projects/new", data={"name": "پل عامل", "slug": "bridge-proj", "stack": "static", "csrf": csrf},
+    r = c.post("/projects/new", data={"name": "پل عامل", "slug": "bridge-proj", "csrf": csrf},
                follow_redirects=False)
     check("پروژهٔ تست پل ساخته شد", r.status_code == 303 and "bridge-proj" in r.headers["location"])
 
@@ -667,8 +667,8 @@ check("اسکرول‌بار بلوک‌های کد پنهان نیست (دست�
 check("کارت‌های آمار داشبورد در موبایل ۲×۲ می‌شوند",
       ".grid-4 { grid-template-columns: repeat(2, 1fr); }" in _css)
 _newp = (ROOT / "core/app/web/templates/project_new.html").read_text()
-check("فرم ساخت پروژه دیگر «دستور اجرا» ندارد — قالب شروع کافی است و موتور محتوا را می‌خواند",
-      "start_cmd" not in _newp and "parastoo.yml" in _newp)
+check("فرم ساخت پروژه هیچ فناوری‌ای نمی‌پرسد (نه دستور اجرا، نه قالب شروع) — فناوری در بیلد از محتوا خوانده می‌شود",
+      "start_cmd" not in _newp and "name=\"stack\"" not in _newp and "parastoo.yml" in _newp)
 _au = (ROOT / "scripts/auto-update.sh").read_text()
 check("auto-update متادیتای استقرار را صریح صادر می‌کند (وگرنه healthz یک چرخه عقب می‌افتد)",
       "set -a; . ./.env; set +a" in _au
@@ -765,32 +765,31 @@ check("create_token روی خطای اسکوپ fallback دارد (نرمال‌�
 check("کلاینت گیتا کامیت اولیهٔ گروهی (seed) دارد",
       "/contents" in gitea_src and "seed_project_scaffold" in gitea_src and "repo_info" in gitea_src)
 
-print("— اسکفولد استاندارد و پیش‌بازرسی بیلد (v0.3.2) —")
+print("— بذر جهانی مخزن و پیش‌بازرسی بیلد (v0.5.2) —")
 from app import scaffolds, stacks as stacks_mod  # noqa: E402
 from app.services import projects as projects_svc  # noqa: E402
 
-for st_key, must in (("static", ["README.md", "index.html", "css/style.css", "js/script.js"]),
-                     ("node", ["README.md", "package.json", "server.js"]),
-                     ("python", ["README.md", "app.py", "requirements.txt"]),
-                     ("docker", ["README.md", "Dockerfile", "index.html"])):
-    sc_files = scaffolds.SCAFFOLDS.get(st_key, {})
-    check(f"اسکفولد {st_key} کامل است", all(m in sc_files for m in must), f"files={sorted(sc_files)}")
-check("اسکفولد node بدون وابستگی است (بیلد اول همیشه سبز)", "dependencies" not in scaffolds.SCAFFOLDS["node"]["package.json"])
-check("اسکفولد node قرارداد PORT را دارد", "process.env.PORT" in scaffolds.SCAFFOLDS["node"]["server.js"])
-check("اسکفولد پایتون FastAPI است", "FastAPI" in scaffolds.SCAFFOLDS["python"]["app.py"])
-check("README اسکفولد پایتون جای دستور اجرا را دارد", "__START_CMD__" in scaffolds.SCAFFOLDS["python"]["README.md"])
-check("داکرفایل نمونهٔ مدل docker پورت 3000 را رعایت می‌کند", "EXPOSE 3000" in scaffolds.SCAFFOLDS["docker"]["Dockerfile"])
+for must in ("README.md", "index.html", "css/style.css", "js/script.js", ".gitignore"):
+    check(f"بذر جهانی {must} را دارد", must in scaffolds.SEED, f"files={sorted(scaffolds.SEED)}")
+check("بذر جهانی پنج مسیر محتوا را در README توضیح می‌دهد (manifest/dockerfile/node/python/static)",
+      all(k in scaffolds.SEED["README.md"] for k in ("parastoo.yml", "Dockerfile", "package.json", "requirements.txt", "index.html")))
+check("بذر جهانی قرارداد پورت 3000 را برای اپ داینامیک نگه می‌دارد", "پورت 3000" in scaffolds.SEED["README.md"])
+check("بذر دیگر اسکفولد چهارگانه ندارد (یک بذر واحد)", not hasattr(scaffolds, "SCAFFOLDS"))
 
-# پیش‌فرض دستور اجرای پایتون = ورکر uvicorn (ASGI) — با پروژهٔ یک‌بارمصرف می‌سازیم و پاک می‌کنیم
+# فناوری دیگر در تعریف پروژه نیست — با پروژهٔ یک‌بارمصرف می‌سازیم و پاک می‌کنیم
 db = SessionLocal()
 _u = db.query(User).filter(User.email == "ali@test.ir").first()
 db.close()
 db = SessionLocal()
-_p, _flash = projects_svc.create_project(db, _u, "ای‌پی‌آی تست", "py-api-check", "python")
-check("پروژه با قالب شروع پایتون ساخته شد (pending بدون گیتا)", _p is not None and _flash == "git_pending")
-check("استک فقط قالب شروع است؛ مدل دیگر start_cmd ندارد",
-      _p is not None and _p.stack == "python" and not hasattr(_p, "start_cmd"))
+_p, _flash = projects_svc.create_project(db, _u, "ای‌پی‌آی تست", "py-api-check")
+check("پروژه بدون پرسش فناوری ساخته شد (pending بدون گیتا)", _p is not None and _flash == "git_pending")
+check("مدل پروژه دیگر نه stack دارد نه start_cmd",
+      _p is not None and not hasattr(_p, "stack") and not hasattr(_p, "start_cmd"))
 if _p is not None:
+    _seed = scaffolds.files_for(_p, clone_url="https://git.example/x/y.git")
+    check("بذر پروژه تازه جای‌گذاری نام/شناسه را دارد",
+          _seed.get("index.html", "").find("ای‌پی‌آی تست") >= 0
+          and _seed.get("README.md", "").find("py-api-check") >= 0)
     projects_svc.delete_project(db, _p, _u)  # پاکسازی — بدون اثر باقی‌مانده
 db = SessionLocal()
 check("پروژهٔ یک‌بارمصرف پایتون پاکسازی شد",

@@ -1,8 +1,9 @@
 """پروژه‌ها — لایهٔ نازک HTTP: اعتبارسنجی فرم → سرویس → ریدایرکت/رندر.
 
 منطق ساخت/حذف/بیلد در services/projects.py و انتشار سایت در
-services/sites.py است. از v0.4.0 پروژه گروه سرویس‌هاست — فرم ساخت فقط
-«قالب شروع» می‌پرسد (بذر مخزن خالی) و موتور در بیلد محتوای مخزن را می‌خواند.
+services/sites.py است. از v0.5.2 فرم ساخت پروژه هیچ فناوری‌ای نمی‌پرسد —
+فناوری در بیلد از محتوای مخزن خوانده می‌شود؛ مخزن تازه فقط بذر جهانی
+(scaffolds.py) می‌گیرد.
 """
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.orm import Session
@@ -37,14 +38,11 @@ def project_new_page(request: Request, user=Depends(csrf_guard)):
 def project_create(
     name: str = Form(...),
     slug: str = Form(...),
-    stack: str = Form("static"),
     description: str = Form(""),
     user=Depends(csrf_guard),
     db: Session = Depends(get_db),
 ):
-    # stack فقط قالب شروع (بذر مخزن خالی) است — موتور آن را نمی‌خواند
-    project, flash = projects_svc.create_project(
-        db, user, name, slug, stack, description)
+    project, flash = projects_svc.create_project(db, user, name, slug, description)
     if project is None:
         return redirect(f"/projects/new?m={flash}")
     return redirect(f"/projects/{project.slug}?m={flash}")

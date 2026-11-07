@@ -200,7 +200,6 @@ def main() -> int:
             csrf = b.csrf("/projects/new")
             b.go("POST", "/projects/new",
                  {"csrf": csrf, "name": "پروژهٔ عامل", "slug": PROJ_SLUG,
-                  "stack": "static", "start_cmd": "",
                   "description": "تست خودکار هارنس کاربر-محور"})
             # فلش project_created = مخزن همگام ساخته شد؛ git_pending = پروژه
             # ساخته شد و مخزن در پس‌زمینه (نصب بدون گیتا/ورکر) — هر دو موفق‌اند.

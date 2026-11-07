@@ -46,6 +46,10 @@ EXPOSE 3000
 
 PYTHON_CMD_TEMPLATE = 'CMD ["sh", "-c", "{cmd}"]'
 
+# دستور اجرای پیش‌فرض اپ پایتونِ بدون دستور صریح — ورکر uvicorn (ASGI).
+# نکتهٔ فنی: FastAPI با ورکر syncِ گورنیکون (پیش‌فرض قدیمی «app:app») نمی‌سازد.
+DEFAULT_START_CMD = "gunicorn -b 0.0.0.0:3000 -k uvicorn.workers.UvicornWorker app:app"
+
 DOCKERIGNORE = """\
 .git
 .gitignore

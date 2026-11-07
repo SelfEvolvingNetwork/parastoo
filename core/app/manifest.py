@@ -32,7 +32,7 @@ from pathlib import Path
 import yaml
 
 from .config import settings
-from .scaffolds import DEFAULT_START_CMD
+from .stacks import DEFAULT_START_CMD
 
 MANIFEST_NAME = "parastoo.yml"
 MAX_MANIFEST_BYTES = 64 * 1024
@@ -273,7 +273,7 @@ def auto_spec(repo_dir: Path) -> list[ServiceSpec]:
                             dockerfile_template=stacks.dockerfile_for("node"),
                             marker=stacks.MARKERS["node"])]
     if detected == "python":
-        cmd = DEFAULT_START_CMD["python"]
+        cmd = DEFAULT_START_CMD
         return [ServiceSpec(name="web", build=".", port=3000, command=cmd, is_public=True,
                             dockerfile_template=stacks.dockerfile_for("python", cmd),
                             marker=stacks.MARKERS["python"])]

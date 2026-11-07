@@ -42,9 +42,9 @@ class User(Base):
 class Project(Base):
     """پروژه = گروه سرویس‌ها + (اختیاری) مخزن گیت + (اختیاری) تعریف مارکت.
 
-    stack فقط «قالب شروع» است (بذر مخزن خالی + برچسب نمایشی) — موتور آن را
-    نمی‌خواند؛ تشخیص فناوری در زمان بیلد از محتوای مخزن انجام می‌شود و
-    parastoo.yml همیشه بر همه چیز مقدم است.
+    فناوری پروژه چیزی نیست که هنگام ساخت انتخاب شود — در بیلد از محتوای
+    مخزن خوانده می‌شود (parastoo.yml یا تشخیص خودکار) و parastoo.yml
+    همیشه بر همه چیز مقدم است.
     source_project_id: پرستوی نصب‌شده از مارکت‌پلیس — پروژهٔ مالکِ خریدار که
     سرویس‌هایش کپی همان سرویس‌های پروژهٔ فروشنده است (بدون مخزن گیت).
     manifest_json: عکس لحظه‌ای مانیفست آخرین بیلد موفق (برای UI و انتشار).
@@ -55,7 +55,6 @@ class Project(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     slug: Mapped[str] = mapped_column(String(60), unique=True, index=True)
-    stack: Mapped[str] = mapped_column(String(20), default="static")   # قالب شروع — نمایشی
     description: Mapped[str] = mapped_column(Text, default="")
 
     # مارکت‌پلیس

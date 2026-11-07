@@ -20,18 +20,18 @@ def project_for(db: Session, user: User, slug: str) -> Project | None:
 
 
 def create_project(db: Session, owner: User, name: str, slug_raw: str,
-                   stack: str, description: str = ""):
+                   description: str = ""):
     """ساخت پروژه + تلاش فوری برای مخزن گیت.
 
-    «stack» فقط قالب شروع (بذر مخزن خالی) است — بخشی از مدل اجرا نیست
-    (کنترل کامل با parastoo.yml). اگر گیتا آماده نباشد پروژه ساخته می‌شود
-    (repo_status=pending) و ورکر bootstrap بعداً مخزن را می‌سازد (خودترمیمی)
-    — flash: git_pending.
+    فناوری اینجا پرسیده نمی‌شود — در بیلد از محتوای مخزن خوانده می‌شود؛
+    مخزن تازه فقط بذر جهانی scaffolds را می‌گیرد. اگر گیتا آماده نباشد
+    پروژه ساخته می‌شود (repo_status=pending) و ورکر bootstrap بعداً مخزن
+    را می‌سازد (خودترمیمی) — flash: git_pending.
     """
     name = name.strip()
     slug = slugify(slug_raw)
     err = project_slug_error(slug)
-    if err is None and (not name or stack not in settings_stacks()):
+    if err is None and not name:
         err = "slug_invalid"
     if err:
         return None, err
@@ -42,7 +42,6 @@ def create_project(db: Session, owner: User, name: str, slug_raw: str,
         owner_id=owner.id,
         name=name,
         slug=slug,
-        stack=stack,
         description=description.strip(),
         webhook_secret=gen_secret(16),
         repo_status="pending",
@@ -64,13 +63,8 @@ def create_project(db: Session, owner: User, name: str, slug_raw: str,
     return project, flash
 
 
-def settings_stacks() -> dict:
-    from ..config import settings
-    return settings.STACKS
-
-
 def seed_scaffold(project: Project, owner: User) -> bool:
-    """کامیت اولیهٔ مدل استاندارد روی مخزن خالی — best-effort.
+    """کامیت اولیهٔ بذر جهانی روی مخزن خالی — best-effort.
 
     قواعد در scaffolds.py: فقط مخزن خالی، هرگز بازنویسی محتوای کاربر،
     شکست فقط لاگ می‌شود (مسیر قدیمی «مخزن خالی» همچنان کار می‌کند).
@@ -83,7 +77,7 @@ def seed_scaffold(project: Project, owner: User) -> bool:
             return False
         seeded = gitea.seed_project_scaffold(project, owner, files, scaffolds.COMMIT_MESSAGE)
         if seeded:
-            print(f"[parastoo] scaffold seeded: {owner.gitea_username}/{project.slug} ({project.stack})")
+            print(f"[parastoo] scaffold seeded: {owner.gitea_username}/{project.slug}")
         return seeded
     except Exception as e:
         print(f"[parastoo] scaffold seed failed for {project.slug}: {e}")

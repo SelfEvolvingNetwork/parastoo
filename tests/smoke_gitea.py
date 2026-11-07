@@ -259,7 +259,7 @@ with TestClient(app, follow_redirects=False) as c:
     db = SessionLocal()
     uid = db.query(User).filter(User.email == "ali@test.ir").first().id
     db.close()
-    r = c.post("/projects/new", data={"name": "فروشگاه", "slug": "gitea-shop", "stack": "static",
+    r = c.post("/projects/new", data={"name": "فروشگاه", "slug": "gitea-shop",
                                       "csrf": security.csrf_token(uid)}, follow_redirects=False)
     check("ساخت پروژه", r.status_code == 303)
     workers.bootstrap_once()
@@ -276,25 +276,25 @@ with TestClient(app, follow_redirects=False) as c:
     check("وب‌هوک بیلد روی مخزن نصب شد",
           bool(repos.get(f"{gname}/gitea-shop", {}).get("hooks")))
 
-    # --- اسکفولد استاندارد (v0.3.2): کامیت اولیه روی مخزن خالی ---
+    # --- بذر جهانی (v0.5.2): کامیت اولیه روی مخزن خالی ---
     seeded = repos.get(f"{gname}/gitea-shop", {}).get("files", {})
-    check("کامیت اولیهٔ اسکفولد روی مخزن خالی اعمال شد", bool(seeded))
-    check("اسکفولد استاتیک شامل README قراردادی و index.html است",
+    check("کامیت اولیهٔ بذر جهانی روی مخزن خالی اعمال شد", bool(seeded))
+    check("بذر جهانی شامل README و index.html است",
           "README.md" in seeded and "index.html" in seeded)
     check("محتوای seed پایه‌۶۴ بوده (وفادار به API واقعی گیتا)",
           all(isinstance(v, str) and v for v in seeded.values()))
 
-    # پروژهٔ دوم با مدل node — فایل کلید package.json باید seed شود
+    # پروژهٔ دوم — بذر جهانی برای همهٔ پروژه‌ها یکی است (فناوری دیگر پرسیده نمی‌شود)
     db = SessionLocal()
     uid = db.query(User).filter(User.email == "ali@test.ir").first().id
     db.close()
-    r = c.post("/projects/new", data={"name": "نوداپ", "slug": "gitea-node", "stack": "node",
+    r = c.post("/projects/new", data={"name": "نوداپ", "slug": "gitea-node",
                                       "csrf": security.csrf_token(uid)}, follow_redirects=False)
-    check("ساخت پروژهٔ node", r.status_code == 303)
+    check("ساخت پروژهٔ دوم", r.status_code == 303)
     with LOCK:
         seeded_node = dict(REPOS).get(f"{gname}/gitea-node", {}).get("files", {})
-    check("اسکفولد node با package.json و server.js seed شد",
-          "package.json" in seeded_node and "server.js" in seeded_node)
+    check("بذر جهانی دوم هم یکسان است (بدون وابسته به انتخاب فناوری)",
+          "index.html" in seeded_node and "css/style.css" in seeded_node)
 
     # قاعدهٔ «فقط مخزن خالی»: سیکل بعدی نباید دوباره seed کند
     with LOCK:

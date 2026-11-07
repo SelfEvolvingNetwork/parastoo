@@ -30,12 +30,11 @@
     </div>
     {% if projects %}
     <table>
-      <thead><tr><th>نام</th><th>فناوری</th><th>وضعیت مخزن</th><th>مارکت</th></tr></thead>
+      <thead><tr><th>نام</th><th>وضعیت مخزن</th><th>مارکت</th></tr></thead>
       <tbody>
       {% for p in projects %}
         <tr>
           <td><a href="/projects/{{ p.slug }}"><b>{{ p.name }}</b></a><div class="muted small">{{ p.slug }}</div></td>
-          <td>{{ stack_label(p.stack) }}</td>
           <td><span class="badge badge-{{ {'ready':'ok','error':'err'}.get(p.repo_status, 'wait') }}">{{ {'ready':'آماده','pending':'در حال ساخت','error':'خطا'}.get(p.repo_status, p.repo_status) }}</span></td>
           <td>{% if p.is_public %}<span class="badge badge-info">در مارکت — {{ money(p.price) }} {{ settings.CURRENCY }}</span>{% else %}—{% endif %}</td>
         </tr>

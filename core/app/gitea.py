@@ -280,7 +280,7 @@ def provision_project_repo(project, owner) -> None:
 
 
 def seed_project_scaffold(project, owner, files: dict[str, str], message: str) -> bool:
-    """کامیت اولیهٔ اسکفولد استاندارد روی مخزن «خالی» (v0.3.2).
+    """کامیت اولیهٔ بذر جهانی روی مخزن «خالی».
 
     قواعد ایمنی (از scaffolds.py):
     - فقط مخزن خالی: اگر محتوا دارد (کاربر زودتر push کرده) هرگز دست نمی‌زنیم.

@@ -12,17 +12,10 @@
     <label>شناسه (انگلیسی، کوچک، با خط تیره) — در آدرس مخزن و زیردامنه استفاده می‌شود
       <input type="text" name="slug" required pattern="[a-z0-9][a-z0-9-]{2,39}" placeholder="my-shop">
     </label>
-    <label>قالب شروع (فقط محتوای اولیهٔ مخزن خالی — بعداً آزادانه عوضش کنید)
-      <select name="stack" required>
-        {% for key, s in settings.STACKS.items() %}
-        <option value="{{ key }}">{{ s.label }}</option>
-        {% endfor %}
-      </select>
-    </label>
     <label>توضیح کوتاه (اختیاری)
       <input type="text" name="description" placeholder="این پروژه چه می‌کند؟">
     </label>
-    <p class="muted small">در زمان بیلد، محتوای مخزن تعیین‌کننده است: اگر <b>parastoo.yml</b> بگذارید، سرویس‌های پروژه (چند کانتینر: اپ + دیتابیس + …) همان‌جا تعریف می‌شوند؛ وگرنه پرستو از محتوای ریشه (Dockerfile / package.json / requirements.txt / index.html) تک‌سرویس خودکار می‌سازد.</p>
+    <p class="muted small">در زمان بیلد، محتوای مخزن تعیین‌کننده است: اگر <b>parastoo.yml</b> بگذارید، سرویس‌های پروژه (چند کانتینر: اپ + دیتابیس + …) همان‌جا تعریف می‌شوند؛ وگرنه پرستو از محتوای ریشه (Dockerfile / package.json / requirements.txt / index.html) تک‌سرویس خودکار می‌سازد. مخزن تازه فعلاً یک نمونهٔ استاتیک آمادهٔ اجرا دارد — آزادانه عوضش کنید.</p>
     <button class="btn btn-primary btn-block" type="submit">ساخت پروژه و مخزن گیت</button>
   </form>
 </div>

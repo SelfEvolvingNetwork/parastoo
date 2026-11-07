@@ -11,7 +11,7 @@
 4. **خودترمیمی.** اگر گیتا در لحظه در دسترس نبود، رکورد در حالت `pending` می‌ماند و ورکر bootstrap بعداً می‌سازد. هرگز عملیات گیت را شرط ورود کاربر نکنید.
 5. **همه پیکربندی از env** (`core/app/config.py`) — بدون فایل کانفیگ جدید.
 6. **لایه‌بندی:** مسیر HTTP → اعتبارسنجی (validation.py) → سرویس (services/) → زیرساخت (dockerops/gitea/traefik_ops/dnsops). منطق کسب‌وکار هرگز داخل routes/ نوشته نمی‌شود؛ هر قاعده فقط یک جا (مثلاً قیمت پلن فقط services/billing.py).
-7. **اسکفولد تک‌منبع:** ساختار اولیهٔ همهٔ مدل‌ها فقط در `scaffolds.py` تعریف می‌شود؛ کامیت اولیه فقط روی مخزن «خالی» اعمال و best-effort است — محتوای کاربر هرگز بازنویسی نمی‌شود و شکست اسکفولد هرگز ساخت پروژه را نمی‌شکند.
+7. **بذر تک‌منبع:** محتوای اولیهٔ مخزن تازه فقط در `scaffolds.py` تعریف می‌شود (یک بذر جهانی — فناوری دیگر پرسیده نمی‌شود و در بیلد از محتوا خوانده می‌شود)؛ کامیت اولیه فقط روی مخزن «خالی» اعمال و best-effort است — محتوای کاربر هرگز بازنویسی نمی‌شود و شکست بذر هرگز ساخت پروژه را نمی‌شکند.
 
 ## نقشه فایل‌ها
 
@@ -40,10 +40,10 @@ core/app/
   tpl.py        Jinja2 + فلش‌پیام‌های فارسی + فیلترهای قالب
   devlog.py     رینگ‌بافر لاگ در حافظه (منبع /api/dev/logs)
   deps.py       resolve_user/get_current_user / csrf_guard / render / redirect / set_session
-  gitea.py      کلاینت Gitea API + provision کاربر/مخزن + seed اسکفولد + توکن سیستمی
+  gitea.py      کلاینت Gitea API + provision کاربر/مخزن + seed بذر اولیه + توکن سیستمی
   dockerops.py  بیلد/push سرویس‌ها + deploy_project (کل-یا-هیچ) + شبکهٔ خصوصی پروژه + پین /etc/hosts + exec/logs
-  stacks.py     داکرفایل قالبی برای static/node/python/docker + پیش‌بازرسی فایل کلید استک
-  scaffolds.py  اسکفولد استاندارد ۴ مدل: فایل‌های آمادهٔ اجرا + README قراردادی — فقط مخزن خالی
+  stacks.py     داکرفایل قالبی برای static/node/python/docker + پیش‌بازرسی فایل کلید استک + دستور اجرای پیش‌فرض پایتون
+  scaffolds.py  بذر جهانی مخزن تازه (یک قالب واحد: سایت استاتیک + README پنج‌مسیری) — فقط مخزن خالی
   workers.py    سه ترد: bootstrap_loop، build_worker، billing_loop (صورتحساب → services/billing)
   services/     منطق کسب‌وکار — بدون HTTP:
     billing.py    قیمت‌گذاری تک‌منبع: tier/price_hourly/hourly_cost(سرویس‌های running) + charge_running_services + گارد balance_ok
@@ -78,7 +78,7 @@ core/app/
 
 ## جریان‌های کلیدی
 
-**ساخت پروژه:** POST /projects/new → ردیف Project → تلاش فوری gitea.provision_project_repo (اگر گیتا پایین بود، ورکر bootstrap بعداً می‌سازد) → کامیت اولیهٔ اسکفولد (فقط مخزن خالی، best-effort).
+**ساخت پروژه:** POST /projects/new (نام + شناسه + توضیح — بدون پرسش فناوری) → ردیف Project → تلاش فوری gitea.provision_project_repo (اگر گیتا پایین بود، ورکر bootstrap بعداً می‌سازد) → کامیت اولیهٔ بذر جهانی (فقط مخزن خالی، best-effort).
 
 **بیلد (سرویس‌محور):** push → webhook POST /api/hooks/gitea/{id} (امضا) → Build(queued) → build_worker: کلون → `manifest.parse_file` (بدون مانیفست: `detect_stack` از محتوای ریشه) → پیش‌بازرسی کلید استک → به‌ازای هر سرویس `build_and_push` به رجیستری گیتا → **بیلد «کل یا هیچ»:** شکست هر سرویس هیچ کانتینری را تغییر نمی‌دهد → `deploy_project` همهٔ سرویس‌ها را بازمی‌سازد (غیرعمومی‌ها اول) + شبکهٔ خصوصی `parastoo-proj-<id>` + alias شبکه = نام سرویس + پین تازهٔ `/etc/hosts`.
 
