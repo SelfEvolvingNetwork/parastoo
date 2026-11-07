@@ -41,14 +41,29 @@ CONFIG_FILE = ".parastoo.json"
 
 # ---------------------------------------------------------------- اتصال
 
+def _find_config():
+    """.parastoo.json از پوشهٔ جاری به سمت والدین — عامل داخل پوشهٔ کلون‌شده هم
+    می‌ماند و پیکربندیِ ساخته‌شده یک سطح بالاتر پیدا می‌شود (مثل رفتار git)."""
+    d = os.getcwd()
+    while True:
+        p = os.path.join(d, CONFIG_FILE)
+        if os.path.exists(p):
+            return p
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
+
+
 def load_conf():
     url = os.environ.get("PARASTOO_URL", "").rstrip("/")
     token = os.environ.get("PARASTOO_TOKEN", "")
     if url and token:
         return url, token
-    if os.path.exists(CONFIG_FILE):
+    cfg = _find_config()
+    if cfg:
         try:
-            conf = json.load(open(CONFIG_FILE, encoding="utf-8"))
+            conf = json.load(open(cfg, encoding="utf-8"))
             url = url or conf.get("url", "").rstrip("/")
             token = token or conf.get("token", "")
             if url and token:
