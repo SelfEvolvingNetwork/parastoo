@@ -42,18 +42,11 @@
 
 {% if has_repo %}
 <section class="card">
-  <h2>مخزن گیت و توکن دسترسی</h2>
+  <h2>مخزن گیت</h2>
   {% if git_ready %}
-  <p>مخزن خصوصی شما آماده است — با یک کامیت اولیهٔ استاندارد سبز شروع شده. کدتان را این‌طور بفرستید:</p>
-  <pre class="code" dir="ltr">git clone http{{ 's' if domains.tls() else '' }}://{{ user.gitea_username }}:YOUR_TOKEN@{{ clone_url }} {{ p.slug }}
-cd {{ p.slug }}
-# ... فایل‌ها را تغییر دهید ...
-git add -A && git commit -m "تغییرات" && git push</pre>
-  <details>
-    <summary>نمایش توکن دسترسی و آدرس کامل (محرمانه)</summary>
-    <pre class="code" dir="ltr">REMOTE=http{{ 's' if domains.tls() else '' }}://{{ user.gitea_username }}:{{ user.gitea_token }}@{{ clone_url }}</pre>
-    <p class="muted small">این توکن مثل رمز عبور است؛ با آن می‌توان به مخزن‌های شما push و pull کرد.</p>
-  </details>
+  <p>مخزن خصوصی شما آماده است — با یک کامیت اولیهٔ استاندارد سبز شروع شده. برای مرور و مدیریت مخزن، مثل گیت‌هاب و بدون کپی هیچ توکنی از همین پنل وارد گیت شوید:</p>
+  <p><a class="btn btn-primary" href="/git/sso">ورود به گیت (SSO)</a></p>
+  <p class="muted small">پوش از خط فرمان (شما یا عامل‌تان) هم از یک مسیر می‌گذرد: ریموت پل <span class="mono" dir="ltr">{{ panel_url }}/bridge/git/{{ p.slug }}.git</span> — نام‌کاربری دلخواه، رمز = توکن عامل همین پروژه (کارت پایین‌تر). توکن داخلی گیتا فقط داخل موتور پرستو مصرف می‌شود و هرگز نمایش داده نمی‌شود.</p>
   <p class="muted small">با هر push به شاخهٔ <b>main</b>، بیلد خودکار شروع می‌شود و همهٔ سرویس‌های پروژه با ایمیج جدید مستقر می‌شوند.</p>
   <details>
     <summary class="btn-link">چند-کانتینری: تعریف سرویس‌ها با parastoo.yml</summary>
@@ -81,10 +74,10 @@ services:
   <p class="muted small">با یک توکنِ مخصوص همین پروژه، عامل هوش مصنوعی شما (مثلاً Claude Code یا Cursor) می‌تواند کد را <b>پوش کند</b>، بیلد و لاگ‌ها را <b>ببیند</b>، داخل کانتینرها <b>تست و عیب‌یابی کند</b> (exec) و سرویس را ری‌استارت کند — فقط روی همین پروژه. دیدن کانتینرها، مخزن‌ها و داده‌های پروژه‌های دیگر و زیرساخت سرور از دید عامل خارج است و هر فراخوانی در گزارش پل ثبت می‌شود.</p>
 
   {% if new_token %}
-  <div class="badge badge-ok">توکن جدید ساخته شد — این مقدار فقط همین یک‌بار نمایش داده می‌شود؛ با دکمهٔ زیر همه‌چیز را یک‌جا کپی کنید:</div>
+  <div class="badge badge-ok">هشدار محرمانه: این کلیدِ همین پروژه است — فقط به کلاینت عامل خودتان بدهید و جایی منتشر/کامیت نکنید. این مقدار فقط همین یک‌بار نمایش داده می‌شود:</div>
   <pre class="code" dir="ltr">{{ new_token }}</pre>
   <button class="btn btn-primary" type="button" onclick="pstCopy(this,'agent-setup-text')">کپی با یک دکمه: توکن + آدرس سرویس‌دهی + رفرنس راهنما</button>
-  <p class="muted small">این دکمه همهٔ آنچه کلاینت عامل نیاز دارد را یک‌جا در کلیپ‌بورد می‌گذارد — توکن، آدرس سرویس‌دهی (پنل، ریموت گیتِ پل و ابزار pst.py) و رفرنس راهنمای کامل (<a href="/docs/agent" target="_blank" rel="noopener">/docs/agent</a>)؛ فقط نتیجه را به عامل بدهید.</p>
+  <p class="muted small">این دکمه متنِ کوتاه فنی (انگلیسی، مخصوص عامل) را کپی می‌کند: توکن، آدرس سرویس‌دهی (پنل، ریموت پل، ابزار pst.py) و رفرنس راهنمای کامل (<a href="/docs/agent" target="_blank" rel="noopener">/docs/agent</a>).</p>
   {% endif %}
 
   {% if tokens %}
@@ -125,24 +118,14 @@ services:
 
   <details class="mt">
     <summary class="btn-link">متن راه‌اندازی عامل — با یک دکمه کپی و به کلاینت عامل بدهید</summary>
-    <p class="muted small">این متن همهٔ آنچه عامل نیاز دارد را یک‌جا دارد: مقصد گیت، توکن، ابزار و آدرس سند کامل. سند کامل (همیشه‌به‌روز) در <a href="/docs/agent" target="_blank" rel="noopener">/docs/agent</a> است — با هر استقرار پنل به‌روز می‌شود.</p>
-    <pre class="code" id="agent-setup-text">{% set tok = new_token if new_token else '«جای توکن عامل pst_ — اگر ندارید در همین کارت بسازید؛ مقدار فقط یک‌بار نمایش داده می‌شود»' -%}
-تو عامل هوش مصنوعیِ این پروژه هستی و چرخهٔ توسعه و تست آن را زیر نظر کاربر پیش می‌بری.
-
-پروژه: {{ p.name }} (شناسه: {{ p.slug }})
-پنل پرستو: {{ panel_url }}
-سند کامل عامل (اول کامل بخوان، همیشه‌به‌روز): {{ panel_url }}/docs/agent
-مخزن گیت همین پروژه (ریموت پل): {{ panel_url }}/bridge/git/{{ p.slug }}.git  — نام‌کاربری هر چیزی، رمز = توکن
-توکن عامل (فقط همین پروژه؛ محرمانه — جایی ننویس): {{ tok }}
-ابزار خط فرمان: curl -fsSL {{ panel_url }}/static/pst.py -o pst.py  سپس: python3 pst.py init --url {{ panel_url }} --token PST_TOKEN
-
-قراردادهای کلیدی (جزئیات در سند):
-- push به مخزن = بیلد و استقرار خودکار همان کامیت (کل-یا-هیچ)؛ نتیجه: pst.py log
-- اپ داینامیک روی پورت 3000 (متغیر PORT) گوش می‌دهد؛ استاتیک: index.html در ریشه
-- چند سرویس (اپ + دیتابیس + …) فقط با parastoo.yml در ریشهٔ مخزن
-- تست: pst.py exec (داخل کانتینر) و pst.py logs (لاگ اجرا)؛ وضعیت: pst.py status
-- انتشار سایت و دامنه با کاربر است (از پنل) — توکن تو انتشار ندارد؛ نیازش را صریح بگو
-- توکن را در کد/کامیت نمی‌نویسی؛ .env را کامیت نمی‌کنی؛ پیش از اقدام تخریبی از کاربر تأیید می‌گیری</pre>
+    <p class="muted small">متن کوتاه و فنی انگلیسی — مخاطبش عامل است نه کاربر. جزئیات کامل قرارداد را عامل از <a href="/docs/agent" target="_blank" rel="noopener">/docs/agent</a> می‌خواند (تک‌منبع همیشه‌به‌روز).</p>
+    <pre class="code" id="agent-setup-text" dir="ltr">{% set tok = new_token if new_token else 'PST_TOKEN (mint one in the Agent Bridge card above)' -%}
+Parastoo agent bootstrap — project: {{ p.slug }}
+panel: {{ panel_url }}
+guide (read fully first): {{ panel_url }}/docs/agent
+git remote (bridge): {{ panel_url }}/bridge/git/{{ p.slug }}.git  # username: anything, password = token
+agent token (project-scoped secret): {{ tok }}
+cli: curl -fsSL {{ panel_url }}/static/pst.py -o pst.py && python3 pst.py init --url {{ panel_url }} --token PST_TOKEN</pre>
     <p class="mt"><button class="btn btn-ghost btn-small" type="button" onclick="pstCopy(this,'agent-setup-text')">کپی همین متن با یک دکمه</button></p>
   </details>
 </section>

@@ -64,7 +64,6 @@ def _project_page(request: Request, user, db: Session, project: Project,
     hourly = billing_svc.hourly_cost([s for s in services if s.status == "running"])
     has_repo = not project.source_project_id
     git_ready = has_repo and project.repo_status == "ready" and bool(user.gitea_token)
-    clone_url = f"{domains.git()}/{user.gitea_username}/{project.slug}.git" if git_ready else ""
     tokens = (db.query(AgentToken)
               .filter(AgentToken.project_id == project.id,
                       AgentToken.revoked_at.is_(None))
@@ -75,7 +74,7 @@ def _project_page(request: Request, user, db: Session, project: Project,
     return render("project_detail.html", ctx(
         request, user, p=project, builds=builds, sites=sites, services=services,
         hourly=hourly, has_repo=has_repo,
-        git_ready=git_ready, clone_url=clone_url,
+        git_ready=git_ready,
         tokens=tokens, new_token=new_token, panel_url=panel_url,
     ))
 

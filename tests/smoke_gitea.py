@@ -73,11 +73,26 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _html(self, code, body, headers=()):
+        self.send_response(code)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        for k, v in headers:
+            self.send_header(k, v)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def log_message(self, *a):
         pass
 
     def do_GET(self):
         path = unquote(self.path)
+        if path == "/user/login":
+            # فرم ورود وب گیتا (برای SSO پنل) — فیلد CSRF + کوکی جفت آن
+            body = (b'<html><form method="post" action="/user/login">'
+                    b'<input type="hidden" name="_csrf" value="csrf-test-1">'
+                    b'<input name="user_name"><input name="password"></form></html>')
+            return self._html(200, body, [("Set-Cookie", "_csrf=csrf-test-1; Path=/")])
         if path == "/api/healthz":
             return self._json(200, {"status": "pass"})
         user, scopes, basic_user = _auth(self)
@@ -101,7 +116,28 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         import json
         path = unquote(self.path)
-        payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        raw = self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b""
+        if path == "/user/login":
+            # قاعدهٔ واقعی گیتا: کوکی _csrf باید با فیلد فرم بخواند + اعتبار درست
+            from urllib.parse import parse_qs
+            form = parse_qs(raw.decode())
+            csrf = (form.get("_csrf") or [""])[0]
+            uname = (form.get("user_name") or [""])[0]
+            pwd = (form.get("password") or [""])[0]
+            ok_cookie = "_csrf=csrf-test-1" in (self.headers.get("Cookie") or "")
+            if (csrf == "csrf-test-1" and ok_cookie
+                    and uname in USERS and USERS[uname]["password"] == pwd):
+                sid = secrets.token_hex(16)
+                with LOCK:
+                    HITS.append(f"web-login {uname}")
+                return self._html(303, b"", [
+                    ("Set-Cookie", f"i_like_gitea={sid}; Path=/"),
+                    ("Location", "/"),
+                ])
+            with LOCK:
+                HITS.append(f"web-login DENY {uname}")
+            return self._html(200, b"<html>signin</html>")
+        payload = json.loads(raw or b"{}")
         user, scopes, basic_user = _auth(self)
 
         if path.startswith("/api/v1/users/") and path.endswith("/tokens"):
@@ -313,6 +349,37 @@ with TestClient(app, follow_redirects=False) as c:
     check("سیکل بعدی همان حساب را دست‌نخورده نگه می‌دارد",
           u.gitea_username == gname and u.gitea_token)
     db.close()
+
+    # --- SSO مالک به وب گیتا (v0.5.5) — پایان نمایش توکن گیتا ---
+    r = c.post("/login", data={"email": "ali@test.ir", "password": "secret1"},
+               follow_redirects=False)
+    check("ورود علی برای بخش SSO", r.status_code == 303)
+    db = SessionLocal()
+    u = db.query(User).filter(User.email == "ali@test.ir").first()
+    uid, gtok = u.id, u.gitea_token
+    db.close()
+
+    r = c.get("/projects/gitea-shop")
+    check("صفحهٔ پروژه توکن گیتا و الگوی کهنهٔ YOUR_TOKEN را نشان نمی‌دهد",
+          gtok not in r.text and "YOUR_TOKEN" not in r.text)
+    check("صفحهٔ پروژه دکمهٔ ورود SSO به گیت دارد", "ورود به گیت (SSO)" in r.text)
+    check("صفحهٔ حساب هم دکمهٔ SSO دارد", "ورود به گیت (SSO)" in c.get("/account").text)
+
+    r = c.get("/git/sso")
+    check("صفحهٔ میانی SSO با فرم CSRF پنل باز می‌شود",
+          r.status_code == 200 and 'action="/git/sso"' in r.text and 'name="csrf"' in r.text)
+    r = c.post("/git/sso", data={"csrf": security.csrf_token(uid)}, follow_redirects=False)
+    check("SSO: ریدایرکت به وب گیتا با اسکیم درست",
+          r.status_code == 303 and r.headers["location"] == f"http://git.{os.environ['BASE_DOMAIN']}",
+          f"loc={r.headers.get('location')}")
+    sc = " ".join(r.headers.get_list("set-cookie"))
+    check("SSO: کوکی نشست گیتا روی دامنهٔ پایهٔ مشترک نشسته",
+          "i_like_gitea=" in sc and "Domain=" in sc, f"set-cookie={sc[:120]}")
+    with LOCK:
+        hits = list(HITS)
+    check("ورود وب واقعاً سمت گیتا با اعتبار کاربر انجام شد (نه رندر دوباره)",
+          any(h == f"web-login {gname}" for h in hits) and not any(h.startswith("web-login DENY") for h in hits),
+          f"hits={hits[-4:]}")
 
 srv.shutdown()
 

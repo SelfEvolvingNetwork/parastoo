@@ -1,9 +1,13 @@
 """کلاینت API گیتا — همه چیز با HTTP API رسمی Gitea انجام می‌شود (بدون ssh)."""
+import re
 import secrets
 
 import httpx
 
 from .config import settings
+
+# کوکی نشست وب گیتا (پیش‌فرض گیتا؛ نصب ما کانفیگ جلسهٔ سفارشی ندارد)
+SESSION_COOKIE = "i_like_gitea"
 
 
 class GiteaError(Exception):
@@ -30,6 +34,33 @@ class GiteaClient:
             return r.status_code == 200
         except Exception:
             return False
+
+    # ---------- ورود وب (SSO پنل → گیتا، v0.5.5) ----------
+
+    def form_login(self, username: str, password: str) -> str:
+        """ورود به فرم وب گیتا — مقدار کوکی نشست گیتا را برمی‌گرداند.
+
+        مصرف‌کننده: /git/sso (SSO مالک به وب گیتا). گیتا کوکی نشست را فقط
+        پس از POST /user/login با توکن CSRF صفحهٔ ورود صادر می‌کند؛ همین دو
+        درخواست با یک cookie jar انجام می‌شود و اعتبار فقط داخل هسته می‌ماند.
+        تشخیص موفقیت = صدور کوکی نشست (ورود ناموفق صفحه را دوباره رندر می‌کند).
+        """
+        with httpx.Client(base_url=self.base, timeout=15) as c:
+            page = c.get("/user/login")
+            if page.status_code != 200:
+                raise GiteaError(f"login page: {page.status_code}")
+            m = (re.search(r'name="_csrf"[^>]*value="([^"]+)"', page.text)
+                 or re.search(r'value="([^"]+)"[^>]*name="_csrf"', page.text))
+            if not m:
+                raise GiteaError("csrf field missing on login page")
+            c.post("/user/login", data={
+                "_csrf": m.group(1), "user_name": username, "password": password,
+            })
+            sid = c.cookies.get(SESSION_COOKIE)
+            if not sid:
+                raise GiteaError("form login failed (no session cookie)")
+            return sid
+
 
     # ---------- کاربران ----------
 

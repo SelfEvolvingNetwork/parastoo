@@ -382,11 +382,14 @@ with TestClient(app, follow_redirects=False) as c:
     check("سند عامل برای کاربر واردشده هم همان صفحه است", _r2.status_code == 200)
 
     # متن آمادهٔ کپی عامل در صفحهٔ پروژه + ارجاع به سند + ماشین کپی یک‌دکمه‌ای (v0.5.4)
+    # + پایان نمایش توکن گیتا (v0.5.5): صفحه هیچ توکن گیتایی/الگوی کهنه‌ای ندارد
     r = c.get("/projects/bridge-proj")
     check("صفحهٔ پروژه متن راه‌اندازی عامل را دارد (با دکمهٔ کپی یک‌دکمه‌ای)",
           "متن راه‌اندازی عامل" in r.text and "/docs/agent" in r.text
           and "bridge/git/bridge-proj.git" in r.text and "PST_TOKEN" in r.text
           and 'id="agent-setup-text"' in r.text and "pstCopy" in r.text)
+    check("توکن گیتا دیگر در صفحهٔ پروژه نیست (SSO جایگزین شد)",
+          "YOUR_TOKEN" not in r.text and "نمایش توکن دسترسی" not in r.text)
 
     # ساخت توکن از پنل — نمایش کامل فقط یک‌بار
     r = c.post("/projects/bridge-proj/agent-tokens", data={"name": "", "csrf": csrf}, follow_redirects=False)
@@ -401,6 +404,9 @@ with TestClient(app, follow_redirects=False) as c:
     check("جعبهٔ توکن تازه: دکمهٔ کپی یک‌جا (توکن+آدرس سرویس‌دهی+رفرنس راهنما) و ارجاع /docs/agent هست",
           "کپی با یک دکمه" in r.text and "agent-setup-text" in r.text
           and r.text.count('/docs/agent') >= 3)  # جعبهٔ توکن + متن راه‌اندازی + ارجاع در متن
+    check("متن کپی کوتاه و تمام‌انگلیسی است (مخاطب: عامل) + هشدار محرمانه فارسی برای کاربر",
+          "Parastoo agent bootstrap" in r.text and "project-scoped secret" in r.text
+          and "هشدار محرمانه" in r.text and "قراردادهای کلیدی" not in r.text)
     H = {"Authorization": f"Bearer {tok}"}
 
     # گاردهای احراز
@@ -1343,8 +1349,11 @@ check("parastoo backup گواهی‌ها را از فروشگاه ماندگار
 
 print("— میدان v0.3.22: خودترمیم گیتا (realm کهنهٔ رجیستری) + دستورهای push —")
 _tpl = (ROOT / "core" / "app" / "web" / "templates" / "project_detail.html").read_text()
+_sc = (ROOT / "core" / "app" / "scaffolds.py").read_text()
 check("دستور مخزن کلون‌محور است (مخزن seed شده؛ git init کاربر را به تعارض و fetch-first می‌اندازد)",
-      "git clone " in _tpl and "git remote add origin" not in _tpl and "git init" not in _tpl)
+      "git clone " in _sc and "git remote add origin" not in _sc and "git init" not in _sc)
+check("پنل: پوش فقط از ریموت پل است (v0.5.5) و هیچ git init/YOUR_TOKEN به کاربر نمی‌دهد",
+      "bridge/git/" in _tpl and "git init" not in _tpl and "YOUR_TOKEN" not in _tpl)
 check("آدرس ریموت با TLS فعال https می‌شود (git بعد از ۳۰۱ http→https هدر Auth را حذف می‌کند)",
       "http{{ 's' if domains.tls() else '' }}://" in _tpl
       and "http://{{ user.gitea_username }}" not in _tpl)

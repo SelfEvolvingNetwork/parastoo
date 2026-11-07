@@ -4,13 +4,14 @@
 ترتیب معنایی «ویزارد ← احراز هویت ← صفحات اصلی ← عملیات‌ها» حفظ شده است.
 """
 from . import (account, admin, agentdocs, auth, bridge, dashboard, dev, dns,
-               health, hooks, marketplace, payment, projects, setup, sites,
-               wallet)
+               gitsso, health, hooks, marketplace, payment, projects, setup,
+               sites, wallet)
 
 ROUTERS = (
     setup.router,        # ویزارد نصب/دامنه
     auth.router,         # ثبت‌نام/ورود/خروج
     account.router,      # حساب کاربری
+    gitsso.router,       # /git/sso — SSO مالک به وب گیتا (v0.5.5؛ پایان نمایش توکن گیتا)
     dashboard.router,    # / و /dashboard
     health.router,       # healthz و /api/version
     agentdocs.router,    # /docs/agent — راهنمای عمومی عامل هوش مصنوعی کاربر

@@ -70,8 +70,10 @@ def seed_scaffold(project: Project, owner: User) -> bool:
     شکست فقط لاگ می‌شود (مسیر قدیمی «مخزن خالی» همچنان کار می‌کند).
     """
     try:
-        from ..domains import git as git_domain
-        clone_url = f"{git_domain()}/{owner.gitea_username}/{project.slug}.git"
+        from ..domains import panel as panel_domain, tls as tls_on
+        # ریموت پل — تنها مسیر پوش (انسان و عامل یکسان): توکن عامل همان پروژه
+        scheme = "https" if tls_on() else "http"
+        clone_url = f"{scheme}://{panel_domain()}/bridge/git/{project.slug}.git"
         files = scaffolds.files_for(project, clone_url=clone_url)
         if not files:
             return False

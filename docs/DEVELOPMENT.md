@@ -59,6 +59,7 @@ core/app/
     setup.py        ویزارد سه‌گامی: توکن نصب ← مدیر ← دامنه/HTTPS
     auth.py         ثبت‌نام/ورود/خروج + ضد brute-force
     account.py      صفحهٔ /account + تغییر رمز
+    gitsso.py       /git/sso — SSO مالک به وب گیتا (v0.5.5): نشست گیتا با اعتبار ذخیره‌شدهٔ حساب گیت؛ توکن گیتا هرگز نمایش داده نمی‌شود و پوش فقط از ریموت پل است
     dashboard.py    / (خانه) و /dashboard
     health.py       healthz + /api/version (عمومی و سبک)
     agentdocs.py    /docs/agent — سند عمومی راهنمای عامل کاربر (تک‌منبع همیشه‌به‌روز؛ بدون رمز)

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}ورود به گیت{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>ورود به گیت (SSO)</h2>
+  <p class="muted">در حال ورود به مخزن گیت با حساب کاربری خودتان — بدون کپی هیچ توکنی. اگر به‌صورت خودکار منتقل نشدید، دکمهٔ زیر را بزنید.</p>
+  <form method="post" action="/git/sso" id="sso-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn btn-primary" type="submit">ادامه و ورود به گیت</button>
+  </form>
+</section>
+{% endblock %}
+
+{% block script %}
+<script>document.getElementById('sso-form').submit();</script>
+{% endblock %}
