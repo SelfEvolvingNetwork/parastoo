@@ -192,10 +192,14 @@ def _run_build(db, job: Build) -> None:
         else:
             log(f"[auto] تک‌سرویس خودکار (تشخیص از محتوای مخزن: {manifest.detect_stack(build_dir)})")
 
-        # ۲) بیلد همهٔ ایمیج‌ها — کل یا هیچ
+        # ۲) بیلد همهٔ ایمیج‌ها — کل یا هیچ. فقط سرویس‌های build-دار بیلد می‌شوند؛
+        # سرویس‌های فقط-ایمیج هنگام استقرار از رجیستری pull می‌شوند.
         images: dict[str, str] = {}
         for spec in specs:
-            ctx = (build_dir / spec.build).resolve() if spec.build else build_dir
+            if not spec.build:
+                log(f"[image:{spec.name}] بدون بیلد — از ایمیج اعلام‌شده استفاده می‌شود: {spec.image}")
+                continue
+            ctx = (build_dir / spec.build).resolve() if spec.build != "." else build_dir
             if spec.build and (not ctx.is_dir() or not str(ctx).startswith(str(build_dir.resolve()))):
                 raise RuntimeError(f"پوشهٔ بیلد سرویس «{spec.name}» پیدا نشد: {spec.build}")
             has_own = (ctx / "Dockerfile").exists()
