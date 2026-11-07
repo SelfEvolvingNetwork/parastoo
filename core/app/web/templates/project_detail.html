@@ -76,6 +76,69 @@ services:
 </section>
 {% endif %}
 
+<section class="card" id="agent-bridge">
+  <h2>پل عامل هوش مصنوعی (Agent Bridge)</h2>
+  <p class="muted small">با یک توکنِ مخصوص همین پروژه، عامل هوش مصنوعی شما (مثلاً Claude Code یا Cursor) می‌تواند کد را <b>پوش کند</b>، بیلد و لاگ‌ها را <b>ببیند</b>، داخل کانتینرها <b>تست و عیب‌یابی کند</b> (exec) و سرویس را ری‌استارت کند — فقط روی همین پروژه. دیدن کانتینرها، مخزن‌ها و داده‌های پروژه‌های دیگر و زیرساخت سرور از دید عامل خارج است و هر فراخوانی در گزارش پل ثبت می‌شود.</p>
+
+  {% if new_token %}
+  <div class="badge badge-ok">توکن جدید ساخته شد — این مقدار فقط همین یک‌بار نمایش داده می‌شود؛ همین حالا در جای امن (مثلاً .parastoo.json روی دستگاه عامل) ذخیره کنید:</div>
+  <pre class="code" dir="ltr">{{ new_token }}</pre>
+  {% endif %}
+
+  {% if tokens %}
+  <table>
+    <thead><tr><th>نام</th><th>اثر انگشت</th><th>ساخت</th><th>آخرین استفاده</th><th>انقضا</th><th></th></tr></thead>
+    <tbody>
+    {% for t in tokens %}
+      <tr>
+        <td><b>{{ t.name }}</b></td>
+        <td class="mono small">{{ t.prefix }}…</td>
+        <td>{{ dt(t.created_at) }}</td>
+        <td>{{ dt(t.last_used_at) }}</td>
+        <td>{% if t.expires_at %}{{ dt(t.expires_at) }}{% else %}<span class="muted">بدون انقضا</span>{% endif %}</td>
+        <td>
+          <form method="post" action="/projects/{{ p.slug }}/agent-tokens/{{ t.id }}/revoke" class="inline-form" onsubmit="return confirm('توکن باطل شود؟ عامل متصل بلافاصله قطع می‌شود.')">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="btn btn-ghost btn-small" type="submit">ابطال</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted small">هنوز توکنی نساخته‌اید.</p>
+  {% endif %}
+
+  <form method="post" action="/projects/{{ p.slug }}/agent-tokens" class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>نام توکن (مثلاً «لپ‌تاپ کلاز-کد»)
+      <input type="text" name="name" required maxlength="80" placeholder="claude-code">
+    </label>
+    <label>انقضا (روز — خالی = بی‌نهایت)
+      <input type="number" name="days" min="1" max="365" placeholder="—">
+    </label>
+    <button class="btn btn-primary" type="submit">ساخت توکن عامل</button>
+  </form>
+
+  <details class="mt">
+    <summary class="btn-link">راه‌اندازی عامل — سه دستور (کپی برای عامل خودتان)</summary>
+    <pre class="code" dir="ltr"># ۱) ابزار خط فرمان پل (تک‌فایل پایتون، بدون نصب هیچ چیز)
+curl -fsSL {{ panel_url }}/static/pst.py -o pst.py
+
+# ۲) اتصال با توکن همین پروژه (توکن را خودش در .parastoo.json ذخیره می‌کند)
+python3 pst.py init --url {{ panel_url }} --token TOKEN
+
+# ۳) کار روزانه
+python3 pst.py push          # پوش کد (پوش به هر شاخه = بیلد و استقرار همان کامیت)
+python3 pst.py status        # وضعیت سرویس‌ها/سایت‌ها/آخرین بیلد
+python3 pst.py log           # لاگ آخرین بیلد
+python3 pst.py exec -- ls /app     # اجرای دستور داخل کانتینر سرویس (تست)
+python3 pst.py logs --svc web      # لاگ اجرای سرویس</pre>
+    <p class="muted small">به‌جای ابزار، می‌توانید مستقیم گیت کار کنید: ریموت <span class="mono">{{ panel_url }}/bridge/git/{{ p.slug }}.git</span> با هر نام‌کاربری و رمزِ توکن عامل — یعنی به توکن گیتِ حساب‌تان (که همهٔ پروژه‌ها را می‌بیند) نیاز نیست.</p>
+  </details>
+</section>
+
 <div class="two-col">
   <section class="card">
     <h2>انتشار سایت</h2>

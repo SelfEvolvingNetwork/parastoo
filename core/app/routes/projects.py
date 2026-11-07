@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.orm import Session
 
 from .. import domains, traefik_ops
-from ..db import get_db
+from ..db import get_db, db_now
 from ..deps import ctx, csrf_guard, redirect, render
-from ..models import Build, Project, Site
+from ..models import AgentToken, Build, Project, Site
+from ..services import bridge as bridge_svc
 from ..services import billing as billing_svc
 from ..services import projects as projects_svc
 from ..services import sites as sites_svc
@@ -49,12 +50,9 @@ def project_create(
     return redirect(f"/projects/{project.slug}?m={flash}")
 
 
-@router.get("/projects/{slug}")
-def project_detail(request: Request, slug: str,
-                   user=Depends(csrf_guard), db: Session = Depends(get_db)):
-    project = projects_svc.project_for(db, user, slug)
-    if project is None:
-        return redirect("/projects?m=not_found")
+def _project_page(request: Request, user, db: Session, project: Project,
+                  new_token: str | None = None):
+    """رندر صفحهٔ پروژه — مشترک بین GET و پاسخِ ساخت توکن (نمایش یک‌بار توکن)."""
     builds = (db.query(Build)
               .filter(Build.project_id == project.id)
               .order_by(Build.id.desc())
@@ -69,11 +67,75 @@ def project_detail(request: Request, slug: str,
     has_repo = not project.source_project_id
     git_ready = has_repo and project.repo_status == "ready" and bool(user.gitea_token)
     clone_url = f"{domains.git()}/{user.gitea_username}/{project.slug}.git" if git_ready else ""
+    tokens = (db.query(AgentToken)
+              .filter(AgentToken.project_id == project.id,
+                      AgentToken.revoked_at.is_(None))
+              .order_by(AgentToken.id.desc())
+              .all())
+    scheme = "https" if domains.tls() else "http"
+    panel_url = f"{scheme}://{domains.panel()}"
     return render("project_detail.html", ctx(
         request, user, p=project, builds=builds, sites=sites, services=services,
         hourly=hourly, has_repo=has_repo,
         git_ready=git_ready, clone_url=clone_url,
+        tokens=tokens, new_token=new_token, panel_url=panel_url,
     ))
+
+
+@router.get("/projects/{slug}")
+def project_detail(request: Request, slug: str,
+                   user=Depends(csrf_guard), db: Session = Depends(get_db)):
+    project = projects_svc.project_for(db, user, slug)
+    if project is None:
+        return redirect("/projects?m=not_found")
+    return _project_page(request, user, db, project)
+
+
+@router.post("/projects/{slug}/agent-tokens")
+def agent_token_create(
+    request: Request, slug: str,
+    name: str = Form(""),
+    days: str = Form(""),
+    user=Depends(csrf_guard), db: Session = Depends(get_db),
+):
+    """ساخت توکن پل عامل — مقدار کامل فقط همین یک‌بار در پاسخ رندر می‌شود."""
+    project = projects_svc.project_for(db, user, slug)
+    if project is None:
+        return redirect("/projects?m=not_found")
+    label = (name or "").strip()
+    if not bridge_svc.name_ok(label):
+        return redirect(f"/projects/{slug}?m=token_name")
+    days_n = None
+    if (days or "").strip():
+        try:
+            days_n = int(days)
+        except ValueError:
+            days_n = None
+    raw, _row = bridge_svc.mint(db, project, label, days_n)
+    bridge_svc.audit(None, project, "token_created", f"{label} ({_row.prefix}…)",
+                     request.client.host if request.client else "")
+    return _project_page(request, user, db, project, new_token=raw)
+
+
+@router.post("/projects/{slug}/agent-tokens/{tid}/revoke")
+def agent_token_revoke(
+    request: Request, slug: str, tid: int,
+    user=Depends(csrf_guard), db: Session = Depends(get_db),
+):
+    """ابطال فوری توکن — همهٔ فراخوانی‌های بعدی پل 401 می‌گیرند."""
+    project = projects_svc.project_for(db, user, slug)
+    if project is None:
+        return redirect("/projects?m=not_found")
+    row = (db.query(AgentToken)
+           .filter(AgentToken.id == tid, AgentToken.project_id == project.id,
+                   AgentToken.revoked_at.is_(None))
+           .first())
+    if row is not None:
+        row.revoked_at = db_now()
+        db.commit()
+        bridge_svc.audit(None, project, "token_revoked", row.prefix,
+                         request.client.host if request.client else "")
+    return redirect(f"/projects/{slug}?m=token_revoked")
 
 
 @router.post("/projects/{slug}/rebuild")

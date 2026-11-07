@@ -200,6 +200,30 @@ class Payment(Base):
     user: Mapped["User"] = relationship()
 
 
+class AgentToken(Base):
+    """توکن پل عامل پروژه (v0.4.3) — دسترسی عامل هوش مصنوعیِ کاربر به «فقط همین پروژه».
+
+    عامل (مثلاً Claude Code) با این توکن از مسیر /api/bridge/* و شیم گیت
+    /bridge/git/<slug>.git کار می‌کند: push کد، بیلد/لاگ، exec تست، عیب‌یابی.
+    قواعد امنیتی: مقدار توکن هرگز ذخیره نمی‌شود (فقط sha256)؛ نمایشِ کامل
+    فقط یک‌بار در لحظهٔ ساخت؛ ابطال فوری؛ انقضای اختیاری؛ توکن مالکِ یک
+    پروژه است و هیچ کوئری پل نمی‌تواند از این دانه بیرون برود.
+    """
+    __tablename__ = "agent_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80), default="agent")
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    prefix: Mapped[str] = mapped_column(String(16), default="")   # برای نمایش: pst_xxxxxxxx
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    project: Mapped["Project"] = relationship()
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

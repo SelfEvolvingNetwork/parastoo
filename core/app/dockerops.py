@@ -499,6 +499,112 @@ def project_container_status(pid: int) -> dict[str, str]:
         return {}
 
 
+# ---------- پل عامل: exec/لاگ/ری‌استارت مهارشده (v0.4.3) ----------
+#
+# قاعدهٔ امنیتی: کشف کانتینر «فقط» با فیلتر لیبل parastoo.project=<id> انجام
+# می‌شود؛ نام سرویس ورودی فقط کلید جست‌وجو در همین دانه است. یعنی حتی اگر
+# فراخوانِ پل نام هر کانتینر دیگری را بدهد، این لایه عملاً آن را نمی‌بیند.
+
+LOGS_TAIL_MAX = 2000  # سقف خطوط لاگ هر درخواست
+
+
+def _service_container(pid: int, svc: str):
+    """کانتینر سرویسِ یک پروژه — فقط از میان کانتینرهای لیبل‌دار همان پروژه."""
+    c = client()
+    for ctr in c.containers.list(all=True, filters=_project_filter(pid)):
+        if (ctr.labels or {}).get(SERVICE_LABEL) == svc:
+            return ctr
+    raise DockerUnavailable(f"سرویس «{svc}» برای این پروژه در حال اجرا نیست")
+
+
+def exec_in_service(pid: int, svc: str, cmd: str,
+                    timeout_s: int = 60, max_bytes: int = 256 * 1024) -> dict:
+    """اجرا کردن یک دستور داخل کانتینر سرویس (ش -c) — با سقف بایت و تایم‌اوت.
+
+    خروجی استریم خوانده و در سقف max_bytes بسته می‌شود (حافظهٔ هسته هرگز
+    با خروجی بی‌کران پر نمی‌شود)؛ کد خروج با poll روی exec_inspect گرفته
+    می‌شود. اگر فرایند تا deadline تمام نشود timed_out=True می‌آید؛ فرایند
+    ممکن است داخل کانتینر خودِ کاربر به زندگی ادامه دهد (همان اختیار خودش).
+    """
+    import time as _time
+
+    ctr = _service_container(pid, svc)  # درونش client() را می‌سنجد (DockerUnavailable)
+    api = ctr.client.api
+    exec_id = api.exec_create(ctr.id, ["sh", "-c", cmd],
+                              stdin=False, tty=False)
+    t0 = _time.monotonic()
+    deadline = t0 + max(1, min(int(timeout_s), 120))
+    out: dict = {"exit_code": None, "stdout": "", "stderr": "",
+                 "truncated": False, "timed_out": False, "duration_ms": 0}
+    so: list[bytes] = []
+    se: list[bytes] = []
+    got = 0
+
+    def _cap(buf: list[bytes], chunk: bytes) -> bool:
+        """الحاق تا سقف؛ False یعنی سقف پر شده و باید خواندن را بست."""
+        nonlocal got
+        if not chunk:
+            return True
+        if got >= max_bytes:
+            out["truncated"] = True
+            return False
+        room = max_bytes - got
+        if len(chunk) > room:
+            buf.append(chunk[:room])
+            got += room
+            out["truncated"] = True
+            return False
+        buf.append(chunk)
+        got += len(chunk)
+        return True
+
+    stream = api.exec_start(exec_id, stream=True, demux=True)
+    try:
+        for so_chunk, se_chunk in stream:
+            ok1 = _cap(so, so_chunk) if so_chunk else True
+            ok2 = _cap(se, se_chunk) if se_chunk else True
+            if not (ok1 and ok2):
+                break
+            if _time.monotonic() > deadline:
+                out["timed_out"] = True
+                break
+    except Exception as e:
+        out["stderr"] = (out["stderr"] + f"\n[bridge] exec stream error: {type(e).__name__}")[:4000]
+    # کد خروج — تا پایان deadline با poll منتظر می‌مانیم (پس از بستن استریم هم
+    # دیمون داکر فرایند را پیش می‌برد؛ inspect حقیقت را می‌گوید)
+    while _time.monotonic() <= deadline:
+        try:
+            ins = api.exec_inspect(exec_id)
+            if not ins.get("Running", False):
+                out["exit_code"] = ins.get("ExitCode")
+                break
+        except Exception:
+            break
+        _time.sleep(0.2)
+    else:
+        out["timed_out"] = True
+    out["stdout"] = b"".join(so).decode("utf-8", errors="replace")
+    if not out["stderr"]:
+        out["stderr"] = b"".join(se).decode("utf-8", errors="replace")
+    out["duration_ms"] = int((_time.monotonic() - t0) * 1000)
+    return out
+
+
+def service_logs(pid: int, svc: str, tail: int = 200,
+                 max_bytes: int = 100 * 1024) -> str:
+    """دمِ لاگ کانتینر سرویس (docker logs) — سقف خط و بایت."""
+    ctr = _service_container(pid, svc)  # درونش client() را می‌سنجد
+    raw = ctr.logs(tail=str(max(1, min(int(tail), LOGS_TAIL_MAX))), timestamps=True)
+    text = raw.decode("utf-8", errors="replace")
+    return text[-max_bytes:]
+
+
+def restart_service(pid: int, svc: str) -> None:
+    """ری‌استارت کانتینر یک سرویس — دوباره: فقط در دانهٔ پروژهٔ خودش."""
+    ctr = _service_container(pid, svc)  # درونش client() را می‌سنجد
+    ctr.restart(timeout=10)
+
+
 def system_stats() -> dict:
     """آمار کلی برای پنل ادمین."""
     try:

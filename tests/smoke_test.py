@@ -305,6 +305,118 @@ with TestClient(app, follow_redirects=False) as c:
     r = c.get("/projects")
     check("لیست پروژه‌ها دیگر my-shop ندارد", "my-shop" not in r.text)
 
+    # ---------------- پل عامل پروژه (v0.4.3) — توکن، API، شیم گیت، ابطال ----------------
+    print()
+    print("— پل عامل پروژه (Agent Bridge) —")
+    from app.services import bridge as _bsvc
+
+    r = c.post("/login", data={"email": "ali@test.ir", "password": "secret1"}, follow_redirects=False)
+    check("ورود دوبارهٔ علی برای بخش پل", r.status_code == 303)
+    r = c.post("/projects/new", data={"name": "پل عامل", "slug": "bridge-proj", "stack": "static", "csrf": csrf},
+               follow_redirects=False)
+    check("پروژهٔ تست پل ساخته شد", r.status_code == 303 and "bridge-proj" in r.headers["location"])
+
+    # ساخت توکن از پنل — نمایش کامل فقط یک‌بار
+    r = c.post("/projects/bridge-proj/agent-tokens", data={"name": "", "csrf": csrf}, follow_redirects=False)
+    check("توکن بدون نام → رد با پیام", "m=token_name" in r.headers.get("location", ""))
+    r = c.post("/projects/bridge-proj/agent-tokens", data={"name": "کلود-کد", "csrf": csrf})
+    import re as _re
+    _m = _re.search(r"pst_[A-Za-z0-9_-]{20,}", r.text)
+    check("ساخت توکن → مقدار کامل یک‌بار در صفحه", bool(_m))
+    tok = _m.group(0) if _m else "pst_none"
+    check("اثر انگشت پیشوندی در جدول نمایش داده شده (نه مقدار کامل)", tok[:12] in r.text and r.text.count(tok) == 1)
+    H = {"Authorization": f"Bearer {tok}"}
+
+    # گاردهای احراز
+    r = c.get("/api/bridge/status")
+    check("پل بدون توکن → 401 JSON", r.status_code == 401 and r.json()["ok"] is False)
+    r = c.get("/api/bridge/status", headers={"Authorization": "Bearer pst_forged"})
+    check("پل با توکن جعلی → 401", r.status_code == 401)
+    r = c.get("/api/bridge/status", headers=H)
+    check("پل با توکن درست → 200 وضعیت پروژه",
+          r.status_code == 200 and r.json()["project"]["slug"] == "bridge-proj")
+    check("وضعیت شامل سرویس‌ها/بیلدها/نسخه است",
+          "services" in r.json() and "latest_build" in r.json() and "version" in r.json())
+    # سبک Basic auth (همان که git استفاده می‌کند): رمز = توکن
+    import base64 as _b64
+    _basic = _b64.b64encode(f"agent:{tok}".encode()).decode()
+    r = c.get("/api/bridge/status", headers={"Authorization": f"Basic {_basic}"})
+    check("احراز Basic (رمز = توکن عامل) هم پذیرفته می‌شود", r.status_code == 200)
+    _basic2 = _b64.b64encode(f"{tok}:".encode()).decode()
+    r = c.get("/api/bridge/status", headers={"Authorization": f"Basic {_basic2}"})
+    check("احراز Basic (نام‌کاربری = توکن) هم پذیرفته می‌شود", r.status_code == 200)
+
+    # مسیرهای بدون سرویس/بیلد — پیام‌های تمیز، نه 500
+    r = c.get("/api/bridge/manifest", headers=H)
+    check("manifest بدون بیلد → null صادقانه", r.status_code == 200 and r.json()["manifest"] is None)
+    r = c.get("/api/bridge/builds", headers=H)
+    check("builds خالی → 200 لیست", r.status_code == 200 and r.json()["builds"] == [])
+    r = c.post("/api/bridge/build", headers=H)
+    check("build با مخزن pending → 409 صادقانه", r.status_code == 409)
+    r = c.post("/api/bridge/exec", headers=H, json={"cmd": "ls"})
+    check("exec بدون هیچ سرویس → 404 روشن", r.status_code == 404)
+    r = c.post("/api/bridge/exec", headers=H, json={"cmd": ""})
+    check("exec دستور خالی → 400", r.status_code == 400)
+    r = c.get("/api/bridge/logs", headers=H)
+    check("logs بدون سرویس → 404 روشن", r.status_code == 404)
+    r = c.post("/api/bridge/restart", headers=H, json={})
+    check("restart بدون سرویس → 404 روشن", r.status_code == 404)
+    r = c.get("/api/bridge/env", headers=H)
+    check("env پروژه → 200 (خالی)", r.status_code == 200 and r.json()["services"] == {})
+    r = c.get("/api/bridge/audit", headers=H)
+    check("audit توکن → 200 با رکوردهای خودش",
+          r.status_code == 200 and len(r.json()["records"]) > 0
+          and all(rec.get("token") == tok[:12] for rec in r.json()["records"]))
+
+    # سقف نرخ — واحدی
+    _ok = [_bsvc.allow(987654321, "exec") for _ in range(20)]
+    check("سقف نرخ exec: ۲۰ فراخوانی مجاز سپس رد", all(_ok) and not _bsvc.allow(987654321, "exec"))
+
+    # شیم گیت — گاردها (گیتا در اسموک نیست؛ فقط لایهٔ احراز/دانه‌بندی)
+    r = c.get("/bridge/git/bridge-proj.git/info/refs?service=git-receive-pack")
+    check("شیم بدون توکن → 401 با چالش Basic",
+          r.status_code == 401 and "www-authenticate" in {k.lower() for k in r.headers.keys()})
+    r = c.get("/bridge/git/bridge-proj.git/info/refs?service=git-receive-pack",
+              headers={"Authorization": "Basic " + _b64.b64encode(b"x:pst_bad").decode()})
+    check("شیم با توکن جعلی → 401", r.status_code == 401)
+    r = c.get("/bridge/git/other-proj.git/info/refs?service=git-receive-pack", headers=H)
+    check("شیم با مخزنِ غیر از پروژهٔ توکن → 403", r.status_code == 403)
+    r = c.get("/bridge/git/bridge-proj.git/info/refs?service=git-receive-pack", headers=H)
+    check("شیم با مخزن pending (گیتا نیست) → 503 صادقانه", r.status_code == 503)
+    r = c.get("/bridge/git/bogus", headers=H)
+    check("مسیر گیت ناقص → 404", r.status_code == 404)
+
+    # توکن منقضی
+    db = SessionLocal()
+    from app.models import AgentToken as _AT
+    _raw, _row = _bsvc.mint(db, db.query(Project).filter(Project.slug == "bridge-proj").first(), "منقضی", 1)
+    _row.expires_at = __import__("datetime").datetime(2000, 1, 1)
+    db.commit()
+    db.close()
+    r = c.get("/api/bridge/status", headers={"Authorization": f"Bearer {_raw}"})
+    check("توکن منقضی → 401", r.status_code == 401)
+
+    # CLI استاتیک
+    r = c.get("/static/pst.py")
+    check("CLI پل در /static/pst.py سرو می‌شود",
+          r.status_code == 200 and "پل عامل" in r.text and "api/bridge/status" in r.text)
+
+    # ابطال از پنل + کاسکاد حذف پروژه
+    db = SessionLocal()
+    _tid = db.query(_AT).filter(_AT.token_hash != "", _AT.project_id ==
+                                db.query(Project).filter(Project.slug == "bridge-proj").first().id).first().id
+    db.close()
+    r = c.post(f"/projects/bridge-proj/agent-tokens/{_tid}/revoke", data={"csrf": csrf}, follow_redirects=False)
+    check("ابطال توکن از پنل → ریدایرکت", "m=token_revoked" in r.headers.get("location", ""))
+    r = c.get("/api/bridge/status", headers=H)
+    check("توکن باطل‌شده دیگر پل را باز نمی‌کند", r.status_code == 401)
+    r = c.post("/projects/bridge-proj/delete", data={"confirm": "bridge-proj", "csrf": csrf}, follow_redirects=False)
+    check("حذف پروژهٔ تست پل", "m=project_deleted" in r.headers.get("location", ""))
+    db = SessionLocal()
+    check("توکن‌های پروژه با حذف پروژه پاک شدند (کاسکاد)",
+          db.query(_AT).count() == 0)
+    db.close()
+
 print()
 print("— واحدهای کوچک —")
 from app import stacks  # noqa: E402

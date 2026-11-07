@@ -6,7 +6,7 @@
 from sqlalchemy.orm import Session
 
 from .. import dockerops, gitea, scaffolds
-from ..models import Build, Project, Site, User
+from ..models import AgentToken, Build, Project, Site, User
 from ..security import gen_secret, slugify
 from ..validation import project_slug_error
 
@@ -124,6 +124,7 @@ def delete_project(db: Session, project: Project, acting_user: User) -> str | No
     for svc in list(project.services):
         db.delete(svc)
     db.query(Build).filter(Build.project_id == project.id).delete()
+    db.query(AgentToken).filter(AgentToken.project_id == project.id).delete()
 
     # ۳) مخزن گیت (best-effort — نبود گیتا مانع حذف پروژه نمی‌شود)
     owner = db.get(User, project.owner_id)
