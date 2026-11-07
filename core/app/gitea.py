@@ -260,23 +260,30 @@ def ensure_sso_source(db=None) -> None:
 # ---------- یکپارچگی UI (v0.5.8): «بازگشت به پنل» در منوی گیتا ----------
 
 # سازوکار رسمی گیتا برای افزودن لینک به ناوبری/پاورقی، قالب‌های سفارشی
-# custom/templates/extra_links.tmpl و extra_links_footer.tmpl است (سند
-# Customizing Gitea؛ در گیتا 1.23 پاورقی از custom/extra_links_footer
-# تغذیه می‌شود). تک‌منبعِ متن قالب‌ها همین‌جاست؛ با URL فعال پنل رندر و
-# در config/gitea-custom/templates نوشته می‌شود که docker-compose آن را
-# read-only روی /data/gitea/templates (CustomPath گیتا در استک) سوار
-# می‌کند. گیتا قالب را فقط هنگام بوت پارس می‌کند؛ پس تغییر محتوا یک
-# ری‌استارت می‌خواهد (پرچم خودترمیم در ensure_custom_templates_and_restart).
+# custom/extra_links و custom/extra_links_footer است (سند Customizing
+# Gitea؛ در گیتا 1.23 پاورقی از custom/extra_links_footer تغذیه می‌شود).
+# نام قالب = مسیر فایل نسبی زیر CustomPath/templates — یعنی فایل باید در
+# <CustomPath>/templates/custom/extra_links.tmpl باشد، نه ریشهٔ templates
+# (درس میدانی همین نسخه). تک‌منبعِ متن قالب‌ها همین‌جاست؛ با URL فعال پنل
+# رندر و در config/gitea-custom/templates/custom نوشته می‌شود که
+# docker-compose آن را read-only روی /data/gitea/templates (CustomPath
+# گیتا در استک) سوار می‌کند. گیتا قالب را فقط هنگام بوت پارس می‌کند؛ پس
+# تغییر محتوا یک ری‌استارت می‌خواهد (پرچم خودترمیم در
+# ensure_custom_templates_and_restart).
 NAV_LINK_TMPL = '<a class="item" href="__PANEL_URL__" title="پنل مدیریت پرستو">بازگشت به پنل</a>\n'
 FOOTER_LINK_TMPL = '<a href="__PANEL_URL__" title="پنل مدیریت پرستو">پنل پرستو</a>\n'
+
+# نام فایل‌ها زیر templates/custom — همان نام قالب‌های رسمی گیتا
+_CUSTOM_TEMPLATE_FILES = {
+    "extra_links.tmpl": NAV_LINK_TMPL,
+    "extra_links_footer.tmpl": FOOTER_LINK_TMPL,
+}
 
 
 def render_gitea_custom_templates(panel_url: str) -> dict[str, str]:
     """متن نهایی قالب‌های سفارشی برای URL داده‌شده — خالص و تست‌پذیر."""
-    return {
-        "extra_links.tmpl": NAV_LINK_TMPL.replace("__PANEL_URL__", panel_url),
-        "extra_links_footer.tmpl": FOOTER_LINK_TMPL.replace("__PANEL_URL__", panel_url),
-    }
+    return {name: t.replace("__PANEL_URL__", panel_url)
+            for name, t in _CUSTOM_TEMPLATE_FILES.items()}
 
 
 def ensure_custom_templates() -> bool:
@@ -284,11 +291,13 @@ def ensure_custom_templates() -> bool:
 
     خطای دیسک (CONFIG_DIR ننوشتنی) بی‌صدا False می‌دهد — سیکل بعدی
     بوت‌استرپ دوباره امتحان می‌کند؛ هیچ مسیری نباید به‌خاطر برندینگ بشکند.
+    فایل‌های سطح ریشهٔ templates از آزمون اول (مسیر نادرست) اگر باشند
+    پاک می‌شوند تا ریشемонدهی نسخه‌های بعد باقی نماند.
     """
     from . import domains
     scheme = "https" if domains.tls() else "http"
     files = render_gitea_custom_templates(f"{scheme}://{domains.panel()}/")
-    tdir = Path(settings.CONFIG_DIR) / "gitea-custom" / "templates"
+    tdir = Path(settings.CONFIG_DIR) / "gitea-custom" / "templates" / "custom"
     try:
         changed = False
         for name, content in files.items():
@@ -302,6 +311,16 @@ def ensure_custom_templates() -> bool:
             tdir.mkdir(parents=True, exist_ok=True)
             p.write_text(content, encoding="utf-8")
             changed = True
+        # پاک‌سازی فایل‌های جاافتادهٔ سطح ریشهٔ templates (مسیر کهنهٔ نادرست)
+        root = tdir.parent
+        for name in files:
+            legacy = root / name
+            if legacy.is_file():
+                try:
+                    legacy.unlink()
+                    changed = True
+                except OSError:
+                    pass
         return changed
     except OSError as e:
         print(f"[parastoo] gitea custom templates: نوشتن ناموفق ({e})")

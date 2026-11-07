@@ -441,12 +441,12 @@ with TestClient(app, follow_redirects=False) as c:
         with tempfile.TemporaryDirectory() as _td:
             gitea_mod.settings.CONFIG_DIR = _td
             _ch1 = gitea_mod.ensure_custom_templates()
-            _d = Path(_td) / "gitea-custom" / "templates"
+            _d = Path(_td) / "gitea-custom" / "templates" / "custom"
             _ondisk = (_d / "extra_links.tmpl").read_text(encoding="utf-8")
             _ch2 = gitea_mod.ensure_custom_templates()
     finally:
         gitea_mod.settings.CONFIG_DIR = _old_cfg
-    check("نوشتن روی دیسک (config/gitea-custom) و idempotent بودن سیکل بعدی",
+    check("نوشتن روی دیسک در templates/custom (نام قالب = مسیر فایل) و idempotent بودن",
           _ch1 and not _ch2 and "127.0.0.1.nip.io" in _ondisk,
           f"ch1={_ch1} ch2={_ch2}")
 
