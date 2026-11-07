@@ -391,9 +391,14 @@ def deploy_project(project, services, sites,
     همهٔ کانتینرهای قدیمیِ پروژه (فیلتر لیبل) حذف و همه از نو ساخته می‌شوند:
     اول سرویس‌های غیرعمومی، بعد سرویس عمومی. فراخواننده تضمین می‌کند ایمیج‌ها
     بیلد/موجودند. هر استثنایی بالا می‌آید تا فراخواننده وضعیت را error کند.
+
+    نکتهٔ DNS (میدان v0.4.1): نام کوتاه سرویس (مثلاً db) باید alias شبکهٔ
+    خصوصی باشد — نام کامل کانتینر (parastoo-p<id>-db) آن را پوشش نمی‌دهد و
+    env کاربر باید بتواند postgres://db:5432 بنویسد.
     """
     c = client()
     pid = project.id
+    net_name = project_network(pid)
     ensure_network(pid)
     remove_project(pid, quiet=True)
 
@@ -402,37 +407,46 @@ def deploy_project(project, services, sites,
         if not svc.image:
             continue
         _pull_if_needed(svc.image, pull_creds)
-        kwargs = dict(
-            name=service_container(pid, svc.name),
-            detach=True,
-            labels={
-                PROJECT_LABEL: str(pid),
-                SERVICE_LABEL: svc.name,
-                "parastoo.owner": str(project.owner_id),
-                "parastoo.slug": project.slug,
-            },
-            network=project_network(pid),
-            restart_policy={"Name": "unless-stopped"},
-            environment={k: v for k, v in svc.env().items()},
-            **_tier_limits(svc.tier),
-        )
+        t = settings.TIERS.get(svc.tier, settings.TIERS["nano"])
         binds = [f"{volume_name(pid, vname)}:{path}" for vname, path in svc.volumes()]
-        if binds:
-            kwargs["volumes"] = binds
-        if svc.command:
-            kwargs["command"] = ["sh", "-c", svc.command]
+        labels = {
+            PROJECT_LABEL: str(pid),
+            SERVICE_LABEL: svc.name,
+            "parastoo.owner": str(project.owner_id),
+            "parastoo.slug": project.slug,
+        }
         if svc.is_public:
-            # docker-py برای create فقط یک network می‌پذیرد؛ شبکهٔ خصوصیِ پروژه
-            # همان‌جا داده می‌شود و اتصال به apps بلافاصله بعد از ساخت انجام می‌شود.
             # traefik.enable لازم است — docker provider با exposedByDefault:false
             # کانتینرِ بدون این لیبل را کلاً نادیده می‌گیرد (میدان v0.4.0: 404 سایت)
-            kwargs["labels"]["traefik.enable"] = "true"
-            kwargs["labels"].update(_public_labels(sites, svc.port))
-        c.containers.run(svc.image, **kwargs)
-        if svc.is_public and settings.APPS_NETWORK != project_network(pid):
+            labels["traefik.enable"] = "true"
+            labels.update(_public_labels(sites, svc.port))
+        host_config = c.api.create_host_config(
+            binds=binds or None,
+            restart_policy={"Name": "unless-stopped"},
+            network_mode=net_name,
+            mem_limit=t["mem"] * 1024 * 1024,
+            nano_cpus=int(t["cpus"] * 1e9),
+        )
+        networking_config = c.api.create_networking_config({
+            net_name: c.api.create_endpoint_config(aliases=[svc.name]),
+        })
+        create_kwargs = dict(
+            image=svc.image,
+            name=service_container(pid, svc.name),
+            labels=labels,
+            environment=svc.env(),
+            host_config=host_config,
+            networking_config=networking_config,
+            detach=True,
+        )
+        if svc.command:
+            create_kwargs["command"] = ["sh", "-c", svc.command]
+        c.api.create_container(**create_kwargs)
+        c.api.start(service_container(pid, svc.name))
+        if svc.is_public and settings.APPS_NETWORK != net_name:
             try:
-                net = c.networks.get(settings.APPS_NETWORK)
-                net.connect(service_container(pid, svc.name))
+                c.networks.get(settings.APPS_NETWORK).connect(
+                    service_container(pid, svc.name))
             except Exception:
                 pass
 
