@@ -513,6 +513,15 @@ with TestClient(app, follow_redirects=False) as c:
     import subprocess as _sub
     import tempfile as _tmpmod
 
+    # درس CI (2026-11-08): رانر گیت‌هاب هویت گیت ندارد → git commit شکست
+    # می‌خورد و rev-parse رشتهٔ "HEAD" برمی‌گرداند → چک‌های گارد push به‌هم
+    # می‌ریزند. هویت فقط از env برای مخزن‌های موقت همین بلوک (روی همهٔ محیط‌ها).
+    for _k, _v in (("GIT_AUTHOR_NAME", "smoke-test"),
+                   ("GIT_AUTHOR_EMAIL", "smoke@test.local"),
+                   ("GIT_COMMITTER_NAME", "smoke-test"),
+                   ("GIT_COMMITTER_EMAIL", "smoke@test.local")):
+        os.environ.setdefault(_k, _v)
+
     from app.config import settings as _st
     from app.dockerops import _public_labels as _pl
     _fake_site = type("S", (), {"slug": "s1", "subdomain": "s1.apps.example.ir"})()
