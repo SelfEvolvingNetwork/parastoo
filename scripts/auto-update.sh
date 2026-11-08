@@ -55,6 +55,14 @@ record() {
     "$(date '+%F %T')" "${CURRENT:-}" "${REMOTE:-}" "${NEW_VER:-}" "$1" "$detail" >> "$HIST" 2>/dev/null || true
 }
 
+# record_fail <detail> — ثبت شکست + backoff ده‌دقیقه‌ای؛ میدان 2026-11-08: وقتی
+# مهرِ استقرار فقط پس از موفقیت زده می‌شود، شکستِ تکرارشدنی است و بیلدِ خراب نباید
+# هر تیک از نو اجرا شود (تیک بعدیِ پس از شکست بلافاصله تلاش نکند؛ --force مستثناست)
+record_fail() {
+  date +%s > "$APP_DIR/.autoupdate-backoff" 2>/dev/null || true
+  record "failed" "$1"
+}
+
 # set_env KEY VALUE — نوشتن idempotent در .env (بدون خرابکردن بقیه خط‌ها)
 # v0.2.15: مقدار همیشه کوتیشن می‌شود (DEPLOYED_AT فاصله دارد؛ خط unquoted در
 # اجرای بعدی، source کردن .env را می‌کشد) و کاراکترهای خاص sed هم escape می‌شوند
@@ -95,6 +103,14 @@ if [ "$FORCE" -ne 1 ] && [ $((NOW - LAST)) -lt "$INTERVAL" ]; then
 fi
 echo "$NOW" > "$STATE"
 
+# پس از یک شکست، ده دقیقه دست‌نگه‌داشتن (--force همیشه مستثناست)
+LASTFAIL=0
+[ -f "$APP_DIR/.autoupdate-backoff" ] && LASTFAIL="$(head -n1 "$APP_DIR/.autoupdate-backoff" 2>/dev/null || echo 0)"
+case "$LASTFAIL" in ''|*[!0-9]*) LASTFAIL=0 ;; esac
+if [ "$FORCE" -ne 1 ] && [ $((NOW - LASTFAIL)) -lt 600 ]; then
+  exit 0
+fi
+
 # ---------- ۱) بررسی کامیت جدید در گیت‌هاب ----------
 REF="${PARASTOO_UPDATE_CHANNEL:-main}"
 PROXY="${PARASTOO_GH_PROXY:-}"
@@ -131,43 +147,55 @@ if [ "$DL_OK" -ne 1 ]; then
 fi
 if [ "$DL_OK" -ne 1 ]; then
   log "ERROR: download from github failed"
-  record "failed" "download from github failed"
+  record_fail "download from github failed"
   exit 1
 fi
 
 mkdir -p "$WORK/src"
-tar -xzf "$WORK/pkg.tar.gz" -C "$WORK/src" 2>>"$LOG" || { record "failed" "tar extract failed"; exit 1; }
+tar -xzf "$WORK/pkg.tar.gz" -C "$WORK/src" 2>>"$LOG" || { record_fail "tar extract failed"; exit 1; }
 SRC="$(find "$WORK/src" -maxdepth 2 -name docker-compose.yml -printf '%h\n' 2>/dev/null | head -n1)"
 if [ -z "$SRC" ] || [ ! -f "$SRC/install.sh" ] || [ ! -f "$SRC/core/app/config.py" ]; then
   log "ERROR: invalid package (docker-compose.yml / install.sh / core missing)"
-  record "failed" "invalid package layout"
+  record_fail "invalid package layout"
   exit 1
 fi
 NEW_VER="$(sed -n 's/^ *VERSION: *str *= *"\([^"]*\)".*/\1/p' "$SRC/core/app/config.py" | head -1)"
 
 # ---------- ۳) بکاپ کد فعلی (بیمهٔ بازگشت) ----------
+# میدان 2026-11-08 (نصب تازه): auto-update قبل از install.sh اجرا شد و backups/ هنوز
+# وجود نداشت؛ tar شکست خورد ولی لاگ «موفق» می‌نوشت و فایل بکاپ اصلاً ساخته نشده بود.
+# اکنون پوشه ساخته می‌شود، خروجی tar چک می‌شود و شکستِ بکاپ یعنی توقفِ امن پیش از
+# جایگزینی کد. نگه‌داشت ۱۰ بکاپ آخر هم اضافه شد تا تلاش‌های مکرر پُرش نکند.
 BK="backups/code-$(date +%Y%m%d-%H%M%S).tar.gz"
-tar czf "$BK" --exclude='backups' --exclude='offline-images' --exclude='logs' \
+mkdir -p backups
+if tar czf "$BK" --exclude='backups' --exclude='offline-images' --exclude='logs' \
       --exclude='config' --exclude='.env' --exclude='*.tar.gz' \
-      core bin deploy scripts postgres-init docs *.sh docker-compose.yml README.md 2>>"$LOG" || true
-log "code backup: $BK"
+      core bin deploy scripts postgres-init docs *.sh docker-compose.yml README.md 2>>"$LOG"; then
+  log "code backup: $BK"
+  ls -1t backups/code-*.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm -f
+else
+  log "ERROR: code backup failed — update aborted, current code untouched"
+  record_fail "code backup failed"
+  exit 1
+fi
 
 # ---------- ۴) جایگزینی امن کد (مثل setup.sh: فقط کد، نه داده) ----------
 rm -rf core bin deploy scripts postgres-init docs
-cp -a "$SRC/core" "$SRC/bin" "$SRC/deploy" "$SRC/scripts" "$SRC/postgres-init" "$SRC/docs" ./ || { record "failed" "copy code failed"; exit 1; }
+cp -a "$SRC/core" "$SRC/bin" "$SRC/deploy" "$SRC/scripts" "$SRC/postgres-init" "$SRC/docs" ./ || { record_fail "copy code failed"; exit 1; }
 for f in docker-compose.yml install.sh setup.sh bootstrap.sh uninstall.sh README.md LICENSE .env.example; do
   [ -f "$SRC/$f" ] && cp -f "$SRC/$f" ./
 done
 chmod +x scripts/*.sh bin/parastoo install.sh setup.sh uninstall.sh bootstrap.sh 2>/dev/null || true
 rm -rf core/app/__pycache__ core/app/routes/__pycache__ scripts/__pycache__ 2>/dev/null || true
 
-# ---------- ۵) ثبت وضعیت استقرار ----------
+# ---------- ۵) همگامی متادیتای استقرار (بدون مهر) ----------
+# میدان 2026-11-08: مهر .parastoo-deploy قبلاً همین‌جا (قبل از compose) نوشته می‌شد؛
+# اگر بیلد/up شکست می‌خورد، مهرِ کامیت جدید باقی می‌ماند، چرخهٔ بعد «هیچ‌کار نکن»
+# می‌رفت و سرور با کدِ قدیمی و وضعیت کاذب رها می‌شد. اکنون مهر فقط در گام ۶ پس از
+# سلامتِ کانتینر تازه زده می‌شود تا شکست یعنی تلاش مجدد. مقدارهای env همچنان همین‌جا
+# ست می‌شوند چون compose موقع up متادیتا را از محیط/فایل می‌خواند (اولویت محیط >
+# فایل) و کانتینر تازه باید کامیت جدید را از همان ابتدا ببیند (درس v0.3.21).
 NOW_H="$(date '+%F %T')"
-{
-  echo "version=${NEW_VER:-unknown}"
-  echo "commit=${REMOTE}"
-  echo "time=${NOW_H}"
-} > "$DEPLOY"
 set_env PARASTOO_DEPLOYED_COMMIT "$REMOTE"
 set_env PARASTOO_DEPLOYED_AT "$NOW_H"
 # v0.3.21 (درس بازبینی زنده): اسکریپت در ابتدا (.env) را با set -a صادر کرده؛
@@ -210,14 +238,21 @@ if docker compose up -d --build >>"$LOG" 2>&1; then
       *"\"commit\":\"$REMOTE\""*) ;;
       *) log "WARN: healthz metadata mismatch — container may carry stale env: $(printf '%s' "$_hz" | head -c 200)" ;;
     esac
+    # مهر استقرار — فقط پس از تأیید سلامتِ کانتینر تازه (میدان 2026-11-08)؛
+    # زمانِ مهر همان NOW_H گام ۵ است تا با PARASTOO_DEPLOYED_AT در .env یکسان بماند
+    {
+      echo "version=${NEW_VER:-unknown}"
+      echo "commit=${REMOTE}"
+      echo "time=${NOW_H}"
+    } > "$DEPLOY"
     record "ok" "deployed ${REMOTE:0:12} (v${NEW_VER:-?})"
     log "update complete: v${NEW_VER:-?} (${REMOTE:0:12})"
     exit 0
   fi
-  record "failed" "core not healthy after deploy — see logs/update.log"
+  record_fail "core not healthy after deploy — see logs/update.log"
   log "ERROR: core did not become healthy; run: docker compose logs --tail 50 core"
   exit 1
 fi
-record "failed" "docker compose build/up failed — see logs/update.log"
+record_fail "docker compose build/up failed — see logs/update.log"
 log "ERROR: docker compose failed; new code is on disk (rollback backup: $BK)"
 exit 1
