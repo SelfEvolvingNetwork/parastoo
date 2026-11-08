@@ -81,13 +81,17 @@ def sync_once() -> str | None:
     if current and current.get("tag") == info["tag"] \
             and current.get("asset_id") == info["asset_id"]:
         return None
-    _download(info)
-    return (f"installed {info['tag']} "
-            f"({info['size'] / (1024 * 1024):.1f} MB, "
-            f"sha256 {info['sha256'][:12]}…)")
+    manifest = _download(info)
+    return _summary(manifest)
 
 
 # ---------------------------------------------------------------- internal
+
+def _summary(m: dict) -> str:
+    """لاگ نصب — فقط از manifest (رگرسیون 0.5.9: خواندن sha256 از info که نداشت)."""
+    return (f"installed {m['tag']} "
+            f"({m['size'] / (1024 * 1024):.1f} MB, "
+            f"sha256 {m['sha256'][:12]}…)")
 
 def _latest_release() -> dict | None:
     """آخرین رلیز پایدار مخزن موبایل + مشخصات asset APK آن."""
@@ -117,8 +121,8 @@ def _latest_release() -> dict | None:
     return None  # رلیز بدون APK (بیلد ناتمام) — سیکل بعدی
 
 
-def _download(info: dict) -> None:
-    """دانلود APK با فال‌بک آینه + راستی‌آزمایی + نصب اتمیک (APK و manifest)."""
+def _download(info: dict) -> dict:
+    """دانلود APK با فال‌بک آینه + راستی‌آزمایی + نصب اتمیک. خروجی: manifest ثبت‌شده."""
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     tmp_apk = STATE_DIR / (APK_FILENAME + ".tmp")
     if tmp_apk.exists():
@@ -162,6 +166,7 @@ def _download(info: dict) -> None:
     tmp_m = STATE_DIR / (MANIFEST_FILENAME + ".tmp")
     tmp_m.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp_m, STATE_DIR / MANIFEST_FILENAME)
+    return manifest
 
 
 def _stream_to(url: str, dest: Path) -> tuple[str, int]:

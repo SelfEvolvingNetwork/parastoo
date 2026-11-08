@@ -148,8 +148,31 @@ with TestClient(app, follow_redirects=False) as c:
     check("فایل APK با MIME درست سرو می‌شود",
           r.status_code == 200
           and r.headers["content-type"] == "application/vnd.android.package-archive")
+    # مسیر خوش‌بختِ نصب اتمیک (_download) با URL محلی — بدون شبکه.
+    # رگرسیون 0.5.9: خلاصهٔ sync به info['sha256'] ارجاع می‌داد که فقط بعد از
+    # _download وجود دارد → پس از نصبِ موفق، ورکر با KeyError می‌مرد.
+    _fake = mobile_svc.STATE_DIR / "fake-source.apk"
+    _fake.write_bytes(b"PK\x03\x04fake")
+    _manifest = mobile_svc._download({"tag": "mobile-r9",
+                                      "published_at": "2026-11-08T00:00:00Z",
+                                      "asset_id": 9, "size": 8,
+                                      "url": f"file://{_fake}"})
+    check("نصب اتمیک: فایل نصب و manifest با sha256 ۶۴کاراکتری ثبت می‌شود",
+          _manifest["tag"] == "mobile-r9" and len(_manifest["sha256"]) == 64
+          and (mobile_svc.STATE_DIR / mobile_svc.APK_FILENAME).read_bytes().startswith(b"PK"))
+    check("خلاصهٔ sync از manifest ساخته می‌شود (رگرسیون KeyError 0.5.9)",
+          "mobile-r9" in mobile_svc._summary(_manifest)
+          and _manifest["sha256"][:12] in mobile_svc._summary(_manifest))
+    # dedup بدون شبکه: همان تگ/asset_id → None (مونکی‌پچ پرسش رلیز)
+    _orig_latest = mobile_svc._latest_release
+    mobile_svc._latest_release = lambda: {"tag": "mobile-r9", "published_at": "",
+                                          "asset_id": 9, "size": 8, "url": ""}
+    check("دور بعدی با همان تگ بی‌صدا رد می‌شود (dedup)",
+          mobile_svc.sync_once() is None)
+    mobile_svc._latest_release = _orig_latest
     (mobile_svc.STATE_DIR / mobile_svc.APK_FILENAME).unlink()
     (mobile_svc.STATE_DIR / mobile_svc.MANIFEST_FILENAME).unlink()
+    _fake.unlink()
 
     r = c.get("/admin")
     check("کاربر عادی به ادمین دسترسی ندارد", r.status_code == 303)
