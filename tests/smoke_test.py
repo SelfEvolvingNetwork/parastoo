@@ -815,10 +815,13 @@ check("حداقل فاصلهٔ بررسی ۶۰ ثانیه اعمال می‌شو
 check("auto-update.sh کلید خاموش‌کردن (PARASTOO_AUTO_UPDATE) را می‌خواند", "PARASTOO_AUTO_UPDATE" in au)
 check("پس از استقرار، سلامت هسته چک می‌شود", "healthz" in au)
 inst = (ROOT / "install.sh").read_text()
-check("install.sh تایمر systemd را رندر و فعال می‌کند",
-      "deploy/systemd/$_u" in inst
-      and "systemctl enable --now parastoo-autoupdate.timer" in inst
-      and "__INSTALL_DIR__" in inst)
+check("install.sh دیمون آپدیت خودکار را نصب نمی‌کند و کهنه را خلع می‌کند (v0.5.12 — آپدیت فقط صریح)",
+      "systemctl enable --now parastoo-autoupdate.timer" not in inst
+      and "systemctl disable --now parastoo-autoupdate.timer" in inst
+      and "rm -f /etc/systemd/system/parastoo-autoupdate.service" in inst)
+check("install.sh تایمر tls-store را می‌گذارد و فعال می‌کند (آینهٔ گواهی، نه ناظر)",
+      "systemctl enable --now parastoo-tls-store.timer" in inst
+      and "deploy/systemd/$_u" in inst and "__INSTALL_DIR__" in inst)
 check("install.sh وضعیت اولیهٔ استقرار (.parastoo-deploy) را می‌نویسد", ".parastoo-deploy" in inst)
 check("install.sh متغیرهای آپدیت خودکار و حالت توسعه را در .env می‌گذارد",
       "PARASTOO_AUTO_UPDATE=" in inst and "PARASTOO_DEV_MODE=" in inst)
@@ -831,6 +834,8 @@ check("compose حالت توسعه و کامیت مستقر را به هسته �
 check("تاریخچهٔ آپدیت به هسته سوار می‌شود (ro)", "./logs:/app/host-logs:ro" in compose_src)
 cli = (ROOT / "bin/parastoo").read_text()
 check("CLI دستور autoupdate (status/on/off/run) دارد", "autoupdate)" in cli and "run)" in cli)
+check("CLI autoupdate on واحدها را در صورت نبود از deploy/systemd می‌گذارد (opt-in پس از حذف دیمون)",
+      "deploy/systemd/$_u" in cli and "systemctl enable --now parastoo-autoupdate.timer" in cli)
 check("CLI update از مسیر آپدیت خودکار (گیت‌هاب) می‌رود", "auto-update.sh" in cli)
 uni = (ROOT / "uninstall.sh").read_text()
 check("uninstall تایمر آپدیت خودکار را هم پاک می‌کند", "parastoo-autoupdate.timer" in uni)

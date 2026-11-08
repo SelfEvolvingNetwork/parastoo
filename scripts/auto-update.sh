@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # =============================================================
-#  Parastoo auto-update — پل خودکار گیت‌هاب به سرور
+#  Parastoo auto-update — پل گیت‌هاب به سرور (موتور مشترک آپدیت)
 #
-#  هر بار که شاخهٔ کانال (پیش‌فرض main) در گیت‌هاب جلو برود، کد جدید
-#  دانلود، به‌صورت امن جایگزین و استک داکر بازسازی می‌شود. نصبِ اولیه
-#  دستی می‌ماند؛ آپدیت‌های بعدی خودکار است.
+#  اگر شاخهٔ کانال (پیش‌فرض main) در گیت‌هاب جلو رفته باشد، کد جدید
+#  دانلود، به‌صورت امن جایگزین و استک داکر بازسازی می‌شود.
 #
-#  اجرا: توسط تایمر systemd (deploy/systemd/parastoo-autoupdate.timer)
-#        یا دستی:  sudo bash /opt/parastoo/scripts/auto-update.sh --force
+#  v0.5.12 — قرار مالک «یک روال شفاف»: استقرار فقط با فرمان صریح است و این
+#  اسکریپت دیمونِ همیشگی نیست؛ سه فراخوانی مجاز دارد:
+#    1) sudo parastoo update                       (همان --force)
+#    2) lifecycle پل: POST /api/admin/parastoo/update
+#    3) تایمر opt-in: sudo parastoo autoupdate on   (خارج از پیش‌فرض)
 #
 #  پیکربندی (در .env کنار همین اسکریپت):
-#    PARASTOO_AUTO_UPDATE=true|false     کلید اصلی (پیش‌فرض true)
+#    PARASTOO_AUTO_UPDATE=true|false     کلید حالت خودکار (پیش‌فرض false از v0.5.12)
 #    PARASTOO_AUTO_UPDATE_INTERVAL=120   حداقل فاصلهٔ بررسی (ثانیه، ≥60)
 #    PARASTOO_UPDATE_CHANNEL=main        شاخه یا تگ هدف
 #    PARASTOO_GH_PROXY=                  پیشوند پراکسی گیت‌هاب (تحریم‌ها)

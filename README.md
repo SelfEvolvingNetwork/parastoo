@@ -1,4 +1,4 @@
-# پرستو (Parastoo) v0.5.1
+# پرستو (Parastoo) v0.5.12
 
 [![CI](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml/badge.svg)](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml)
 
@@ -121,16 +121,19 @@ parastoo doctor     # گزارش کامل عیب‌یابی (رمزها مخفی
 sudo bash uninstall.sh   # حذف کامل
 ```
 
-## آپدیت خودکار از گیت‌هاب
+## آپدیت صریح از گیت‌هاب (v0.5.12 — «یک روال شفاف»)
 
-نصب **اولین بار دستی** است؛ بعد از آن تایمر systemd هر push به شاخهٔ کانال (پیش‌فرض `main`) را حداکثر ظرف `PARASTOO_AUTO_UPDATE_INTERVAL` ثانیه (پیش‌فرض ۱۲۰) مستقر می‌کند: کد جدید جایگزین امنِ فقط-کد، بکاپ خودکار، بازسازی استک.
+استقرار فقط با فرمان صریح انجام می‌شود؛ هیچ دیمون خوداستقراری در پس‌زمینه نیست (قرار مالک 2026-11-09). موتور مشترکِ آپدیت `scripts/auto-update.sh` است و سه راه رسمی دارد:
 
 ```bash
+parastoo update                   # آپدیت فوری از گیت‌هاب (همان مسیر lifecycle پل)
+# یا از پرستو موبایل: صفحهٔ «مدیریت پرستو» → به‌روزرسانی (POST /api/admin/parastoo/update)
 parastoo autoupdate status        # پیکربندی + تاریخچهٔ آخرین آپدها
+parastoo autoupdate on            # opt-in صریح تایمر (پیش‌فرض خاموش از v0.5.12)
 parastoo autoupdate off           # خاموش کردن
-parastoo update                   # همان مسیر، دستی و فوری
-journalctl -u parastoo-autoupdate # لاگ کامل اجراها
 ```
+
+هر استقرار (صریح یا تایمر opt-in) جایگزین امنِ فقط-کد + بکاپ خودکار + تاریخچهٔ `logs/updates.jsonl` است.
 
 **بررسی نسخه بدون SSH:**
 

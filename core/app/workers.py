@@ -8,7 +8,8 @@
 4) domain_loop    : فعال‌سازی خودگردان دامنهٔ زمان‌بندی‌شده (v0.3.14) — هر ۶۰
    ثانیه چک DNS برای درخواست معلق ویزارد؛ پس از نشستن رکوردها همان مسیر
    apply_domain اجرا می‌شود (مالک نیازی به بازگشت به ویزارد ندارد).
-5) heal_loop      : خودترمیم‌های بی‌سر و صدا (هر ۱۲۰ ثانیه):
+5) heal_loop      : خودترمیم‌های شفاف (هر ۱۲۰ ثانیه — هر اقدام با _heal_log در
+   stdout و رینگ‌بافر devlog دیده می‌شود):
    a) ناهم‌خوانی گیتا با دامنهٔ فعال (v0.3.22) — نصب‌هایی که دامنه‌شان عوض
       شده ولی env گیتا روی نصب اول مانده (میدان 2026-11-06: realm کهنهٔ
       رجیستری → 404 روی docker login → هیچ بیلدی سبز نمی‌شد) بدون دخالت
@@ -18,11 +19,12 @@
       (میدان همان روز: my-shop.apps… ساعت‌ها روی HTTPS باز نمی‌شد در حالی
       که پنل «running» می‌گفت)، ترافیک با فاصلهٔ حداقل ۱۰ دقیقه ری‌استارت
       می‌شود تا چرخهٔ صدور از نو اجرا شود.
-6) mobile_loop    : انتشار خودکار «پرستو موبایل» (v0.5.9) — هر ۶۰۰ ثانیه
+6) mobile_loop    : انتشار خودکار «پرستو موبایل» (v0.5.9) — هر ۱۲۰ ثانیه
    آخرین رلیز گیت‌هاب مخزن اپ ادمین را می‌پرسد؛ بیلد APK تازه را بی‌صدا
    دانلود و در /data/mobile نصب می‌کند تا صفحهٔ /download همیشه آخرین
    نسخهٔ نصب‌شدنی را بدهد (services/mobile.py — صفر رمز، بهترین‌تلاش).
 """
+import logging
 import subprocess
 import threading
 import time
@@ -329,8 +331,17 @@ def _propagate_installs(db, project: Project, log) -> None:
 
 # ---------------------------------------------------------------- heal
 
+def _heal_log(msg: str) -> None:
+    """شفافیت خودترمیمی (قرار مالک 2026-11-09 «یک روال شفاف»): هر اقدام heal
+    هم در stdout (docker logs — دیدنی با parastoo logs) و هم در رینگ‌بافر
+    devlog (/api/dev/logs و بخش خطاهای /api/dev/report) ثبت می‌شود.
+    ترمیمِ بی‌صدا ممنوع — ناظرِ اصلی (access-agent/مالک) باید ببیند."""
+    print(f"[parastoo] {msg}", flush=True)
+    logging.getLogger("parastoo").info("[heal] %s", msg)
+
+
 def heal_once() -> None:
-    """خودترمیم‌های بی‌سر و صدا — هر ۱۲۰ ثانیه.
+    """خودترمیم‌های شفاف — هر ۱۲۰ ثانیه (هر اقدام با _heal_log ثبت می‌شود).
 
     الف) گیتا (v0.3.22): برای نصب‌هایی که دامنه‌شان تغییر کرده و env گیتا
     هنوز دامنهٔ نصب اول است: چالش رجیستری داکر (Www-Authenticate realm) از
@@ -368,9 +379,9 @@ def heal_once() -> None:
         finally:
             db0.close()
         if _r.get("static") or _r.get("dynamic"):
-            print(f"[parastoo] traefik config resynced: {_r}")
+            _heal_log(f"traefik config resynced: {_r}")
     except Exception as e:
-        print(f"[parastoo] traefik config resync failed (continuing): {e}")
+        _heal_log(f"traefik config resync failed (continuing): {e}")
     try:
         stale, cur = dockerops.gitea_stale()
     except Exception as e:
@@ -381,15 +392,15 @@ def heal_once() -> None:
         print(f"[parastoo] gitea staleness check failed (continuing): {e}")
         stale = False
     if stale:
-        print(f"[parastoo] gitea ROOT_URL stale ({cur or 'unset'}) — recreating "
-              f"with active domain {dockerops.gitea_root_url()}")
+        _heal_log(f"gitea ROOT_URL stale ({cur or 'unset'}) — recreating "
+                  f"with active domain {dockerops.gitea_root_url()}")
         try:
             dockerops.recreate_gitea()
             env_ok = dockerops.sync_host_env()
-            print(f"[parastoo] gitea recreated with active domain "
-                  f"(host .env synced={env_ok})")
+            _heal_log(f"gitea recreated with active domain "
+                      f"(host .env synced={env_ok})")
         except Exception as e:
-            print(f"[parastoo] gitea self-heal failed: {e}")
+            _heal_log(f"gitea self-heal failed: {e}")
     _tls_certs_heal(db)
     _build_retry_heal(db)
 
@@ -429,12 +440,12 @@ def _tls_certs_heal(db) -> None:
         if not broken or time.time() - _last_tls_restart < TLS_RESTART_GAP:
             return
         _last_tls_restart = time.time()
-        print(f"[parastoo] cert missing for {', '.join(broken)} — "
-              f"restarting traefik to retry ACME")
+        _heal_log(f"cert missing for {', '.join(broken)} — "
+                  f"restarting traefik to retry ACME")
         c = dockerops.client()
         c.containers.get(settings.TRAEFIK_CONTAINER).restart(timeout=10)
     except Exception as e:
-        print(f"[parastoo] cert self-heal failed: {e}")
+        _heal_log(f"cert self-heal failed: {e}")
 
 
 def _registry_tls_failure(job_log: str | None) -> bool:
@@ -479,11 +490,11 @@ def _build_retry_heal(db) -> None:
             db.add(Build(project_id=project.id, commit_sha=latest.commit_sha,
                          status="queued"))
             db.commit()
-            print(f"[parastoo] build #{latest.id} died on registry TLS — "
-                  f"auto-requeued (cert is ready now)")
+            _heal_log(f"build #{latest.id} died on registry TLS — "
+                      f"auto-requeued (cert is ready now)")
             return  # هر چرخه حداکثر یک صف — چرخهٔ بعدی بقیه را می‌گیرد
     except Exception as e:
-        print(f"[parastoo] build retry heal failed: {e}")
+        _heal_log(f"build retry heal failed: {e}")
 
 
 # ---------------------------------------------------------------- mobile release

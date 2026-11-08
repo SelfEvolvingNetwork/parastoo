@@ -16,13 +16,13 @@
 ## نقشه فایل‌ها
 
 ```
-install.sh                 نصب تک‌فرمانی (دامنه، رمز، ترافیک، compose up، تایمر آپدیت خودکار)
-uninstall.sh               حذف (+ پاک کردن تایمر آپدیت خودکار)
+install.sh                 نصب تک‌فرمانی (دامنه، رمز، ترافیک، compose up، تایمر tls-store)
+uninstall.sh               حذف (+ پاک کردن تایمرها)
 bin/parastoo               CLI مدیریت (status/logs/update/autoupdate/backup/reset/doctor)
 docker-compose.yml         استک: postgres + gitea + core + traefik + dns
 postgres-init/01-gitea.sh  ساخت DB گیتا در اولین راه‌اندازی
 deploy/templates/          الگوهای ترافیک (install.sh رندر می‌کند؛ ensure_traefik_config در heal بازرندر)
-deploy/systemd/            تایمر آپدیت خودکار + تایمر tls-store
+deploy/systemd/            تایمر tls-store (+ واحدهای آپدیت خودکار — فقط opt-in با parastoo autoupdate on)
 scripts/auto-update.sh     آپدیت خودکار از گیت‌هاب (فلاک + بکاپ کد + تاریخچهٔ updates.jsonl)
 scripts/github_publish.sh  انتشار ریلیز: push main + ریلیز + آپلود zip (GITHUB_TOKEN لازم دارد)
 scripts/tls-store.sh       فروشگاه ماندگار گواهی: save/restore/ensure/status
@@ -102,7 +102,7 @@ core/app/
 
 **ریست کارخانه:** `scripts/factory-reset.sh` — ترتیب الزامی: بکاپ ← کانتینرهای پروژه (داخل و خارج استک) ← `down -v --remove-orphans` با تأیید ← ایمیج‌ها با لیبل ← `up -d --build` ← پروب سلامت؛ گواهی‌ها از فروشگاه بازگردانی می‌شوند. کد و `.env` و پشتیبان‌ها می‌مانند.
 
-**آپدیت خودکار:** تایمر systemd هر ~۱۲۰ث `scripts/auto-update.sh` — جایگزینی امنِ فقط پوشه‌های کد (`.env`/`config/`/`backups/`/`logs/` دست نمی‌خورد)، بکاپ کد، نتیجه در `logs/updates.jsonl`. سیکل توسعه: push به main ← تا ۲ دقیقه استقرار ← `curl /api/version` تأیید.
+**آپدیت (v0.5.12 — فقط صریح):** `sudo parastoo update` یا lifecycle پل (`POST /api/admin/parastoo/update`) → `scripts/auto-update.sh --force`: جایگزینی امنِ فقط پوشه‌های کد (`.env`/`config/`/`backups/`/`logs/` دست نمی‌خورد)، بکاپ کد، نتیجه در `logs/updates.jsonl`. سیکل توسعه: push به main ← استقرار صریح ← معمولاً ≤۳ دقیقه ← `curl /api/version` تأیید. (دیمون خوداستقرار حذف شد؛ تایمر فقط opt-in: `parastoo autoupdate on`.)
 
 **حالت توسعه‌دهنده:** `PARASTOO_DEV_MODE=true` → صفحه `/dev` و `GET /api/dev/report|logs|updates|netcheck` + `POST /api/dev/sql` (ادمین یا `X-Dev-Token`). خاموش = همهٔ مسیرها 404.
 

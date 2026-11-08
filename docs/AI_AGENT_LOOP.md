@@ -22,7 +22,7 @@
    اگر کلون از قبل هست: `git pull --ff-only`. سپس این سند + `WORKLOG.md` + `docs/LESSONS.md` را بخوان.
 2. **ذخیرهٔ امن سه مقدار:** `parastoo/.secrets/access-agent.env` با همین سه کلید بساز (chmod 600، gitignored). قرارداد کامل اتصال: `docs/AGENT_PROTOCOL.fa.md` در مخزن access-agent.
 3. **اتصال پین‌شده و سلامت:** هش گواهیِ دریافتی باید == `CERT_SHA256` شود (در تولید هرگز اعتماد کورکورانه `-k` نه). سپس `GET /healthz` → `GET /api/status`؛ فیلد `parastoo_install_path` می‌گوید پرستو کجای سرور است.
-4. **نصب پرستو اگر نیست (سرور نو):** از همان پل access-agent با دستور تک‌خطی README (در ایران با پیشوند gh-proxy). معیار پایان: `/api/version` پنل پاسخ دهد.
+4. **نصب پرستو اگر نیست (سرور نو):** فقط از lifecycle پل: `POST /api/admin/parastoo/install` — نصب با exec مستقیمِ bootstrap ممنوع است (قرار مالک 2026-11-09 «یک روال شفاف»: یک بازیگرِ تغییردهنده در هر لحظه؛ پل حین اجرای lifecycle، execِ هم‌خوان با نصب/آپدیت را 409 می‌کند). پیشرفت: `GET /api/admin/parastoo/lifecycle-status`. معیار پایان: `/api/version` پنل پاسخ دهد.
 5. **توکن پوش گیت‌هاب:** از broker بگیر (`POST /api/github/token`، purpose ≥ ۸ کاراکتر)، در `.secrets/github.env` (chmod 600، خارج از گیت) بنویس تا credential-helper پوش بخواند؛ هرگز در کد/کامیت/لاگ/گزارش نمی‌آید (§۷).
 6. **ادامه:** از این‌جا M0 همین سند است. به مالک گزارش شروع بده (نسخهٔ مستقر، وضعیت دامنه/DNS، نکته‌های باز) و منتظر فرمان بمان.
 
@@ -140,11 +140,17 @@ ruff check core --select F401,F811,F841 && bash -n install.sh scripts/*.sh bin/p
 
 بومپ `VERSION` (اگر کارکردی) + ردیف `WORKLOG.md` §۵ + کامیت با قرارداد §۳ + `git push origin main`. احرازش خودکار است (credential helper از `.secrets/`).
 
-### M5 — تأیید استقرار (قرارداد: SHA پوش‌شده = SHA مستقر)
+### M5 — استقرار صریح و تأیید (قرارداد: SHA پوش‌شده = SHA مستقر)
 
-آپدیتر سرور هر ۶۰~۱۲۰ ثانیه چک می‌کند؛ استقرار کامل معمولاً ≤ ۳ دقیقه (دانلود + `up -d --build` + گیت سلامت):
+از v0.5.12 هیچ تایمر خوداستقراری نیست (قرار مالک «یک روال شفاف»): بعد از پوش، خودت آپدیت را صریح صدا بزن، بعد تأیید کن:
 
 ```bash
+set -a; . /home/z/my-project/parastoo/.secrets/access-agent.env; set +a
+# ۱) استقرار صریح از راه پل (بدون SSH):
+curl -sk -H "Authorization: Bearer $ACCESS_AGENT_AGENT_TOKEN" \
+     -H "Content-Type: application/json" -d '{}' \
+     "$ACCESS_AGENT_URL/api/admin/parastoo/update"
+# ۲) تأیید استقرار (معمولاً ≤ ۳ دقیقه: دانلود + up -d --build + گیت سلامت):
 SHA=$(git -C /home/z/my-project/parastoo rev-parse HEAD)
 for i in $(seq 1 16); do
   sleep 30
@@ -157,8 +163,7 @@ python3 tests/e2e_live.py --expect-commit "$SHA"
 
 1. `git ls-remote https://github.com/SelfEvolvingNetwork/parastoo.git refs/heads/main` → پوش واقعاً رسیده؟
 2. خروجی `/api/version` را ببین: اگر `version` تازه و `deployed_at`/`commit` کهنه است، این «رکورد عقب‌ماندهٔ شناخته‌شده» است (LESSONS §آپدیت خودکار) — کد تازه مستقر است؛ یک کامیت کتاب‌نگارتی کوچک چرخه را دوباره اجرا می‌کند.
-3. اگر نه: محتمل‌ترین علت، **نرسیدن سرور به گیت‌هاب (تحریم)** یا خاموش‌بودن آپدیتر است. این را در گزارش مالک با دستورهای سروری دقیق اعلام کن:
-   `parastoo autoupdate status` · `tail -n 30 <مسیر نصب>/logs/update.log` · در صورت نیاز `sudo bash scripts/auto-update.sh --force` و تنظیم `PARASTOO_GH_PROXY`.
+3. اگر نه: `GET /api/admin/parastoo/lifecycle-status` (لاگ آخرین عملیات) + `exec: tail -n 30 <مسیر نصب>/logs/update.log` — محتمل‌ترین علت نرسیدن سرور به گیت‌هاب (تحریم) است؛ دوباره lifecycle update بزن و در صورت نیاز `PARASTOO_GH_PROXY` را با دستور سروری (از راه exec) تنظیم کن.
 4. **هرگز** فرض نکن سرور خراب است و راه دورِ حدسی را امتحان نکن — فقط گزارش بده.
 
 ### M6 — راستی‌آزمایی زنده
@@ -277,7 +282,7 @@ curl -s -H "X-Dev-Token: $PARASTOO_DEV_TOKEN" -H "Content-Type: application/json
 
 **فعال و مستقر ✓ (وضعیت جاری):**
 
-- پل انتشار: push به main → تایمر systemd + `scripts/auto-update.sh` (فلاک، بکاپ کد، جایگزینی فقط-کد، گیت سلامت، تاریخچهٔ `updates.jsonl`)؛ تأیید استقرار با `commit` در `/api/version`.
+- پل انتشار (v0.5.12 «یک روال شفاف»): push به main → استقرار صریح با lifecycle پل (`POST /api/admin/parastoo/update` → `scripts/auto-update.sh --force`؛ فلاک، بکاپ کد، جایگزینی فقط-کد، گیت سلامت، تاریخچهٔ `updates.jsonl`)؛ تأیید با `commit` در `/api/version`. دیمون خوداستقرار حذف شد؛ تایمر فقط با opt-in صریح (`parastoo autoupdate on`).
 - چک‌های محلی: ۵ سوئیت دودی (۴۱۳ اصلی + ۴۸ ویزارد + ۴۹ تحریم آفلاین/۵۰ زنده + ۱۷ گیت + ۱۲ ریست کارخانه) + CI گیت‌هاب‌اکشنز + ruff F + `bash -n`.
 - هارنس‌های زنده: `tests/e2e_live.py` (عمومی + چک‌های dev با SKIP تمیز + چک‌های پل/پین اختیاری با env) و `tests/e2e_user.py` (نوشتاری، فقط حالت dev، با پاکسازی خودکار).
 - معماری سرویس‌محور: مانیفست `parastoo.yml`، شبکهٔ خصوصی هر پروژه، بیلد کل-یا-هیچ، Site=روتر (قرارداد: DEVELOPMENT.md).

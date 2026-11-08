@@ -17,7 +17,7 @@ Parastoo — management commands:
   parastoo logs [svc]      show logs (core | gitea | traefik | postgres)
   parastoo restart         restart the whole stack
   parastoo update          update from GitHub (pull latest code + rebuild the core)
-  parastoo autoupdate      auto-update control: status | on | off | run
+  parastoo autoupdate      auto-update control (OFF by default since v0.5.12): status | on | off | run
   parastoo backup          back up the database, git repos and TLS certs into backups/
   parastoo reset           FACTORY RESET: wipe all data + rebuild the stack (hardened; same engine as the GitHub one-liner)
   parastoo doctor          full diagnostic report (secrets redacted) — share it when asking for help
@@ -56,7 +56,7 @@ case "${1:-help}" in
   autoupdate)
     case "${2:-status}" in
       status)
-        echo "Config:      $(grep -E '^PARASTOO_AUTO_UPDATE=' .env 2>/dev/null || echo 'PARASTOO_AUTO_UPDATE=true (default)')"
+        echo "Config:      $(grep -E '^PARASTOO_AUTO_UPDATE=' .env 2>/dev/null || echo 'PARASTOO_AUTO_UPDATE=false (default since v0.5.12)')"
         echo "Interval:    $(grep -E '^PARASTOO_AUTO_UPDATE_INTERVAL=' .env 2>/dev/null | cut -d= -f2- || echo 120)s   Channel: $(grep -E '^PARASTOO_UPDATE_CHANNEL=' .env 2>/dev/null | cut -d= -f2- || echo main)"
         echo "Deployed:    $(tr '\n' ' ' < "$APP_DIR/.parastoo-deploy" 2>/dev/null || echo 'unknown')"
         if command -v systemctl >/dev/null 2>&1; then
@@ -74,8 +74,15 @@ case "${1:-help}" in
           echo "PARASTOO_AUTO_UPDATE=$VAL" >> .env
         fi
         if command -v systemctl >/dev/null 2>&1; then
-          systemctl daemon-reload 2>/dev/null || true
           if [ "$2" = "on" ]; then
+            # v0.5.12: install.sh no longer lays these units down — explicit
+            # opt-in installs them on demand from deploy/systemd
+            for _u in parastoo-autoupdate.service parastoo-autoupdate.timer; do
+              if [ ! -f "/etc/systemd/system/$_u" ]; then
+                sed "s|__INSTALL_DIR__|$APP_DIR|g" "deploy/systemd/$_u" > "/etc/systemd/system/$_u" 2>/dev/null || true
+              fi
+            done
+            systemctl daemon-reload 2>/dev/null || true
             systemctl enable --now parastoo-autoupdate.timer 2>/dev/null || true
           else
             systemctl disable --now parastoo-autoupdate.timer 2>/dev/null || true
