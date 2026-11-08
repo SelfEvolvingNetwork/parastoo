@@ -29,8 +29,19 @@ if [ "${DEL_VOLS:-n}" = "y" ]; then
   # scared the user with "No such image" (v0.3.24)
   docker images -q --filter label=parastoo.slug | xargs -r -n1 docker rmi -f 2>/dev/null || true
   # user volumes of project services (parastoo-p<id>-<name>) — compose prefix
-  # is "parastoo_" (underscore) so platform volumes never match this filter
-  docker volume ls -q --filter name=parastoo-p | grep -v '^parastoo_' | xargs -r docker volume rm
+  # is "parastoo_" (underscore) so platform volumes never match this filter.
+  # v0.5.8 field lesson (2026-11-08, 5th fresh install): when the user has no
+  # project volumes, `grep -v` selects nothing and exits 1 — under
+  # `set -euo pipefail` the whole uninstall died right HERE, before removing
+  # the CLI and before disabling the auto-update/tls-store timers. The still-
+  # armed timer then raced the next fresh bootstrap mid-install (auto-update
+  # ran `docker compose up` with a half-copied tree and no .env) — the exact
+  # root cause of the broken 06:36 install of the same day. The sweep must be
+  # failure-tolerant: an empty sweep is SUCCESS, not an error.
+  USER_VOLS="$(docker volume ls -q --filter name=parastoo-p | grep -v '^parastoo_' || true)"
+  # `|| true` on the rm too: a volume that refuses to die (in use) must still
+  # not abort the uninstall before the CLI/timer cleanup below runs.
+  echo "$USER_VOLS" | xargs -r docker volume rm || true
 else
   docker compose down --remove-orphans
 fi
