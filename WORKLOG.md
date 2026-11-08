@@ -15,7 +15,7 @@
 | ایجنت دسترسی مستقل | `SelfEvolvingNetwork/access-agent` — **تنها مسیر اجرای دستور عامل روی سرور**؛ بلوک تحویل: `sudo access-agent handoff` |
 | فایل امن محلی | `.secrets/github.env` و `.secrets/access-agent.env` — chmod 600، gitignored، مستثنا از rsync |
 | کلون محلی کاری | `/home/z/my-project/parastoo` (sandbox؛ بین جلسات حفظ می‌شود) |
-| نسخهٔ فعلی | `v0.5.8` (`core/app/config.py`) |
+| نسخهٔ فعلی | `v0.5.9` (`core/app/config.py`) |
 | استک | FastAPI + Gitea + Traefik + PowerDNS + PostgreSQL |
 
 ## ۲) احراز هویت و قرارداد توکن‌ها
@@ -90,7 +90,7 @@
 | 11-07 | 0.5.7 | پایان ترفند کوکی‌ریلی (فرمان مالک: «اصولی و بدون ترفند»): پنل = OAuth2 Provider استاندارد (RFC 6749، کد یک‌بارمصرف/توکن امضاشدهٔ بی‌حالت) + گیتا = کلاینت رسمی (Auth Source خودکار با CLI گیتا، خودترمیم در بوت‌استرپ)؛ ثبت‌نام و ورود مستقیم گیتا با کلیدهای رسمی 1.23 بسته شد (ALLOW_ONLY_EXTERNAL_REGISTRATION + ENABLE_PASSWORD_SIGNIN_FORM=false) — تک‌دروازه: پنل؛ /git/sso اکنون فقط مرورگر را به جریان رسمی گیتا می‌فرستد؛ درس میدان: گیتا 1.23 برای نگاشت preferred_username فال‌بک ندارد → userinfo پنل کلیدهای OIDC (sub/preferred_username/nickname) را هم می‌دهد؛ اسموک ۴۲۲+۴۸+۴۹+۳۴+۱۲ سبز |
 | 11-08 | 0.5.8 | یکپارچگی UI پنل↔گیتا (فرمان مالک: اصولی و بدون ترفند): «بازگشت به پنل» در ناوبری و «پنل پرستو» در پاورقی گیتا با قالب‌های سفارشی رسمی گیتا (custom/extra_links و custom/extra_links_footer — سند Customizing Gitea؛ نام قالب = مسیر فایل زیر templates)؛ تک‌منبع متن در هسته (gitea.py)، رندر با URL فعال پنل در config/gitea-custom/templates/custom و سوارشدن read-only روی /data/gitea/templates (CustomPath استک) در compose؛ ری‌استارت فقط با تغییر محتوا + پرچم خودترمیم؛ همگام‌سازی در apply_domain؛ هات‌فیکس میدانی ۱: گیتا 1.23 اندپوینت API فهرست منابع احراز ندارد (404 خام) → پیش‌بررسی API از v0.5.7 هر سیکل می‌افتاد و «already exists» بوت‌استرپ را فلج می‌کرد؛ اکنون add-oauth مرجع حقیقت است و «already exists» = موفقیت؛ درس میدانی ۲: فایل extra_links باید در زیرپوشهٔ custom/ باشد نه ریشهٔ templates |
 | 11-08 | — | انتشار رلیز v0.5.8 روی گیت‌هاب (بستن شکاف کانال zip که از v0.3.28 عقب مانده بود): zip از درخت push‌شده با استمپ .release-commit ساخته و آپلود شد و هر چهار چک عمومی (صفحهٔ رلیز/raw bootstrap/VERSION روی main/asset) سبز؛ یادداشت رلیز در github_publish.sh جایگزین متن کهنهٔ v0.3.28 شد؛ هر سه مسیر bootstrap (tarball/zip/clone) اکنون هم‌نسخه‌اند؛ گیت کیفیت آفلاین: ۴۲۱+۴۸+۴۹+۴۱+۱۲ چک سبز + ruff + bash -n |
-
 | 11-08 | — | قرارداد پرستو موبایل: اپ اندروید ادمین (SelfEvolvingNetwork/parastoo-mobile) روی پل access-agent ≥ v0.3.0 — ورود اول + قفل گوشی، بلوک تحویل یک‌لمسی، مانیتور زندهٔ SSE از audit پل (بدون بار روی عامل)، کلید توقف؛ docs/PARASTOO_MOBILE.fa.md |
+| 11-08 | 0.5.9 | کانال انتشار خودکار پرستو موبایل (فرمان مالک: «هر بیلد اتوماتیک در دانلودهای سایت»): ورکر mobile-release هر ۶۰۰ث آخرین رلیز مخزن موبایل را از API عمومی می‌پرسد، APK را (مستقیم ← فال‌بک gh-proxy) دانلود، راستی‌آزمایی حجم+امضای ZIP، نصب اتمیک در /data/mobile + manifest (sha256)؛ صفحهٔ عمومی /download با لینک مستقیم APK و راهنمای نصب + لینک ناوبری؛ صفر رمز، بهترین‌تلاش، بدون دست‌زدن به requirements |
 
 حادثه‌های میدانی و دفاع‌های متناظرِ آن‌ها: `docs/LESSONS.md`.

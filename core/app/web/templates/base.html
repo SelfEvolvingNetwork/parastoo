@@ -18,6 +18,7 @@
       <a href="/projects" class="{{ 'active' if path.startswith('/projects') }}">پروژه‌ها</a>
       <a href="/sites" class="{{ 'active' if path == '/sites' }}">سایت‌ها</a>
       <a href="/marketplace" class="{{ 'active' if path == '/marketplace' }}">مارکت‌پلیس</a>
+      <a href="/download" class="{{ 'active' if path.startswith('/download') }}">دانلود</a>
       <a href="/wallet" class="{{ 'active' if path == '/wallet' }}">کیف پول</a>
       <a href="/account" class="{{ 'active' if path.startswith('/account') }}">حساب</a>
       {% if user.is_admin %}<a href="/admin" class="{{ 'active' if path == '/admin' }}">مدیریت</a>
@@ -32,6 +33,7 @@
     </div>
     {% else %}
     <nav class="nav">
+      <a href="/download">دانلود</a>
       <a href="/login">ورود</a>
       <a href="/register" class="btn btn-primary btn-sm">ثبت‌نام</a>
     </nav>

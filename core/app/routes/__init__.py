@@ -4,8 +4,8 @@
 ترتیب معنایی «ویزارد ← احراز هویت ← صفحات اصلی ← عملیات‌ها» حفظ شده است.
 """
 from . import (account, admin, agentdocs, auth, bridge, dashboard, dev, dns,
-               gitsso, health, hooks, marketplace, oauthidp, payment, projects,
-               setup, sites, wallet)
+               downloads, gitsso, health, hooks, marketplace, oauthidp,
+               payment, projects, setup, sites, wallet)
 
 ROUTERS = (
     setup.router,        # ویزارد نصب/دامنه
@@ -16,6 +16,7 @@ ROUTERS = (
     dashboard.router,    # / و /dashboard
     health.router,       # healthz و /api/version
     agentdocs.router,    # /docs/agent — راهنمای عمومی عامل هوش مصنوعی کاربر
+    downloads.router,    # /download — انتشار خودکار اپ ادمین پرستو موبایل (v0.5.9)
     projects.router,
     sites.router,
     marketplace.router,

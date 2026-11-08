@@ -125,6 +125,32 @@ with TestClient(app, follow_redirects=False) as c:
         r = c.get(path)
         check(f"GET {path}", r.status_code == 200 and needle in r.text)
 
+    print("— دانلود پرستو موبایل (v0.5.9) —")
+    r = c.get("/download")
+    check("صفحهٔ /download عمومی و سالم است",
+          r.status_code == 200 and "دانلود" in r.text)
+    check("بدون رلیز، حالت انتظار نشان داده می‌شود", "منتشر نشده" in r.text)
+    r = c.get("/download/parastoo-mobile.apk")
+    check("APK غایب → 404 تمیز", r.status_code == 404)
+    from app.services import mobile as mobile_svc
+    check("status() بدون manifest هم امن است",
+          mobile_svc.status()["mobile_ready"] is False)
+    # شبیه‌سازی نصب اتمیک: manifest + APK قلابی → صفحه و فایل باید سرو شوند
+    mobile_svc.STATE_DIR.mkdir(parents=True, exist_ok=True)
+    (mobile_svc.STATE_DIR / mobile_svc.MANIFEST_FILENAME).write_text(
+        '{"tag":"mobile-r1","published_at":"2026-11-08T00:00:00Z","asset_id":1,'
+        '"size":4,"sha256":"ab","installed_at":"now","source_url":"x"}', encoding="utf-8")
+    (mobile_svc.STATE_DIR / mobile_svc.APK_FILENAME).write_bytes(b"PK\x03\x04")
+    r = c.get("/download")
+    check("با رلیز نصب‌شده، نسخه و دکمهٔ دانلود نمایش داده می‌شود",
+          r.status_code == 200 and "mobile-r1" in r.text and "/download/parastoo-mobile.apk" in r.text)
+    r = c.get("/download/parastoo-mobile.apk")
+    check("فایل APK با MIME درست سرو می‌شود",
+          r.status_code == 200
+          and r.headers["content-type"] == "application/vnd.android.package-archive")
+    (mobile_svc.STATE_DIR / mobile_svc.APK_FILENAME).unlink()
+    (mobile_svc.STATE_DIR / mobile_svc.MANIFEST_FILENAME).unlink()
+
     r = c.get("/admin")
     check("کاربر عادی به ادمین دسترسی ندارد", r.status_code == 303)
 

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}دانلود پرستو موبایل{% endblock %}
+{% block content %}
+<h1>دانلودها</h1>
+<p class="muted">اپ ادمین «پرستو موبایل» — مدیریت و مانیتورینگ سرور از جیب، بدون SSH. هر بیلد تأییدشدهٔ CI چند دقیقه بعد خودکار همین‌جا منتشر می‌شود.</p>
+
+{% if mobile_ready %}
+<div class="card" style="max-width:640px">
+  <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px">
+      <h2 style="margin:0 0 .25rem">پرستو موبایل <span class="badge">{{ mobile.tag }}</span></h2>
+      <div class="small muted">
+        انتشار: {{ mobile.published_at[:10] or '—' }} ·
+        حجم: {{ '%.1f'|format(mobile.size / 1048576) }} مگابایت ·
+        اندروید ۸.۰ به بالا
+      </div>
+    </div>
+    <a class="btn btn-primary" href="{{ apk_url }}" download>دانلود APK</a>
+  </div>
+  <details style="margin-top:.9rem">
+    <summary class="small muted">اثر انگشت SHA-256 (برابرایی فایل)</summary>
+    <code class="small" style="word-break:break-all;direction:ltr;display:block;margin-top:.35rem">{{ mobile.sha256 }}</code>
+    <div class="small muted" style="margin-top:.25rem">نصب‌شده روی سرور: {{ mobile.installed_at }}</div>
+  </details>
+</div>
+
+<div class="card" style="max-width:640px">
+  <h3 style="margin-top:0">راهنمای نصب</h3>
+  <ol style="margin:0;padding-inline-start:1.2rem;line-height:2">
+    <li>دکمهٔ «دانلود APK» را بزنید؛ اگر مرورگر هشدار داد، «دانلود به‌هرحال» را تأیید کنید.</li>
+    <li>روی فایل دانلودشده بزنید؛ بار اول اندروید اجازهٔ «نصب از این منبع» می‌خواهد — برای مرورگرتان اجازه بدهید.</li>
+    <li>نصب را تأیید کنید. (اپ امضای debug دارد؛ این نسخه برای ادمینِ همین سرور است.)</li>
+    <li>ورود اول: آدرس پل دسترسی، اثر انگشت گواهی و توکن ادمین را از بلوک تحویل وارد کنید. ورودهای بعدی فقط با قفل گوشی.</li>
+  </ol>
+</div>
+{% else %}
+<div class="card" style="max-width:640px">
+  <h2 style="margin-top:0">پرستو موبایل</h2>
+  <p>هنوز بیلدی منتشر نشده است. به‌محض سبزشدن اولین بیلد CI، نسخهٔ نصب‌شدنی خودکار همین‌جا ظاهر می‌شود — نیازی به کاری نیست.</p>
+  <p class="small muted">وضعیت ورکر انتشار: خودکار هر ۱۰ دقیقه آخرین رلیز گیت‌هاب را بررسی می‌کند.</p>
+</div>
+{% endif %}
+
+<p class="small muted" style="max-width:640px">
+  امنیت: اپ فقط با پین گواهی SHA-256 و توکن ادمین به پل دسترسی وصل می‌شود؛ دانلود عمومیِ فایل APK هیچ دسترسی‌ای به سرور نمی‌دهد.
+  کد باز: <a href="https://github.com/SelfEvolvingNetwork/parastoo-mobile" rel="noopener">SelfEvolvingNetwork/parastoo-mobile</a>
+</p>
+{% endblock %}

@@ -18,6 +18,10 @@
       (میدان همان روز: my-shop.apps… ساعت‌ها روی HTTPS باز نمی‌شد در حالی
       که پنل «running» می‌گفت)، ترافیک با فاصلهٔ حداقل ۱۰ دقیقه ری‌استارت
       می‌شود تا چرخهٔ صدور از نو اجرا شود.
+6) mobile_loop    : انتشار خودکار «پرستو موبایل» (v0.5.9) — هر ۶۰۰ ثانیه
+   آخرین رلیز گیت‌هاب مخزن اپ ادمین را می‌پرسد؛ بیلد APK تازه را بی‌صدا
+   دانلود و در /data/mobile نصب می‌کند تا صفحهٔ /download همیشه آخرین
+   نسخهٔ نصب‌شدنی را بدهد (services/mobile.py — صفر رمز، بهترین‌تلاش).
 """
 import subprocess
 import threading
@@ -30,6 +34,7 @@ from .config import settings
 from .db import SessionLocal, db_now
 from .models import Build, Project, Service, Setting, Site, User
 from .services import billing
+from .services import mobile
 from .services import projects as projects_svc
 from .services import sites as sites_svc
 
@@ -38,6 +43,7 @@ LOG_TAIL = 60_000  # حداکثر کاراکترهای نگه‌داری‌شد�
 DOMAIN_INTERVAL = 60          # ثانیه بین چک‌های DNS
 PENDING_DEADLINE_S = 72 * 3600  # سقف تلاش برای فعال‌سازی معلق (۷۲ ساعت)
 HEAL_INTERVAL = 120           # ثانیه بین چک‌های خودترمیم گیتا (v0.3.22)
+MOBILE_INTERVAL = 600         # ثانیه بین چک‌های رلیز پرستو موبایل (v0.5.9)
 TLS_RESTART_GAP = 600         # حداقل فاصلهٔ ری‌استارت ترافیک برای تلاش مجدد ACME (v0.3.23)
 REGISTRY_RETRY_GAP = 900      # حداقل فاصلهٔ صف‌کردن مجدد بیلد مردود رجیستری (v0.3.29)
 
@@ -54,7 +60,8 @@ def start_workers() -> None:
     threading.Thread(target=_loop, args=(billing_once, 60), daemon=True, name="billing").start()
     threading.Thread(target=_loop, args=(domain_once, DOMAIN_INTERVAL), daemon=True, name="domain").start()
     threading.Thread(target=_loop, args=(heal_once, HEAL_INTERVAL), daemon=True, name="heal").start()
-    print("[parastoo] workers started (bootstrap / builder / billing / domain / heal)")
+    threading.Thread(target=_loop, args=(mobile_once, MOBILE_INTERVAL), daemon=True, name="mobile-release").start()
+    print("[parastoo] workers started (bootstrap / builder / billing / domain / heal / mobile-release)")
 
 
 def _loop(fn, interval: int) -> None:
@@ -477,6 +484,15 @@ def _build_retry_heal(db) -> None:
             return  # هر چرخه حداکثر یک صف — چرخهٔ بعدی بقیه را می‌گیرد
     except Exception as e:
         print(f"[parastoo] build retry heal failed: {e}")
+
+
+# ---------------------------------------------------------------- mobile release
+
+def mobile_once() -> None:
+    """یک دور همگام‌سازی رلیز پرستو موبایل (v0.5.9) — فقط وقتی چیزی نصب شد لاگ می‌دهد."""
+    summary = mobile.sync_once()
+    if summary:
+        print(f"[parastoo] mobile release: {summary}")
 
 
 # ---------------------------------------------------------------- billing
