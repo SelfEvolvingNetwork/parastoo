@@ -223,6 +223,81 @@ class AgentToken(Base):
     project: Mapped["Project"] = relationship()
 
 
+class Ticket(Base):
+    """تیکت عضو‌به‌عضو (v0.5.17) — کانال رسمی ارتباط اعضای اکوسیستم.
+
+    اعضا: host (کاربر ادمین) | project (پروژهٔ مستقر، نماینده: عامل پل) |
+    client (کاربر عادی). هسته فقط «دفتر پستِ بی‌طرف» است: تیکت داده است،
+    نه فرمان — هیچ مسیری محتوای تیکت را اجرا/تفسیر نمی‌کند. تیکتِ حساس
+    (حاوی الگوی راز) برای عامل‌ها رنداکتی می‌شود و فقط انسان‌های طرف
+    تیکت متن کامل را می‌بینند. قرارداد کامل: docs/TICKETING.fa.md.
+
+    sender/receiver «ref چندریختی»اند: type=user → users.id؛
+    type=project → projects.id (درستیِ ارجاع در سرویس، نه FK).
+    status: open|ack|accepted|rejected|needs_info|resolved|closed|escalated
+    """
+    __tablename__ = "tickets"
+    __table_args__ = (UniqueConstraint("idempotency_key", name="uq_ticket_idem"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sender_type: Mapped[str] = mapped_column(String(10))   # user | project
+    sender_id: Mapped[int] = mapped_column(Integer, index=True)
+    receiver_type: Mapped[str] = mapped_column(String(10))
+    receiver_id: Mapped[int] = mapped_column(Integer, index=True)
+    kind: Mapped[str] = mapped_column(String(20))          # bug|criticism|suggestion
+    severity: Mapped[str] = mapped_column(String(10))      # low|medium|high|critical
+    title: Mapped[str] = mapped_column(String(200))
+    observed: Mapped[str] = mapped_column(Text, default="")
+    expected: Mapped[str] = mapped_column(Text, default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    evidence_json: Mapped[str] = mapped_column(Text, default="[]")
+
+    status: Mapped[str] = mapped_column(String(20), default="open", index=True)
+    is_sensitive: Mapped[bool] = mapped_column(Boolean, default=False)
+    reopen_count: Mapped[int] = mapped_column(Integer, default=0)   # سقف ۱
+    resolution_evidence: Mapped[str] = mapped_column(Text, default="")  # accepted→resolved الزامی
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # ضد-طوفان عامل
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    duplicate_of_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=db_now, onupdate=db_now)
+
+    def evidence(self) -> list[str]:
+        import json
+        try:
+            return [str(x) for x in json.loads(self.evidence_json or "[]")]
+        except Exception:
+            return []
+
+
+class TicketEvent(Base):
+    """دفتر رخدادهای تیکت — فقط‌افزاینی؛ هیچ رکوردی ویرایش/حذف نمی‌شود.
+
+    kind: create|comment|status|reopen|escalate
+    data_json: متن کامنت / گذار وضعیت (from→to) / evidence گذار.
+    actor هم ref چندریختی است (user|project) — system برای رخدادهای خودکار.
+    """
+    __tablename__ = "ticket_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), index=True)
+    actor_type: Mapped[str] = mapped_column(String(10))   # user | project | system
+    actor_id: Mapped[int] = mapped_column(Integer, default=0)
+    kind: Mapped[str] = mapped_column(String(20))
+    data_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
+
+    def data(self) -> dict:
+        import json
+        try:
+            return json.loads(self.data_json or "{}")
+        except Exception:
+            return {}
+
+
 class Setting(Base):
     __tablename__ = "settings"
 
