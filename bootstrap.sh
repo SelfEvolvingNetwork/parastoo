@@ -22,7 +22,7 @@
 #    PARASTOO_REF=v0.3.22       branch or tag (default: main) — prefer a stable tag
 #    PARASTOO_GH_PROXY=URL      GitHub proxy prefix for Iran, e.g.:
 #                               https://gh-proxy.com/
-#    PARASTOO_ZIP_NAME=...      release zip filename (default: parastoo-v0.5.12.zip; zip is
+#    PARASTOO_ZIP_NAME=...      release zip filename (default: parastoo-v0.5.16.zip; zip is
 #                               the primary source only for a pinned tag install)
 #    All other PARASTOO_* variables (BASE_DOMAIN, ...) pass through to install.sh.
 #
@@ -129,7 +129,7 @@ if [ -z "$MODE" ]; then
 Alternative routes:
   1) proxy (Iran):  curl -fsSL ${PROXY}https://gh-proxy.com/https://raw.githubusercontent.com/${ORG}/${REPO}/${REF}/bootstrap.sh | sudo bash
   2) manual:  git clone https://github.com/${ORG}/${REPO}.git && cd ${REPO} && sudo bash setup.sh
-  3) grab the zip from the releases page, copy it to the server, then:  sudo bash setup.sh parastoo-v0.5.12.zip"
+  3) grab the zip from the releases page, copy it to the server, then:  sudo bash setup.sh parastoo-v0.5.16.zip"
 fi
 
 # ---------- 5) extract package and hand the FOLDER to setup.sh ----------
