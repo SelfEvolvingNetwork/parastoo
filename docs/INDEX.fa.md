@@ -38,7 +38,6 @@
 | تحریم‌ها و نصب در ایران | `docs/SANCTIONS.md` (پرستو) |
 | دامنه، DNS، وایلدکارد و TLS | `docs/DOMAIN_DNS_GUIDE.fa.md` (پرستو) |
 | پرستو موبایل (APK، لودر، OTA) | `docs/PARASTOO_MOBILE.fa.md` (پرستو) |
-| چت‌روم مالک↔عامل روی پل (پیش‌نویس تصمیم مالک) | `docs/CHAT_ROOM.fa.md` (پرستو) |
 | درس‌های ماندگار میدانی | `docs/LESSONS.md` (پرستو) |
 | تاریخچهٔ رخدادها (شاخص، نه روایت) | `WORKLOG.md` §۵ (پرستو) |
 
