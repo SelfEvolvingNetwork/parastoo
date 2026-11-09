@@ -290,6 +290,54 @@ with TestClient(app, follow_redirects=False) as c:
         domains.server_ip = _real_ip
         _dnsops._FORCE_TRANSPORT = _real_transport
 
+    print("— خودترمیم زون در ورکر معلق (v0.5.14 — پایان بن‌بست میدان 2026-11-09) —")
+    _real_transport2 = _dnsops._FORCE_TRANSPORT
+    _real_ip2 = domains.server_ip
+    domains.server_ip = lambda db=None: "203.0.113.10"
+    _dnsops._FORCE_TRANSPORT = _httpx.MockTransport(_pdns2)
+    try:
+        r = c.post("/setup/domain", data={"base_domain": "wiped.example.net", "tls": "on",
+                                          "acme_email": "tls@example.net",
+                                          "csrf": security.csrf_token(1)},
+                   follow_redirects=False)
+        check("زمان‌بندی دامنهٔ پس از نصب دوباره (زون روی PDNS ما غایب است)",
+              "m=domain_scheduled" in r.headers.get("location", ""))
+        _dead_recs = [{"label": x, "host": h, "expected": "203.0.113.10",
+                       "resolved": None, "ok": False}
+                      for x, h in (("پنل", "panel.wiped.example.net"),
+                                   ("گیت", "git.wiped.example.net"),
+                                   ("وایلکارد", "probe-abc.apps.wiped.example.net"))]
+        _real_check2 = traefik_ops.check_dns
+        traefik_ops.check_dns = lambda base, ip: _dead_recs
+        try:
+            workers.domain_once()  # سیکل اول: رزولور عمومی هنوز از ما نمی‌پرسد
+        finally:
+            traefik_ops.check_dns = _real_check2
+        db4 = SessionLocal()
+        _pb = db4.query(Setting).filter(Setting.key == "domain_pending_base").first()
+        db4.close()
+        _zone_rr = [x for x in _zones2.get("wiped.example.net.", {}).get("rrsets", [])
+                    if x["name"] == "panel.wiped.example.net." and x["type"] == "A"]
+        check("سیکل اول با DNS بیرونیِ ننشسته: انتظار می‌ماند ولی زون غایب با رکوردهای base همین‌جا provision شد — پایان بن‌بست",
+              _pb is not None and _pb.value == "wiped.example.net" and bool(_zone_rr))
+        _live_recs = [{"label": x, "host": x, "expected": "203.0.113.10",
+                       "resolved": "203.0.113.10", "ok": True}
+                      for x in ("panel", "git", "wildcard")]
+        traefik_ops.check_dns = lambda base, ip: _live_recs
+        try:
+            workers.domain_once()  # سیکل دوم: DNS نشسته → اعمال کامل با TLS
+        finally:
+            traefik_ops.check_dns = _real_check2
+        check("سیکل دوم: دامنهٔ بازیابی‌شده با TLS اعمال شد",
+              domains.base() == "wiped.example.net" and domains.tls() is True)
+        db4 = SessionLocal()
+        _left4 = db4.query(Setting).filter(Setting.key.like("domain_pending_%")).count()
+        db4.close()
+        check("اعمالِ ورکر انتظارِ معلق را پاک کرد", _left4 == 0)
+    finally:
+        domains.server_ip = _real_ip2
+        _dnsops._FORCE_TRANSPORT = _real_transport2
+
     print("— فعال‌سازی خودگردان: انقضا و لغو —")
     domains.pending_set("late.example.org", "a@b.ir", True)
     db2 = SessionLocal()
@@ -302,8 +350,8 @@ with TestClient(app, follow_redirects=False) as c:
     db2 = SessionLocal()
     _left = db2.query(Setting).filter(Setting.key.like("domain_pending_%")).count()
     db2.close()
-    check("درخواست کهنهٔ بیش از ۷۲ ساعت پاک می‌شود و دامنهٔ فعال دست‌نخورده می‌ماند",
-          _left == 0 and domains.base() == "shop.example.net")
+    check("درخواست کهنهٔ بیش از ۷۲ ساعت پاک می‌شود و دامنهٔ فعال دست‌نخورده می‌ماند (دامنهٔ فعالِ فعلی: wiped.example.net از بخش خودترمیم — مهم این است که late.example.org اعمال نشده)",
+          _left == 0 and domains.base() == "wiped.example.net")
     domains.pending_set("cancel.example.org", "a@b.ir", True)
     r = c.post("/setup/domain/pending/clear", data={"csrf": security.csrf_token(1)},
                follow_redirects=False)

@@ -65,6 +65,7 @@ probe() {  # probe <label> <url> — any HTTP answer counts as reachable
   echo "  install dir: $APP_DIR"
   echo "  last completed installer phase: $PHASE"
   echo "  panel: ${SCHEME}://${PANEL:-?}"
+  echo "  persisted domain identity: $(head -n1 /etc/parastoo-domain 2>/dev/null || echo 'none')"
 
   echo ""
   echo "[system]"

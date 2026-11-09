@@ -516,6 +516,16 @@ def apply_domain(db, base_domain: str, acme_email: str, tls_enabled: bool) -> di
         "domain_acme_email": acme_email,
     }, db)
 
+    # v0.5.14 — نشانگر هویت دامنه همیشه هم‌گام: با هر اعمالِ دامنهٔ واقعی،
+    # /etc/parastoo-domain هم نو می‌شود تا نصب دوبارهٔ پس از «حذف کامل»
+    # (که .env را هم می‌برد) همان دامنهٔ فعال را بازسازی کند؛ nip.io موقتی
+    # است و هرگز ثبت نمی‌شود. بهترین‌تلاشی: /etc فقط-خواندنی نباید مسیر را ببندد.
+    try:
+        if not base_domain.endswith(".nip.io"):
+            Path("/etc/parastoo-domain").write_text(base_domain + "\n", encoding="utf-8")
+    except Exception:
+        pass
+
     # ۳.۵) خودترمیمی زون پایه روی PDNS خودمان (v0.3.15) — اگر زون اینجاست،
     # رکوردها با IP زنده همگام می‌شوند تا حلقهٔ provision→activate بسته بماند
     try:

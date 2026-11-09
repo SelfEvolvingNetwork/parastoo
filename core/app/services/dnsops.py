@@ -323,7 +323,14 @@ def provision_zone(name: str, db=None, kind: str | None = None) -> dict:
     if not ip:
         raise DnsError("IP عمومی سرور تشخیص داده نشد؛ PARASTOO_PUBLIC_IP را در .env ست کنید", 500)
     ttl = settings.DNS_DEFAULT_TTL
-    ns = nameservers(db) or [f"ns1.{base}", f"ns2.{base}"]
+    # v0.5.14 — NS پیش‌فرض وابسته به kind: زون customer به نیم‌سرورهای ما
+    # (ns1.<پایهٔ فعال>) اشاره می‌کند، ولی زون base نیم‌سرورهای روی خودِ دامنه
+    # را می‌گیرد (ns1.<zone>) — در مسیر ورکرِ انتظار، زونِ pending هنوز پایهٔ
+    # فعال نیست و NS روی پایهٔ قدیمی می‌افتاد (میدان 2026-11-09).
+    ns = nameservers(db)
+    if not ns:
+        ns = ([f"ns1.{base}", f"ns2.{base}"] if kind == "customer"
+              else [f"ns1.{zone}", f"ns2.{zone}"])
     # درس میدانی v0.3.13: پاوردی‌ان‌اس محتوای NS/SOA-MNAME را باید FQDN مطلق
     # (با نقطهٔ پایانی) بگیرد؛ وگرنه «Not in expected format» می‌دهد (آزمون زنده
     # zeolitecenter.ir، 2026-11-05 — اولین provision میدانی).

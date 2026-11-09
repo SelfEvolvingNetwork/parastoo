@@ -542,6 +542,16 @@ def domain_once() -> None:
             domains.pending_clear(db)
             print(f"[parastoo] pending domain expired (>72h): {p['base']} — cleared")
             return
+        # v0.5.14 — خودترمیم زون پیش از گارد DNS (میدان 2026-11-09): زون پایه
+        # فقط داخل apply_domain ساخته می‌شد و apply هم فقط پس از نشستن DNS
+        # اجرا می‌شد؛ با زونِ غایب (نصب دوباره با پایگاه تازه) حلقه هرگز باز
+        # نمی‌شد و انتظارِ معلق تا سقف ۷۲ ساعت می‌ماند. حالا پیش از چک، زون
+        # غایب ساخته/همگام می‌شود — همان بیمهٔ v0.3.28؛ زونِ بی‌دیالگیشن هیچ
+        # رزولوری نمی‌پرسد، پس بی‌ضرر است و گارد check_dns سرِ جای خود مانده.
+        try:
+            traefik_ops.sync_base_zone(db, p["base"])
+        except Exception:
+            pass  # بیمه است، نه پیش‌نیاز — شکستش مسیر فعال‌سازی را نمی‌بندد
         records = traefik_ops.check_dns(p["base"], domains.server_ip(db))
         if not all(r["ok"] for r in records):
             return  # DNS هنوز ننشسته — سیکل بعدی

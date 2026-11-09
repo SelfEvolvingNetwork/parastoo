@@ -59,3 +59,8 @@ echo -e "${GREEN}Parastoo removed. The install folder remains at $APP_DIR (files
 # قانون گواهی ماندگار (v0.3.32): فروشگاه گواهی عمداً حفظ می‌شود تا نصب بعدی
 # چیزی از CA دوباره نخواهد؛ حذفش فقط دستی و با آگاهی کامل.
 echo -e "${GREEN}TLS certificate store kept at /var/lib/parastoo/tls (the certificate law — delete manually only if you truly mean it).${NC}"
+# v0.5.14 — هویت دامنهٔ واقعی عمداً در /etc می‌ماند (بیرون از درخت نصب):
+# دیالگیشن رجیستری همچنان به این سرور اشاره می‌کند و نصب بعدی خودش همان
+# دامنه را با زون و HTTPS زنده می‌کند (فرمان مالک 2026-11-09: «با نصب، دامنه
+# هم اتوماتیک فعال شود»). شروعِ کاملاً سفید = حذف دستی همین یک فایل.
+echo -e "${GREEN}Domain identity kept at /etc/parastoo-domain (the next install re-activates the same domain automatically — delete it only for a truly blank slate).${NC}"

@@ -394,8 +394,25 @@ if [ -n "$INTF_IPS" ] && ! printf '%s\n' $INTF_IPS | grep -qx "$PUBLIC_IP"; then
 fi
 
 if [ -z "$BASE_DOMAIN" ]; then
-  BASE_DOMAIN="${PUBLIC_IP}.nip.io"
-  ok "Temporary domain: ${BASE_DOMAIN} (real domain is set later from the web panel)"
+  # v0.5.14 — persisted domain identity (field 2026-11-09): the owner-ordered
+  # FULL uninstall wipes /opt/parastoo (.env included) while the registry
+  # delegation keeps pointing at this server — the next install then fell
+  # back to nip.io and the real domain died silently. /etc/parastoo-domain
+  # (outside the install tree AND /var/lib/parastoo) is the memory: install
+  # re-adopts it, section 6d re-provisions the base zone and re-applies
+  # HTTPS — a reinstall ends with the SAME live domain, zero questions, zero
+  # outside help. nip.io is IP-derived and never persisted/adopted. An
+  # existing .env (sourced below) still wins over the marker — live truth
+  # first.
+  _MARK_DOM="$(head -n1 /etc/parastoo-domain 2>/dev/null | tr -d ' "' || true)"
+  case "$_MARK_DOM" in
+    *.nip.io|"")
+      BASE_DOMAIN="${PUBLIC_IP}.nip.io"
+      ok "Temporary domain: ${BASE_DOMAIN} (real domain is set later from the web panel)" ;;
+    *)
+      BASE_DOMAIN="$_MARK_DOM"
+      ok "Domain identity restored from /etc/parastoo-domain: ${BASE_DOMAIN}" ;;
+  esac
 else
   ok "Domain from env: ${BASE_DOMAIN}"
 fi
@@ -469,6 +486,19 @@ case "$BASE_DOMAIN" in
   *.nip.io) TLS_ENABLED="false" ;;
   *)        TLS_ENABLED="true" ;;
 esac
+
+# v0.5.14 — persist the real domain OUTSIDE the install tree: /opt/parastoo
+# (with .env) is disposable by design (owner-ordered full cleanup removes it),
+# but the registry delegation keeps pointing at this server, so the next
+# install must adopt the same domain automatically (the marker read in step 2
+# pairs with this write). nip.io is temporary and never persisted. Best-effort:
+# a read-only /etc must never abort the installer.
+case "$BASE_DOMAIN" in
+  *.nip.io) : ;;
+  *) printf '%s\n' "$BASE_DOMAIN" > /etc/parastoo-domain 2>/dev/null \
+       && chmod 644 /etc/parastoo-domain 2>/dev/null || true ;;
+esac
+
 ACME_EMAIL="${PARASTOO_ACME_EMAIL:-admin@${BASE_DOMAIN}}"
 TRAEFIK_ENTRYPOINTS="web"; TRAEFIK_TLS="false"
 if [ "$TLS_ENABLED" = "true" ]; then TRAEFIK_ENTRYPOINTS="web,websecure"; TRAEFIK_TLS="true"; fi

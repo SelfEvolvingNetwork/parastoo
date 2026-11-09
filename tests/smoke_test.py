@@ -815,10 +815,10 @@ check("حداقل فاصلهٔ بررسی ۶۰ ثانیه اعمال می‌شو
 check("auto-update.sh کلید خاموش‌کردن (PARASTOO_AUTO_UPDATE) را می‌خواند", "PARASTOO_AUTO_UPDATE" in au)
 check("پس از استقرار، سلامت هسته چک می‌شود", "healthz" in au)
 inst = (ROOT / "install.sh").read_text()
-check("install.sh دیمون آپدیت خودکار را نصب نمی‌کند و کهنه را خلع می‌کند (v0.5.12 — آپدیت فقط صریح)",
-      "systemctl enable --now parastoo-autoupdate.timer" not in inst
-      and "systemctl disable --now parastoo-autoupdate.timer" in inst
-      and "rm -f /etc/systemd/system/parastoo-autoupdate.service" in inst)
+check("install.sh تایمر آپدیت خودکار را پیش‌فرض مسلح می‌کند (فرمان مالک 2026-11-09: بروزرسانی اتوماتیک، بی‌پرسش) و دیمون همیشگی هرگز مستقیم enable نمی‌شود؛ خروج اختیاری: autoupdate off",
+      "systemctl enable --now parastoo-autoupdate.timer" in inst
+      and "systemctl enable --now parastoo-autoupdate.service" not in inst
+      and "sudo parastoo autoupdate off" in inst)
 check("install.sh تایمر tls-store را می‌گذارد و فعال می‌کند (آینهٔ گواهی، نه ناظر)",
       "systemctl enable --now parastoo-tls-store.timer" in inst
       and "deploy/systemd/$_u" in inst and "__INSTALL_DIR__" in inst)
@@ -1495,6 +1495,20 @@ check("نصب‌کننده ریدایرکت :80→:443 را مسیر سالم م
 check("نصب‌کننده ۴۲۹ لایهٔ LE را صادقانه اسم می‌برد نه «خرابی در لایهٔ ترافیک»",
       "rateLimited" in _inst and "Let's Encrypt rate limit" in _inst
       and "no action needed" in _inst)
+check("هویت دامنهٔ ماندگار (میدان 2026-11-09: «حذف کامل» .env را هم برد و نصب بعدی به nip.io برگشت و دامنه مرد) — نصب، دامنهٔ واقعی را از /etc/parastoo-domain بازمی‌گیرد",
+      "/etc/parastoo-domain" in _inst
+      and "Domain identity restored from /etc/parastoo-domain" in _inst)
+check("نشانگر هویت دامنه فقط برای دامنهٔ واقعی نوشته می‌شود؛ nip.io موقتی است و هرگز ثبت نمی‌شود",
+      "printf '%s\\n' \"$BASE_DOMAIN\" > /etc/parastoo-domain" in _inst
+      and "case \"$BASE_DOMAIN\" in\n  *.nip.io) : ;;" in _inst)
+check("ورکر دامنه پیش از گارد DNS زون غایب را خودترمیم می‌کند — پایان بن‌بست «انتظار معلق تا ۷۲ ساعت» (میدان 2026-11-09)",
+      'traefik_ops.sync_base_zone(db, p["base"])' in _w
+      and _w.index('traefik_ops.sync_base_zone(db, p["base"])')
+          < _w.index('records = traefik_ops.check_dns(p["base"]'))
+_tsrc = (ROOT / "core" / "app" / "traefik_ops.py").read_text()
+check("اعمال دامنه در ویزارد نشانگر /etc/parastoo-domain را هم نو می‌کند (nip.io هرگز)",
+      'Path("/etc/parastoo-domain").write_text' in _tsrc
+      and 'endswith(".nip.io")' in _tsrc)
 _tmpl = (ROOT / "deploy" / "templates" / "traefik.yml.tmpl").read_text()
 check("CA ACME قابل‌انتخاب است: نگاشت caServer و EAB در قالب ترافیک — پایان انحصار لت‌انکریپت (میدان 2026-11-06: سقف نرخ ۴۲۹ پنجمین نصب تازهٔ همان دامنه را می‌بست و ZeroSSL از ایران سبز و سریع است)",
       "__ACME_CASERVER__" in _tmpl and "__ACME_EAB__" in _tmpl
