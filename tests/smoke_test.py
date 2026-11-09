@@ -1457,6 +1457,10 @@ check("ورکر heal هر ۱۲۰ ثانیه گیتای ناهم‌خوان با 
 _t = (ROOT / "core" / "app" / "traefik_ops.py").read_text()
 check("apply_domain خودش هم .env و هم گیتا را هم‌خوان می‌کند",
       "sync_host_env" in _t and "recreate_gitea" in _t and "gitea_stale" in _t)
+_d = (ROOT / "core" / "app" / "dockerops.py").read_text()
+check("sync_host_env کلیدهای میراثِ نصب (TLS_ENABLED/ACME_EMAIL) را هم همگام می‌کند — میدان 2026-11-09: .env falseِ کهنه حمل می‌کرد در حالی که حقیقت زنده TLS روشن بود",
+      '"TLS_ENABLED": "true" if tls_on else "false"' in _d
+      and "ACME_EMAIL" in _d and "domains.acme_email()" in _d)
 _cm = (ROOT / "docker-compose.yml").read_text()
 check(".env هاست داخل هسته سوار می‌شود (همگام‌سازی ماندگار برای up بعدی compose)",
       "- ./.env:/app/host-env/.env" in _cm)

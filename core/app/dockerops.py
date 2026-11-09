@@ -281,7 +281,7 @@ def sync_host_env() -> bool:
     docker compose interpolation کهنه را پس نزند (ریشهٔ بازگشت باگ)."""
     git_d = domains.git()
     tls_on = tls_enabled_now()
-    return update_host_env({
+    pairs = {
         "BASE_DOMAIN": domains.base(),
         "PANEL_DOMAIN": domains.panel(),
         "GIT_DOMAIN": git_d,
@@ -289,7 +289,19 @@ def sync_host_env() -> bool:
         "GITEA_ROOT_URL": f"https://{git_d}/" if tls_on else f"http://{git_d}/",
         "TRAEFIK_ENTRYPOINTS": "web,websecure" if tls_on else "web",
         "TRAEFIK_TLS": "true" if tls_on else "false",
-    })
+        # v0.5.16 (میدان 2026-11-09) — کلیدهای میراثِ نصب همیشه همگام:
+        # TLS_ENABLED/ACME_EMAIL فقط install.sh می‌نوشت و هیچ نویسنده‌ای پس از
+        # فعال‌سازی HTTPS آن‌ها را تازه نمی‌کرد؛ .env «false/ایمیل nip.io»
+        # کهنه را حمل می‌کرد در حالی که حقیقت زنده (DB/ترافیک) TLS روشن بود —
+        # خواننده‌ها (پل، نصب مجدد) حقیقت عقب‌مانده می‌دیدند. اکنون با هر
+        # apply دامنه، همین‌جا همگام می‌شوند. ایمیلِ خالی هرگز بازنویسی
+        # نمی‌شود تا پیش‌فرض نصب از بین نرود.
+        "TLS_ENABLED": "true" if tls_on else "false",
+    }
+    _acme = domains.acme_email()
+    if _acme:
+        pairs["ACME_EMAIL"] = _acme
+    return update_host_env(pairs)
 
 
 # ---------- بیلد و رجیستری ----------
