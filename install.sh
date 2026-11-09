@@ -709,37 +709,22 @@ if ! bash scripts/db-reconcile.sh; then
   warn "db reconcile did not complete (continuing; compose up reports the real error if any)."
 fi
 
-# ---------- 4b) CLI + timers — v0.5.12: NO auto-deploy daemon by default ----------
-# قرار مالک (2026-11-09، «یک روال شفاف»): استقرار فقط با فرمان صریح انجام می‌شود
-# (sudo parastoo update / POST /api/admin/parastoo/update روی پل). دیمون
-# خوداستقرار (تایمر آپدیت خودکار) دیگر نصب نمی‌شود و روی نصب‌های کهنه هم
-# خلع می‌شود — همان رخداد LESSONS (تایمر مسلح در میانهٔ نصب تازه، استکِ
-# نیمه‌کپی را بالا می‌خواست). opt-in صریح بعداً: sudo parastoo autoupdate on
-# (واحدها در همان لحظه از deploy/systemd گذاشته می‌شوند).
-# تایمر tls-store می‌ماند: آینهٔ پشتیبانِ گواهی است، نه ناظر — هیچ کاری
-# جز کپی به فروشگاه ماندگار انجام نمی‌دهد.
+# ---------- 4b) CLI + timers ----------
+# فرمان مالک (2026-11-09): «بروزرسانی پرستو و پل باید اتوماتیک باشد و نباید
+# پرسیده شود» — قرار پیشین v0.5.12 («استقرار فقط با فرمان صریح») برای
+# «به‌روزرسانی» لغو می‌شود؛ نصب/حذف/نصب مجدد همچنان فقط با فرمان صریح کاربر است.
+# تایمر آپدیت خودکار اینجا هنوز مسلح نمی‌شود (درس LESSONS: وسطِ نصبِ نیمه‌کپی
+# نباید تیک بخورد) — مسلح‌سازی در §6f، پس از سلامتِ کاملِ استک انجام می‌شود.
+# خاموش‌کردن بعداً: sudo parastoo autoupdate off
+# تایمر tls-store هم می‌ماند: آینهٔ پشتیبانِ گواهی است، نه ناظر.
 mark "4b) CLI + timers"
 cp -f bin/parastoo /usr/local/bin/parastoo
 chmod +x /usr/local/bin/parastoo
 echo "$INSTALL_DIR" > /etc/parastoo-install-path
 ok "parastoo CLI installed (status/logs/update/autoupdate/backup)."
 if command -v systemctl >/dev/null 2>&1; then
-  # retire the auto-deploy daemon everywhere (fresh + upgraded installs)
-  systemctl disable --now parastoo-autoupdate.timer >/dev/null 2>&1 || true
-  rm -f /etc/systemd/system/parastoo-autoupdate.service \
-        /etc/systemd/system/parastoo-autoupdate.timer
-  systemctl daemon-reload 2>/dev/null || true
-  say "Auto-deploy daemon retired (v0.5.12): updates are explicit now — sudo parastoo update"
-  say "  (opt in later if you ever want it: sudo parastoo autoupdate on)"
-  # TLS store mirror: certificate BACKUP, not supervision — stays armed
   mkdir -p /etc/systemd/system
-  for _u in parastoo-tls-store.service parastoo-tls-store.timer; do
-    sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" "deploy/systemd/$_u" > "/etc/systemd/system/$_u" 2>/dev/null || true
-  done
   systemctl daemon-reload 2>/dev/null || true
-  systemctl enable --now parastoo-tls-store.timer 2>/dev/null \
-    && ok "TLS store sync timer enabled (certificates mirror to /var/lib/parastoo/tls every 10 min)." \
-    || warn "Could not enable parastoo-tls-store.timer (certificates still saved at install time)."
 else
   warn "systemd not available; enable the TLS store mirror manually (deploy/systemd/parastoo-tls-store.timer)."
 fi
@@ -953,6 +938,28 @@ mark "6e) tls store sync"
 bash "$INSTALL_DIR/scripts/tls-store.sh" ensure || true
 bash "$INSTALL_DIR/scripts/tls-store.sh" save || true
 
+# ---------- 6f) auto-update timer — DEFAULT ON (owner decree 2026-11-09) ----------
+# «بروزرسانی پرستو و پل باید اتوماتیک باشد و نباید پرسیده شود.» استک اکنون
+# سالم و بالا است و مهر .parastoo-deploy نوشته شده؛ اولین تیکِ تایمر پس از
+# اینجا می‌آید و اگر کامیت تازه‌ای نباشد بی‌کار برمی‌گردد. خاموش‌کردن:
+#   sudo parastoo autoupdate off
+if command -v systemctl >/dev/null 2>&1; then
+  mkdir -p /etc/systemd/system
+  for _u in parastoo-autoupdate.service parastoo-autoupdate.timer \
+            parastoo-tls-store.service parastoo-tls-store.timer; do
+    sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" "deploy/systemd/$_u" > "/etc/systemd/system/$_u" 2>/dev/null || true
+  done
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl enable --now parastoo-tls-store.timer 2>/dev/null \
+    && ok "TLS store sync timer enabled (certificates mirror to /var/lib/parastoo/tls every 10 min)." \
+    || warn "Could not enable parastoo-tls-store.timer (certificates still saved at install time)."
+  systemctl enable --now parastoo-autoupdate.timer 2>/dev/null \
+    && ok "Auto-update timer armed — Parastoo now tracks the GitHub channel on its own (opt-out: sudo parastoo autoupdate off)." \
+    || warn "Could not enable parastoo-autoupdate.timer (manual update still works: sudo parastoo update)."
+else
+  warn "systemd not available; auto-update timer not armed (manual update: sudo parastoo update)."
+fi
+
 SCHEME="http"; [ "$TLS_ENABLED" = "true" ] && SCHEME="https"
 mark "done"
 
@@ -981,7 +988,7 @@ echo "  System credentials (also stored in .env):"
 echo "         Gitea admin password: ${GITEA_ADMIN_PASSWORD}"
 echo ""
 echo "  Management commands:  parastoo status | logs | update | autoupdate | backup | restart"
-echo "  Updates:  explicit only — sudo parastoo update (auto-deploy daemon retired in v0.5.12; opt-in: sudo parastoo autoupdate on)"
+echo "  Updates:  automatic — the server tracks the GitHub channel on its own (owner decree 2026-11-09); opt-out: sudo parastoo autoupdate off"
 echo "  Version API:  ${SCHEME}://${PANEL_DOMAIN}/api/version"
 echo "  Sanctions & offline bundle:  docs/SANCTIONS.md"
 echo ""

@@ -9,10 +9,17 @@
 #  اسکریپت دیمونِ همیشگی نیست؛ سه فراخوانی مجاز دارد:
 #    1) sudo parastoo update                       (همان --force)
 #    2) lifecycle پل: POST /api/admin/parastoo/update
-#    3) تایمر opt-in: sudo parastoo autoupdate on   (خارج از پیش‌فرض)
+#    3) تایمر: sudo parastoo autoupdate on
+#
+#  v0.5.13 — فرمان تازهٔ مالک (2026-11-09): «بروزرسانی پرستو و پل باید اتوماتیک
+#  باشد و نباید پرسیده شود» — تایمرِ مسیر ۳ از این تاریخ در نصبِ تازه پیش‌فرض
+#  مسلح است (install.sh §6f، پس از سلامتِ استک)؛ نصب/حذف/نصب مجدد همچنان فقط
+#  با فرمان صریح کاربر. خاموش‌کردن: sudo parastoo autoupdate off. تمام
+#  محافظ‌ها سر جایشان‌اند: flock، بکاپ پیش از جایگزینی، مهر فقط پس از سلامتِ
+#  کانتینر، backoff ده‌دقیقه‌ای پس از شکست، حداقل فاصلهٔ بررسی.
 #
 #  پیکربندی (در .env کنار همین اسکریپت):
-#    PARASTOO_AUTO_UPDATE=true|false     کلید حالت خودکار (پیش‌فرض false از v0.5.12)
+#    PARASTOO_AUTO_UPDATE=true|false     کلید حالت خودکار (پیش‌فرض true؛ خاموش‌کردن: sudo parastoo autoupdate off)
 #    PARASTOO_AUTO_UPDATE_INTERVAL=120   حداقل فاصلهٔ بررسی (ثانیه، ≥60)
 #    PARASTOO_UPDATE_CHANNEL=main        شاخه یا تگ هدف
 #    PARASTOO_GH_PROXY=                  پیشوند پراکسی گیت‌هاب (تحریم‌ها)

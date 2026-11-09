@@ -17,7 +17,7 @@ Parastoo — management commands:
   parastoo logs [svc]      show logs (core | gitea | traefik | postgres)
   parastoo restart         restart the whole stack
   parastoo update          update from GitHub (pull latest code + rebuild the core)
-  parastoo autoupdate      auto-update control (OFF by default since v0.5.12): status | on | off | run
+  parastoo autoupdate      auto-update control (ON by default — owner decree 2026-11-09): status | on | off | run
   parastoo backup          back up the database, git repos and TLS certs into backups/
   parastoo reset           FACTORY RESET: wipe all data + rebuild the stack (hardened; same engine as the GitHub one-liner)
   parastoo doctor          full diagnostic report (secrets redacted) — share it when asking for help
@@ -56,7 +56,7 @@ case "${1:-help}" in
   autoupdate)
     case "${2:-status}" in
       status)
-        echo "Config:      $(grep -E '^PARASTOO_AUTO_UPDATE=' .env 2>/dev/null || echo 'PARASTOO_AUTO_UPDATE=false (default since v0.5.12)')"
+        echo "Config:      $(grep -E '^PARASTOO_AUTO_UPDATE=' .env 2>/dev/null || echo 'PARASTOO_AUTO_UPDATE=true (default — owner decree 2026-11-09)')"
         echo "Interval:    $(grep -E '^PARASTOO_AUTO_UPDATE_INTERVAL=' .env 2>/dev/null | cut -d= -f2- || echo 120)s   Channel: $(grep -E '^PARASTOO_UPDATE_CHANNEL=' .env 2>/dev/null | cut -d= -f2- || echo main)"
         echo "Deployed:    $(tr '\n' ' ' < "$APP_DIR/.parastoo-deploy" 2>/dev/null || echo 'unknown')"
         if command -v systemctl >/dev/null 2>&1; then
