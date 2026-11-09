@@ -5,7 +5,7 @@
 """
 from . import (account, admin, agentdocs, auth, bridge, dashboard, dev, dns,
                downloads, gitsso, health, hooks, marketplace, oauthidp,
-               payment, projects, setup, sites, wallet)
+               payment, projects, setup, sites, tickets, wallet)
 
 ROUTERS = (
     setup.router,        # ویزارد نصب/دامنه
@@ -26,5 +26,6 @@ ROUTERS = (
     dns.router,          # نیم‌سرور اختصاصی (UI ادمین + API)
     hooks.router,        # وب‌هوک gitea
     bridge.router,       # پل عامل پروژه (v0.4.3): /api/bridge/* + شیم گیت
+    tickets.router,      # تیکتینگ عضو‌به‌عضو (v0.5.17): /api/tickets*
     dev.router,          # حالت توسعه‌دهنده
 )
