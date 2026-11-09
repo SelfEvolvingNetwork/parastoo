@@ -79,7 +79,7 @@ def _agent_gate(token, project, request: Request, action: str, detail: str = "",
 def list_box(request: Request, box: str = "sent", limit: int = 50,
              db: Session = Depends(get_db)):
     actor, human, user, project, token = _actor(request, db)
-    _agent_gate(token, project, request, "tickets", f"list box={box}")
+    _agent_gate(token, project, request, "tickets.list", f"box={box}")
     try:
         rows = tsvc.list_tickets(db, actor, box, limit)
     except TicketError as e:
@@ -97,10 +97,10 @@ async def create(request: Request, db: Session = Depends(get_db)):
     try:
         t, dup = tsvc.create_ticket(db, actor, human, payload)
     except TicketError as e:
-        _agent_gate(token, project, request, "tickets", f"create rejected: {e.code}",
-                    ok=False)
+        _agent_gate(token, project, request, "tickets.create",
+                    f"create rejected: {e.code}", ok=False)
         return _err(e)
-    _agent_gate(token, project, request, "tickets",
+    _agent_gate(token, project, request, "tickets.create",
                 f"create #{t.id} dup={dup} to={payload.get('to', '')[:40]}")
     return {"ok": True, "duplicate": dup,
             "ticket": tsvc.ticket_view(db, t, human)}
@@ -113,7 +113,7 @@ def detail(request: Request, tid: int, db: Session = Depends(get_db)):
         t = tsvc.ticket_for(db, actor, bool(user and user.is_admin), tid)
     except TicketError as e:
         return _err(e)
-    _agent_gate(token, project, request, "tickets", f"detail #{tid}")
+    _agent_gate(token, project, request, "tickets.detail", f"detail #{tid}")
     return {"ok": True, "ticket": tsvc.ticket_view(db, t, human),
             "events": tsvc.events_view(db, t, human)}
 
@@ -129,7 +129,7 @@ async def comment(request: Request, tid: int, db: Session = Depends(get_db)):
         ev = tsvc.add_comment(db, t, actor, human, str(payload.get("body") or ""))
     except TicketError as e:
         return _err(e)
-    _agent_gate(token, project, request, "tickets", f"comment #{tid}")
+    _agent_gate(token, project, request, "tickets.comment", f"comment #{tid}")
     return {"ok": True, "event_id": ev.id, "status": t.status}
 
 
@@ -147,5 +147,5 @@ async def status_change(request: Request, tid: int, db: Session = Depends(get_db
                                    str(payload.get("evidence") or ""))
     except TicketError as e:
         return _err(e)
-    _agent_gate(token, project, request, "tickets", f"status #{tid} → {t.status}")
+    _agent_gate(token, project, request, "tickets.status", f"status #{tid} → {t.status}")
     return {"ok": True, "status": t.status, "event_id": ev.id}

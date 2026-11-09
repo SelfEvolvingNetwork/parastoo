@@ -229,5 +229,39 @@ with TestClient(app, follow_redirects=False) as ca, \
     check("توالی رخدادها ثبت شده", "create" in kinds and "status" in kinds
           and "escalate" in kinds)
 
+    print("— قلاب اطلاع‌رسانی در status پل (Cycle 2) —")
+    r = ag.get("/api/bridge/status", headers=AH)
+    tk = r.json().get("tickets")
+    check("قلاب tickets در status هست", isinstance(tk, dict)
+          and set(tk) == {"inbox_open", "sent_open"}, r.text[:150])
+    # tid بسته شد؛ باز‌ها: فارسی + ۳ مستقل + حساس = ۵ — همگی به پروژه
+    check("صندوق باز پروژه = ۵", tk and tk["inbox_open"] == 5
+          and tk["sent_open"] == 0, str(tk))
+
+    print("— audit اختصاصی تیکت (فقط فراخوانی عامل) —")
+    r = ag.post("/api/tickets", headers=AH,
+                json=mk_payload("user:1", "تیکت از عامل پروژه به میزبان"))
+    check("عامل به میزبان تیکت می‌زند", r.status_code == 200, r.text[:120])
+    agent_tid = r.json()["ticket"]["id"]
+    r = ag.post("/api/tickets", headers=AH,
+                json={"to": "user:1", "kind": "bug", "severity": "high",
+                      "title": "بدون مشاهده از عامل", "expected": "x"})
+    check("رد اسکیمای عامل → 400", r.status_code == 400)
+    r = ag.post(f"/api/tickets/{agent_tid}/comments",
+                json={"body": "عامل پیگیری می‌کند"}, headers=AH)
+    check("کامنت عامل روی تیکت خودش", r.status_code == 200, r.text[:120])
+    r = ag.get("/api/bridge/audit?limit=100", headers=AH)
+    records = r.json().get("records", [])
+    actions = {rec.get("action") for rec in records}
+    check("audit اختصاصی — عمل‌های متمایز",
+          {"tickets.create", "tickets.detail", "tickets.status",
+           "tickets.comment", "tickets.list"} <= actions, str(sorted(actions)))
+    check("audit رد schema هم ثبت می‌شود", any(
+        rec.get("action") == "tickets.create" and rec.get("ok") is False
+        for rec in records))
+    r = ag.get("/api/bridge/status", headers=AH)
+    tk = r.json().get("tickets")
+    check("صندوق ارسالی پروژه حالا ۱", tk and tk["sent_open"] == 1, str(tk))
+
 print(f"\nنتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

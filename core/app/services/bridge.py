@@ -177,6 +177,22 @@ def audit_tail(limit: int = 50, token_prefix: str | None = None) -> list[dict]:
 
 # ---------- وضعیت پروژه برای گزارش عامل ----------
 
+def _ticket_counts(db, project) -> dict:
+    """قلاب اطلاع‌رسانی تیکت (Cycle 2) — صندوق باز پروژه در یک نگاه.
+
+    فقط شمارش؛ هیچ محتوایی از تیکت اینجا بیرون نمی‌رود (تیکت حساس حتی
+    شمارشِ متن را لو نمی‌دهد). عامل با پولینگ همیشگیِ status همین را می‌بیند
+    و سراغ `pst tickets` می‌رود.
+    """
+    from ..models import Ticket
+    q = db.query(Ticket).filter(Ticket.status.notin_(("closed",)))
+    inbox = (q.filter(Ticket.receiver_type == "project",
+                      Ticket.receiver_id == project.id).count())
+    sent = (q.filter(Ticket.sender_type == "project",
+                     Ticket.sender_id == project.id).count())
+    return {"inbox_open": inbox, "sent_open": sent}
+
+
 def project_status(db, project) -> dict:
     """خروجی JSON /api/bridge/status — عامل با همین یک فراخوانی صاحب تصویر می‌شود."""
     from . import billing
@@ -215,6 +231,7 @@ def project_status(db, project) -> dict:
                          if latest else None),
         "hourly_cost": billing.hourly_cost(running),
         "currency": settings.CURRENCY,
+        "tickets": _ticket_counts(db, project),
         "version": settings.VERSION,
     }
 
