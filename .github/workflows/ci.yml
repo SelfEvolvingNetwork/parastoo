@@ -37,6 +37,7 @@ jobs:
           PARASTOO_SMOKE_OFFLINE: "1"
         run: |
           python tests/smoke_test.py
+          python tests/smoke_tickets.py
           python tests/smoke_wizard.py
           python tests/smoke_sanctions.py
           python tests/smoke_gitea.py

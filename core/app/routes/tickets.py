@@ -7,6 +7,7 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from starlette.responses import JSONResponse
 
 from ..db import get_db
 from ..deps import resolve_user
@@ -29,8 +30,9 @@ _HTTP_FOR = {
 
 
 def _err(e: TicketError):
-    code = _HTTP_FOR.get(e.code, 400)
-    raise HTTPException(code, e.message)
+    """پاسخ خطای ساخت‌یافته — کد ثابت + فیلدهای اضافه (مثل duplicate_of)."""
+    body = {"ok": False, "error": e.message, "code": e.code, **e.extra}
+    return JSONResponse(body, status_code=_HTTP_FOR.get(e.code, 400))
 
 
 async def _json(request: Request) -> dict:
@@ -81,7 +83,7 @@ def list_box(request: Request, box: str = "sent", limit: int = 50,
     try:
         rows = tsvc.list_tickets(db, actor, box, limit)
     except TicketError as e:
-        _err(e)
+        return _err(e)
     return {"ok": True, "box": box,
             "tickets": [tsvc.ticket_view(db, t, human) for t in rows]}
 
@@ -97,7 +99,7 @@ async def create(request: Request, db: Session = Depends(get_db)):
     except TicketError as e:
         _agent_gate(token, project, request, "tickets", f"create rejected: {e.code}",
                     ok=False)
-        _err(e)
+        return _err(e)
     _agent_gate(token, project, request, "tickets",
                 f"create #{t.id} dup={dup} to={payload.get('to', '')[:40]}")
     return {"ok": True, "duplicate": dup,
@@ -110,7 +112,7 @@ def detail(request: Request, tid: int, db: Session = Depends(get_db)):
     try:
         t = tsvc.ticket_for(db, actor, bool(user and user.is_admin), tid)
     except TicketError as e:
-        _err(e)
+        return _err(e)
     _agent_gate(token, project, request, "tickets", f"detail #{tid}")
     return {"ok": True, "ticket": tsvc.ticket_view(db, t, human),
             "events": tsvc.events_view(db, t, human)}
@@ -126,7 +128,7 @@ async def comment(request: Request, tid: int, db: Session = Depends(get_db)):
         t = tsvc.ticket_for(db, actor, bool(user and user.is_admin), tid)
         ev = tsvc.add_comment(db, t, actor, human, str(payload.get("body") or ""))
     except TicketError as e:
-        _err(e)
+        return _err(e)
     _agent_gate(token, project, request, "tickets", f"comment #{tid}")
     return {"ok": True, "event_id": ev.id, "status": t.status}
 
@@ -144,6 +146,6 @@ async def status_change(request: Request, tid: int, db: Session = Depends(get_db
                                    str(payload.get("status") or ""),
                                    str(payload.get("evidence") or ""))
     except TicketError as e:
-        _err(e)
+        return _err(e)
     _agent_gate(token, project, request, "tickets", f"status #{tid} → {t.status}")
     return {"ok": True, "status": t.status, "event_id": ev.id}
