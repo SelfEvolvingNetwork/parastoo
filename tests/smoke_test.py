@@ -1311,9 +1311,14 @@ dockerops.client = _ores
 check("کشف زون lego به PDNS خودمان قفل می‌شود (نه رزولور ناپایدار عمومی)",
       'resolvers:' in _sr and '- "172.29.99.7:53"' in _sr.split("  wild:")[1]
       and "172.29.99.7" not in _sr.split("  wild:")[0])
+_ores2 = dockerops.client
+def _forced_no_docker():
+    raise RuntimeError("smoke: docker deliberately unavailable")
+dockerops.client = _forced_no_docker
 check("بدون داکر: رندر بدون خط رزولورها (رفتار پیش‌فرض lego، بدون باقی‌مانده)",
       "resolvers:" not in traefik_ops.render_static(True, "a@b.ir")
       and "__ACME_RESOLVERS__" not in traefik_ops.render_static(True, "a@b.ir"))
+dockerops.client = _ores2
 
 print("— همگام‌ساز پیکربندی ترافیک: استقرار بدون نصب مجدد (v0.3.33) —")
 import tempfile as _tf  # noqa: E402
