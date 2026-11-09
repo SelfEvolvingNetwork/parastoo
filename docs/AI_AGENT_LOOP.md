@@ -151,18 +151,12 @@ ruff check core --select F401,F811,F841 && bash -n install.sh scripts/*.sh bin/p
 از v0.5.12 هیچ تایمر خوداستقراری نیست (قرار مالک «یک روال شفاف»): بعد از پوش، خودت آپدیت را صریح صدا بزن، بعد تأیید کن:
 
 ```bash
-set -a; . /home/z/my-project/parastoo/.secrets/access-agent.env; set +a
-# ۱) استقرار صریح از راه پل (بدون SSH):
-curl -sk -H "Authorization: Bearer $ACCESS_AGENT_AGENT_TOKEN" \
-     -H "Content-Type: application/json" -d '{}' \
-     "$ACCESS_AGENT_URL/api/admin/parastoo/update"
+# ۱) استقرار صریح از راه کارگاه (v0.5.18+ — توکن ادمین فقط در حافظهٔ سرور مصرف می‌شود؛
+#    endpoint توکن عامل را نمی‌پذیرد — تصحیح ۲۰۲۶-۱۱-۱۰):
+bash /home/z/my-project/parastoo-workbench/client/wb.sh deploy
 # ۲) تأیید استقرار (معمولاً ≤ ۳ دقیقه: دانلود + up -d --build + گیت سلامت):
-SHA=$(git -C /home/z/my-project/parastoo rev-parse HEAD)
-for i in $(seq 1 16); do
-  sleep 30
-  curl -fsS https://panel.zeolitecenter.ir/api/version 2>/dev/null | grep -q "\"commit\":\"$SHA\"" && { echo "deployed ✓"; break; }
-done
-python3 tests/e2e_live.py --expect-commit "$SHA"
+bash /home/z/my-project/parastoo-workbench/client/wb.sh verify <SHA>
+#    (معادل دستیِ قدیمی: پول /api/version تا commit==SHA، سپس e2e_live --expect-commit)
 ```
 
 **پروتکل توقف استقرار (stall)** — اگر بعد از ۸ دقیقه کامیت مستقر عوض نشد:
