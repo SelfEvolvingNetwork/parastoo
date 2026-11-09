@@ -263,5 +263,100 @@ with TestClient(app, follow_redirects=False) as ca, \
     tk = r.json().get("tickets")
     check("صندوق ارسالی پروژه حالا ۱", tk and tk["sent_open"] == 1, str(tk))
 
+    print("— CLI عامل (pst.py) — آفلاین با call قلابی —")
+    import importlib.util
+    import io
+    from contextlib import redirect_stdout
+    from types import SimpleNamespace
+    spec = importlib.util.spec_from_file_location(
+        "pst_cli", ROOT / "core" / "app" / "web" / "static" / "pst.py")
+    pst = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pst)
+
+    seen = []
+
+    def fake_call(method, path, body=None, conf=None, timeout=180):
+        seen.append((method, path, body))
+        if path.startswith("/api/tickets?"):
+            return 200, {"ok": True, "tickets": [{
+                "id": 7, "status": "open", "severity": "high",
+                "kind_fa": "باگ", "title": "تیکت قلابی برای CLI",
+                "sender": "user:1", "receiver": "project:ticket-app",
+                "created_at": "2026-11-10 10:00:00", "is_sensitive": False}]}
+        if path == "/api/tickets/7":
+            return 200, {"ok": True, "ticket": {
+                "id": 7, "status": "open", "severity": "high", "kind_fa": "باگ",
+                "title": "تیکت قلابی برای CLI", "sender": "user:1",
+                "receiver": "project:ticket-app", "observed": "خطای ۵۰۰",
+                "expected": "خطای ۲۰۰", "body": "", "evidence": [],
+                "is_sensitive": True, "needs_human": True,
+                "created_at": "2026-11-10 10:00:00"},
+                "events": [{"id": 1, "kind": "create", "actor": "user:1",
+                            "data": {}, "created_at": "2026-11-10 10:00:00"}]}
+        if path == "/api/tickets":
+            return 200, {"ok": True, "duplicate": False,
+                         "ticket": {"id": 9, "status": "open"}}
+        if path.endswith("/comments"):
+            return 200, {"ok": True, "event_id": 5, "status": "ack"}
+        if path.endswith("/status"):
+            return 200, {"ok": True, "status": "resolved", "event_id": 6}
+        return 404, {"ok": False, "error": "مسیر قلابی ناشناخته"}
+
+    pst.call = fake_call
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        pst.cmd_tickets(SimpleNamespace(box="inbox", limit=50))
+    out = buf.getvalue()
+    check("pst tickets فهرست را نشان می‌دهد", "#7" in out and "باگ" in out
+          and "user:1 → project:ticket-app" in out, out[:120])
+    check("درخواست به مسیر درست رفت", seen[-1][1] == "/api/tickets?box=inbox&limit=50")
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        pst.cmd_ticket(SimpleNamespace(id=7))
+    out = buf.getvalue()
+    check("pst ticket حساس هشدار انسانی می‌دهد",
+          "تیکت حساس" in out and "رنداکتی" in out, out[:150])
+    check("pst ticket رخدادها را نشان می‌دهد", "create" in out)
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        pst.cmd_ticket_new(SimpleNamespace(
+            to="user:1", kind="bug", severity="high", title="عنوان عامل",
+            observed="مشاهدهٔ عامل", expected="انتظار عامل",
+            body="شرح", evidence=["https://x/y", "commit:abcd123"]))
+    out = buf.getvalue()
+    m, p_, b = seen[-1]
+    check("pst ticket-new بدنهٔ کامل می‌فرستد",
+          m == "POST" and p_ == "/api/tickets" and b["evidence"] == ["https://x/y", "commit:abcd123"]
+          and b["to"] == "user:1")
+    check("pst ticket-new شناسه را برمی‌گرداند", "#9" in out)
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        pst.cmd_ticket_comment(SimpleNamespace(id=7, body="پیگیری عامل"))
+    check("pst ticket-comment وضعیت را برمی‌گرداند", "ack" in buf.getvalue())
+    m, p_, b = seen[-1]
+    check("مسیر کامنت درست", m == "POST" and p_ == "/api/tickets/7/comments"
+          and b == {"body": "پیگیری عامل"})
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        pst.cmd_ticket_status(SimpleNamespace(id=7, status="resolved",
+                                              evidence="fix در abcd123"))
+    check("pst ticket-status گذار را نشان می‌دهد", "resolved" in buf.getvalue())
+    m, p_, b = seen[-1]
+    check("سندِ رفع همراه گذار می‌رود",
+          b == {"status": "resolved", "evidence": "fix در abcd123"})
+
+    ap = pst.build_parser()
+    ns = ap.parse_args(["tickets", "--box", "inbox", "--limit", "5"])
+    check("آرگ‌پارس پنج فرمان تیکت را ثبت کرده",
+          ns.fn is pst.cmd_tickets and ns.box == "inbox" and ns.limit == 5)
+    ns = ap.parse_args(["ticket-status", "3", "ack"])
+    check("ticket-status بدون evidence هم پارس می‌شود",
+          ns.fn is pst.cmd_ticket_status and ns.id == 3 and ns.status == "ack"
+          and ns.evidence is None)
+
 print(f"\nنتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)
