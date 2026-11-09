@@ -42,7 +42,7 @@ ORG="${PARASTOO_GH_ORG:-SelfEvolvingNetwork}"
 REPO="${PARASTOO_GH_REPO:-parastoo}"
 REF="${PARASTOO_REF:-main}"
 PROXY="${PARASTOO_GH_PROXY:-}"
-ZIP_NAME="${PARASTOO_ZIP_NAME:-parastoo-v0.5.14.zip}"
+ZIP_NAME="${PARASTOO_ZIP_NAME:-parastoo-v0.5.15.zip}"
 RAW_URL="${PROXY}https://raw.githubusercontent.com/${ORG}/${REPO}/${REF}/bootstrap.sh"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'

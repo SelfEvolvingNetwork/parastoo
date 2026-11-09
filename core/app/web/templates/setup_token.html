@@ -3,14 +3,14 @@
 {% block content %}
 <div class="auth-card card">
   <h1>گام ۱ از ۳ — توکن نصب</h1>
-  <p class="muted">برای شروع راه‌اندازی، توکن یک‌بارمصرف نصب را وارد کنید. این توکن فقط در خروجی دستور نصب (ترمینال سرور) چاپ شده است و به همین دلیل فقط کسی که روی سرور دسترسی دارد می‌تواند ادامه دهد.</p>
+  <p class="muted">برای شروع راه‌اندازی، توکن یک‌بارمصرف نصب را وارد کنید. سریع‌ترین راه: توکن در اپ «پرستو موبایل» روی گوشی شما (داشبورد ← کارت «توکن نصب سایت») آمادهٔ کپی است — دیگر نیازی به ترمینال سرور نیست.</p>
   <form method="post" action="/setup/token">
     <label>توکن نصب
       <input name="token" dir="ltr" required placeholder="xxxx-xxxx-xxxx" autofocus>
     </label>
     <button class="btn btn-primary btn-block" type="submit">تأیید و ادامه</button>
   </form>
-  <p class="muted small" style="margin-bottom:.4rem">توکن را در دسترس ندارید؟ این دستور کامل را در ترمینال سرور کپی کنید — از هر پوشه‌ای کار می‌کند و مسیر نصب را خودش پیدا می‌کند:</p>
+  <p class="muted small" style="margin-bottom:.4rem">اپ موبایل را ندارید؟ این دستور کامل را در ترمینال سرور کپی کنید — از هر پوشه‌ای کار می‌کند و مسیر نصب را خودش پیدا می‌کند:</p>
   <pre class="code mono" dir="ltr" style="text-align:left">sudo grep PARASTOO_SETUP_TOKEN \
   "$(cat /etc/parastoo-install-path 2>/dev/null || echo /opt/parastoo)/.env"</pre>
   <p class="muted small">خروجی چنین خطی است: <span class="mono">PARASTOO_SETUP_TOKEN=xxxx-xxxx</span> — فقط مقدارِ بعد از علامت <span class="mono">=</span> را در فرم بالا وارد کنید.</p>
