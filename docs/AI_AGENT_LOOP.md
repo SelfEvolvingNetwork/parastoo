@@ -142,9 +142,9 @@ ruff check core --select F401,F811,F841 && bash -n install.sh scripts/*.sh bin/p
 
 ### M4 — بومپ، ورکلاگ، کامیت، پوش
 
-بومپ `VERSION` (اگر کارکردی) + ردیف `WORKLOG.md` §۵ + کامیت با قرارداد §۳ + `git push origin main`. احرازش خودکار است (credential helper از `.secrets/`).
+بومپ `VERSION` (اگر کارکردی) + ردیف `WORKLOG.md` §۵ + کامیت با قرارداد §۳. پوش هرگز مستقیم از پایانه نیست — از راه کارگاه سرور (بند بعدی).
 
-**انتشار از راه کارگاه سرور (ایستاده از ۲۰۲۶-۱۱-۱۰، ترجیحی):** `bash /home/z/my-project/parastoo-workbench/client/wb.sh publish` — باندل `origin/main..HEAD` به سندباکس سرور آپلود و خودِ سرور به گیت‌هاب پوش می‌کند (توکن لحظه‌ای broker؛ هیچ رازی ذخیره/لاگ نمی‌شود) و با `ls-remote` راستی‌آزمایی می‌شود. سود: اگر سندباکس محلی بعد از کامیت مرد، کد سالم روی سرور و در گیت‌هاب است و پوشِ ازدست‌رفته وجود ندارد. قرارداد کامل: `docs/WORKBENCH.fa.md` مخزن parastoo-workbench §۳.۵.
+**توسعه و انتشار کاملاً زادهٔ سرور (ایستاده از ۲۰۲۶-۱۱-۱۰ — قرارداد فعلی):** ویرایش، کامیت، دروازه و پوش همگی روی کارگاه سرور انجام می‌شود: ویرایش در کلون `/opt/parastoo-sandbox/parastoo` (از راه پل access-agent)، کامیت با هویت «Parastoo Dev Agent»، دروازهٔ سنگین `wb gate <sha>` پیش از پوش (جایگزین کامل دروازهٔ سبک محلی — همهٔ چک‌های سبک را هم دارد) و انتشار با `bash /home/z/my-project/bin/wb.sh pushsrv parastoo` — سرِ کلون سرور با توکن لحظه‌ای broker به `main` گیت‌هاب پوش و با `ls-remote` راستی‌آزمایی می‌شود. سود: مرگ سندباکس محلی (سه بار در چرخهٔ ۰.۵.۱۸) دیگر هیچ چرخه‌ای را نمی‌شکند؛ کد، کامیت و دروازه همان‌جا که ساخته می‌شوند می‌مانند و پایانه فقط ابزار تایپ است. `wb publish` (باندل از محلی) فقط میراث/بازیابی است. قرارداد کامل: `docs/SERVER_ONLY.fa.md` + `docs/WORKBENCH.fa.md` مخزن parastoo-workbench §۳.۶.
 
 ### M5 — استقرار صریح و تأیید (قرارداد: SHA پوش‌شده = SHA مستقر)
 
@@ -153,9 +153,9 @@ ruff check core --select F401,F811,F841 && bash -n install.sh scripts/*.sh bin/p
 ```bash
 # ۱) استقرار صریح از راه کارگاه (v0.5.18+ — توکن ادمین فقط در حافظهٔ سرور مصرف می‌شود؛
 #    endpoint توکن عامل را نمی‌پذیرد — تصحیح ۲۰۲۶-۱۱-۱۰):
-bash /home/z/my-project/parastoo-workbench/client/wb.sh deploy
+bash /home/z/my-project/bin/wb.sh deploy
 # ۲) تأیید استقرار (معمولاً ≤ ۳ دقیقه: دانلود + up -d --build + گیت سلامت):
-bash /home/z/my-project/parastoo-workbench/client/wb.sh verify <SHA>
+bash /home/z/my-project/bin/wb.sh verify <SHA>
 #    (معادل دستیِ قدیمی: پول /api/version تا commit==SHA، سپس e2e_live --expect-commit)
 ```
 
