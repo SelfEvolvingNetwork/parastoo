@@ -26,7 +26,8 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app import dockerops, security  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import Build, Payment, Project, Site, User, WalletTx  # noqa: E402
+from app.models import Build, Heartbeat, Lead, Payment, Project, Site, User, WalletTx  # noqa: E402
+from app.services import business as biz  # noqa: E402
 from app.workers import billing_once  # noqa: E402
 
 PASS = 0
@@ -1800,6 +1801,81 @@ try:
           dict(_hc06).get("ExtraHosts") == ["a.test:10.0.0.1"] and _no_hosts06)
 except ImportError:
     print("  − docker-py نصب نیست — چک قرارداد رد شد")
+
+print("— بازار و فروش (v0.5.19) —")
+with TestClient(app, follow_redirects=False) as c2:
+    r = c2.get("/pricing")
+    check("GET /pricing عمومی ۲۰۰ و شامل قیمت", r.status_code == 200 and "تومان" in r.text)
+    r = c2.get("/status")
+    check("GET /status عمومی ۲۰۰", r.status_code == 200)
+    r = c2.get("/order")
+    check("GET /order عمومی ۲۰۰", r.status_code == 200)
+    r = c2.post("/order", data={"name": "مشتری نمونه", "contact": "09120000000",
+                                "service_key": "site-basic", "message": "سلام",
+                                "website": ""}, follow_redirects=False)
+    check("POST /order → ریدایرکت lead_ok", r.status_code == 303 and "lead_ok" in r.headers["location"])
+    r = c2.post("/order", data={"name": "بات", "contact": "bot@example.com",
+                                "service_key": "site-basic", "website": "spam.example"},
+                follow_redirects=False)
+    check("honeypot پر → ظاهر موفق بدون ذخیره", r.status_code == 303 and "lead_ok" in r.headers.get("location", ""))
+    r = c2.post("/order", data={"name": "الف", "contact": "09120000000", "service_key": "namojood"},
+                follow_redirects=False)
+    check("خدمت ناموجود → lead_invalid", r.status_code == 303 and "lead_invalid" in r.headers.get("location", ""))
+    r = c2.post("/login", data={"email": "admin@test.ir", "password": "secret1", "next": ""},
+                follow_redirects=False)
+    check("ورود ادمین", r.status_code == 303)
+    db = SessionLocal()
+    try:
+        admin_uid = db.query(User).filter(User.email == "admin@test.ir").first().id
+    finally:
+        db.close()
+    acsrf = security.csrf_token(admin_uid)
+    r = c2.get("/admin/business")
+    check("GET /admin/business ادمین ۲۰۰ با بخش سرنخ‌ها", r.status_code == 200 and "سرنخ" in r.text and "کسب‌وکار" in r.text)
+    r = c2.post("/admin/business/params",
+                data={"server_cost_monthly": "1300000", "server_due_date": "2026-12-01",
+                      "domain_due_date": "2027-01-15", "advisor_salary_monthly": "10000000",
+                      "csrf": acsrf},
+                follow_redirects=False)
+    check("ذخیرهٔ پارامترها → biz_saved", r.status_code == 303 and "biz_saved" in r.headers["location"])
+    r = c2.post("/admin/business/prices", data={"price_site_basic": "850000", "csrf": acsrf}, follow_redirects=False)
+    check("ذخیرهٔ قیمت → biz_saved", r.status_code == 303 and "biz_saved" in r.headers["location"])
+    r = c2.post("/admin/business/params", data={"server_cost_monthly": "bad", "csrf": acsrf}, follow_redirects=False)
+    check("عدد خراب → biz_invalid", r.status_code == 303 and "biz_invalid" in r.headers.get("location", ""))
+    db = SessionLocal()
+    try:
+        lead = db.query(Lead).order_by(Lead.id.desc()).first()
+        check("سرنخ ثبت شد با وضعیت new", lead is not None and lead.status == "new" and lead.service_key == "site-basic")
+        check("سرنخِ honeypot ذخیره نشد", db.query(Lead).count() == 1)
+        prices = {s["key"]: s["price"] for s in biz.catalog(db)}
+        check("پیش‌فرض دست‌نخورده برای S4 و بازنویسی ادمین برای S1",
+              prices.get("dev-agent") == 3_490_000 and prices.get("site-basic") == 850_000)
+        biz.set_price(db, "dev-git", "1750000")
+        db.commit()
+        biz.set_price(db, "dev-git", "")
+        db.commit()
+        check("حذف بازنویسی → بازگشت به پیش‌فرض بازار", {s["key"]: s["price"] for s in biz.catalog(db)}["dev-git"] == 1_990_000)
+        biz.set_param(db, "server_cost_monthly", "1300000")
+        biz.set_param(db, "advisor_salary_monthly", "10000000")
+        db.commit()
+        check("سربه‌سر اجرایی (۱۱.۳م ÷ ۱.۲م = ۱۰)", biz.breakeven(db, 1_200_000) == 10)
+        check("سربه‌سر با ورودی صفر → None", biz.breakeven(db, 0) is None)
+        db.add(Heartbeat(ok=True, detail="smoke"))
+        db.commit()
+        biz.heartbeat_once()
+        st = biz.status_summary(db)
+        check("تپش‌نگار ردیف تازه نوشت و خلاصهٔ ۷روزه داد",
+              st["total"] >= 2 and st["pct"] is not None and len(st["rows"]) >= 2)
+        lead_id = lead.id
+    finally:
+        db.close()
+    r = c2.post(f"/admin/business/lead/{lead_id}/status", data={"status": "contacted", "csrf": acsrf}, follow_redirects=False)
+    check("گذار وضعیت سرنخ → biz_saved", r.status_code == 303 and "biz_saved" in r.headers["location"])
+    db = SessionLocal()
+    try:
+        check("وضعیت سرنخ contacted شد", db.get(Lead, lead_id).status == "contacted")
+    finally:
+        db.close()
 
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")

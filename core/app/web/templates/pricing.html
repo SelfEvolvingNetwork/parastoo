@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}خدمات و قیمت‌ها{% endblock %}
+{% block content %}
+<h1>خدمات و قیمت‌ها</h1>
+<p class="muted">قیمت‌ها ماهانه و بر پایهٔ قیمت‌های رقابتی بازار ایران (۱۴۰۵) تنظیم می‌شود. برای شروع، فرم درخواست را پر کنید — هماهنگی و پرداخت در فاز پایلوت به‌صورت دستی انجام می‌شود.</p>
+<div class="grid grid-3">
+{% for s in items %}
+  <div class="card mp-card">
+    <div class="mp-head">
+      <h3>{{ s.title }} <span class="muted small">({{ s.code }})</span></h3>
+      <span class="badge {{ 'badge-ok' if s.status == 'live' else 'badge-warn' }}">{{ money(s.price) }} {{ settings.CURRENCY }}/{{ s.unit }}</span>
+    </div>
+    <p class="muted small">{{ s.desc }}</p>
+    <ul class="small">
+      {% for f in s.features %}<li>{{ f }}</li>{% endfor %}
+    </ul>
+    {% if s.status == 'live' %}
+    <a class="btn btn-primary btn-block" href="/order?service={{ s.key }}">درخواست این خدمت</a>
+    {% else %}
+    <button class="btn btn-ghost btn-block" disabled>به‌زودی</button>
+    {% endif %}
+  </div>
+{% endfor %}
+</div>
+<p class="muted small">شواهد پایداری سرویس: <a href="/status">صفحهٔ وضعیت زنده</a> — تپش‌نگار هر ۱۰ دقیقه سلامت را ثبت می‌کند؛ قولِ پایداری با سابقهٔ ثبت‌شده، نه با ادعا.</p>
+{% endblock %}

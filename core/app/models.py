@@ -303,3 +303,36 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="")
+
+
+class Heartbeat(Base):
+    """تپش‌نگار پایداری (v0.5.19) — هر ۱۰ دقیقه یک ردیف صادقانه.
+
+    شواهدِ «سرویس پایدار» برای مشتری: قول با سابقهٔ ثبت‌شده، نه ادعا
+    (وصیت ۱۰ میثاق). نگهداری ~۳۱ روز (پاک‌سازی دوره‌ای در workers).
+    """
+    __tablename__ = "heartbeats"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    detail: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now, index=True)
+
+
+class Lead(Base):
+    """سرنخ فروش (v0.5.19) — فرم سفارش عمومی /order؛ فاز پرداخت دستی (فاز ۱).
+
+    درگاه واقعی در دورهٔ بی‌مالک قفل §۴.۴ میثاق است؛ سرنخ = درخواست خدمت
+    که ادمین در /admin/business پیگیری می‌کند و پس از هماهنگی/حوالهٔ دستی
+    به وضعیت won می‌برد و آنبورد می‌کند. status: new|contacted|won|lost
+    """
+    __tablename__ = "leads"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    contact: Mapped[str] = mapped_column(String(200))   # ایمیل یا تلفن
+    service_key: Mapped[str] = mapped_column(String(40), index=True)
+    message: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="new", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=db_now, onupdate=db_now)

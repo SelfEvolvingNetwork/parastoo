@@ -31,7 +31,7 @@ scripts/factory-reset.sh   ریست کارخانه مقاوم (بکاپ → حذ
 core/app/
   config.py     تنظیمات (VERSION، دامنه‌ها، پلن‌ها/قیمت، کمیسیون، توکن نصب، DEPLOYED_COMMIT/AT، DEV_MODE)
   db.py         engine/session (SQLAlchemy همگام) — اسکیما فقط از مدل‌ها با create_all؛ هیچ مهاجرتی نیست
-  models.py     User, Project, Service, Site, Build, WalletTx, Payment, AgentToken, Setting
+  models.py     User, Project, Service, Site, Build, WalletTx, Payment, AgentToken, Setting, Heartbeat, Lead
   manifest.py   پارس امن parastoo.yml (ServiceSpec؛ لیست سفید سخت؛ detect_stack بدون مانیفست)
   validation.py SLUG_RE/EMAIL_RE/DOMAIN_RE + project_slug_error/site_slug_error
   security.py   scrypt، کوکی امضاشده (itsdangerous)، CSRF، slugify، گیت ویزارد نصب
@@ -48,6 +48,7 @@ core/app/
   workers.py    سه ترد: bootstrap_loop، build_worker، billing_loop (صورتحساب → services/billing)
   services/     منطق کسب‌وکار — بدون HTTP:
     billing.py    قیمت‌گذاری تک‌منبع: tier/price_hourly/hourly_cost(سرویس‌های running) + charge_running_services + گارد balance_ok
+    business.py   کاتالوگ خدمات فروش‌پذیر (قیمت بازارمحور، بازنویسی ادمین) + پارامترهای کسب‌وکار (فرم ادمین) + تپش‌نگار پایداری + سربه‌سر
     projects.py   چرخهٔ پروژه: project_for (مالکیت/IDOR) + create_project + seed_scaffold + queue_build + delete_project
     sites.py      چرخهٔ سایت: site_for + publish_from_project/_deploy + start/stop/delete + live_statuses
     market.py     فعال‌سازی مارکت: activate_project (پرداخت + کمیسیون + پروژهٔ خریدار با کپی سرویس‌ها) + propagate
@@ -68,6 +69,7 @@ core/app/
     projects.py     ساخت/جزئیات/بیلد مجدد/مارکت/انتشار سایت (نازک)
     sites.py        روشن/خاموش/حذف سایت (نازک)
     marketplace.py  لیست + فعال‌سازی (نازک؛ منطق در services/market.py)
+    business.py     بازار و فروش: /pricing /order /status عمومی + /admin/business (نازک؛ منطق در services/business.py)
     wallet.py       موجودی و تراکنش‌ها
     payment.py      شارژ کیف پول + درگاه آزمایشی mock + callback
     bridge.py       پل عامل: /bridge/git/<slug>.git (شیم گیت) + /api/bridge/*

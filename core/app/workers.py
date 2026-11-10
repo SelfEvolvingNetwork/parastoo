@@ -36,6 +36,7 @@ from .config import settings
 from .db import SessionLocal, db_now
 from .models import Build, Project, Service, Setting, Site, User
 from .services import billing
+from .services import business as business_svc
 from .services import mobile
 from .services import projects as projects_svc
 from .services import sites as sites_svc
@@ -63,7 +64,8 @@ def start_workers() -> None:
     threading.Thread(target=_loop, args=(domain_once, DOMAIN_INTERVAL), daemon=True, name="domain").start()
     threading.Thread(target=_loop, args=(heal_once, HEAL_INTERVAL), daemon=True, name="heal").start()
     threading.Thread(target=_loop, args=(mobile_once, MOBILE_INTERVAL), daemon=True, name="mobile-release").start()
-    print("[parastoo] workers started (bootstrap / builder / billing / domain / heal / mobile-release)")
+    threading.Thread(target=_loop, args=(business_svc.heartbeat_once, business_svc.HEARTBEAT_INTERVAL), daemon=True, name="heartbeat").start()
+    print("[parastoo] workers started (bootstrap / builder / billing / domain / heal / mobile-release / heartbeat)")
 
 
 def _loop(fn, interval: int) -> None:

@@ -3,9 +3,9 @@
 ترتیب ثبت فقط برای هم‌پوشانی مسیرها مهم است؛ الان هیچ تداخلی نیست، اما
 ترتیب معنایی «ویزارد ← احراز هویت ← صفحات اصلی ← عملیات‌ها» حفظ شده است.
 """
-from . import (account, admin, agentdocs, auth, bridge, dashboard, dev, dns,
-               downloads, gitsso, health, hooks, marketplace, oauthidp,
-               payment, projects, setup, sites, tickets, wallet)
+from . import (account, admin, agentdocs, auth, bridge, business, dashboard,
+               dev, dns, downloads, gitsso, health, hooks, marketplace,
+               oauthidp, payment, projects, setup, sites, tickets, wallet)
 
 ROUTERS = (
     setup.router,        # ویزارد نصب/دامنه
@@ -17,6 +17,7 @@ ROUTERS = (
     health.router,       # healthz و /api/version
     agentdocs.router,    # /docs/agent — راهنمای عمومی عامل هوش مصنوعی کاربر
     downloads.router,    # /download — انتشار خودکار اپ ادمین پرستو موبایل (v0.5.9)
+    business.router,     # بازار و فروش (v0.5.19): /pricing /order /status + /admin/business
     projects.router,
     sites.router,
     marketplace.router,

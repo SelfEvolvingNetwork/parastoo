@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}وضعیت سرویس{% endblock %}
+{% block content %}
+<h1>وضعیت زندهٔ سرویس</h1>
+<p class="muted">شواهد ثبت‌شدهٔ تپش‌نگار (هر ۱۰ دقیقه یک نمونه) — بدون ادعا، فقط اعداد ثبت‌شده.</p>
+<div class="grid grid-3">
+  <div class="card">
+    <h3>آخرین نمونه</h3>
+    {% if st.last %}
+    <p><span class="badge {{ 'badge-ok' if st.last.ok else 'badge-warn' }}">{{ 'سبز' if st.last.ok else 'قرمز' }}</span></p>
+    <p class="muted small">{{ st.last.detail or '—' }}</p>
+    <p class="muted small">{{ st.last.created_at }}</p>
+    {% else %}
+    <p class="muted">هنوز نمونه‌ای ثبت نشده.</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h3>۷ روز گذشته</h3>
+    <p class="muted small">{{ st.green }} سبز از {{ st.total }} نمونه</p>
+    <p>{% if st.pct is not none %}<span class="badge {{ 'badge-ok' if st.pct >= 99 else 'badge-warn' }}">{{ st.pct }}٪</span>{% else %}—{% endif %}</p>
+  </div>
+  <div class="card">
+    <h3>زنجیرهٔ سبز پیوسته</h3>
+    <p>{% if st.streak_h is not none %}{{ st.streak_h }} ساعت{% else %}—{% endif %}</p>
+    <p class="muted small">از آخرین نمونهٔ قرمز (یا از شروع ثبت)</p>
+  </div>
+</div>
+<div class="card">
+  <h3>نمونه‌های اخیر</h3>
+  {% if st.rows %}
+  <table>
+    <tr><th>زمان</th><th>وضعیت</th><th>جزئیات</th></tr>
+    {% for h in st.rows %}
+    <tr><td class="small">{{ h.created_at }}</td><td>{{ 'سبز' if h.ok else 'قرمز' }}</td><td class="small">{{ h.detail or '—' }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">هنوز نمونه‌ای ثبت نشده — تپش‌نگار هر ۱۰ دقیقه یک نمونه می‌نویسد.</p>
+  {% endif %}
+</div>
+{% endblock %}

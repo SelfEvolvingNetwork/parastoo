@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}درخواست خدمت{% endblock %}
+{% block content %}
+<h1>درخواست خدمت</h1>
+<p class="muted">درخواست شما به‌عنوان سرنخ ثبت می‌شود و ادمین برای هماهنگی و پرداخت دستی (فاز پایلوت) با شما تماس می‌گیرد.</p>
+<div class="card" style="max-width:560px">
+  <form method="post" action="/order">
+    <label>نام و نام خانوادگی
+      <input type="text" name="name" required minlength="2" maxlength="120">
+    </label>
+    <label>ایمیل یا شماره تماس
+      <input type="text" name="contact" required minlength="5" maxlength="200">
+    </label>
+    <label>خدمت مورد نظر
+      <select name="service_key" required>
+        {% for s in items %}{% if s.status == 'live' %}
+        <option value="{{ s.key }}" {{ 'selected' if preselect == s.key }}>{{ s.title }} — {{ money(s.price) }} {{ settings.CURRENCY }}/{{ s.unit }}</option>
+        {% endif %}{% endfor %}
+      </select>
+    </label>
+    <label>توضیح کوتاه
+      <textarea name="message" rows="4" maxlength="2000" placeholder="چه سایتی می‌خواهید؟ چه انتظاری دارید؟"></textarea>
+    </label>
+    <input type="text" name="website" value="" style="display:none" tabindex="-1" autocomplete="off">
+    <button class="btn btn-primary btn-block" type="submit">ثبت درخواست</button>
+  </form>
+</div>
+{% endblock %}

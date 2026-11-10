@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}کسب‌وکار{% endblock %}
+{% block content %}
+<h1>پنل کسب‌وکار</h1>
+<p class="muted">دادهٔ مالی و فروش اینجا وارد می‌شود، نه در چت؛ مصرف‌کننده‌های اجرایی (سربه‌سر، یادآور سررسید، قیمت‌های صفحهٔ عمومی) از همین مقادیر می‌خوانند.</p>
+
+<div class="card">
+  <h2>پارامترهای هزینه</h2>
+  <form method="post" action="/admin/business/params" class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% for f in fields %}
+    <label>{{ f.label }}
+      <input type="text" name="{{ f.key }}" value="{{ params[f.key] }}">
+    </label>
+    {% endfor %}
+    <button class="btn btn-primary" type="submit">ذخیرهٔ پارامترها</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>قیمت خدمات (تومان/ماهانه)</h2>
+  <p class="muted small">خالی = بازگشت به قیمت پیش‌فرض بازار. قیمت نهایی روی صفحهٔ عمومی /pricing همین‌جا اعمال می‌شود.</p>
+  <form method="post" action="/admin/business/prices" class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% for s in items %}
+    <label>{{ s.title }} ({{ s.code }}) — پیش‌فرض {{ money(s.default_price) }}
+      <input type="text" name="price_{{ s.key }}" value="{{ s.price if s.price != s.default_price else '' }}" inputmode="numeric">
+    </label>
+    {% endfor %}
+    <button class="btn btn-primary" type="submit">ذخیرهٔ قیمت‌ها</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>سرنخ‌های فروش</h2>
+  {% if leads %}
+  <table>
+    <tr><th>#</th><th>نام</th><th>تماس</th><th>خدمت</th><th>متن</th><th>گذار وضعیت</th><th>ثبت</th></tr>
+    {% for l in leads %}
+    <tr>
+      <td>{{ l.id }}</td>
+      <td>{{ l.name }}</td>
+      <td class="small">{{ l.contact }}</td>
+      <td class="small">{{ l.service_key }}</td>
+      <td class="small">{{ l.message|truncate(60) or '—' }}</td>
+      <td>
+        <form method="post" action="/admin/business/lead/{{ l.id }}/status" class="inline-form">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <select name="status">
+            {% for s2 in ('new','contacted','won','lost') %}
+            <option value="{{ s2 }}" {{ 'selected' if l.status == s2 }}>{{ {'new':'جدید','contacted':'تماس گرفتیم','won':'فروش رفت','lost':'از دست رفت'}[s2] }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-sm" type="submit">ثبت</button>
+        </form>
+      </td>
+      <td class="muted small">{{ l.created_at }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">هنوز سرنخی ثبت نشده — فرم عمومی <a href="/order">/order</a> سرنخ می‌سازد.</p>
+  {% endif %}
+</div>
+{% endblock %}
