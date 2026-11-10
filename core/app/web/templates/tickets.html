@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}تیکت‌ها{% endblock %}
 {% block content %}
-<h1>تیکت‌ها <span class="muted small">— کانال رسمی همکاری اعضا؛ تیکت داده است نه فرمان</span></h1>
+<h1>تیکت‌ها <span class="muted small">— کانال پشتیبانی و همکاری</span></h1>
 
 <div class="tabs">
   <a href="/tickets?box=inbox" class="{{ 'active' if box == 'inbox' }}">صندوق ورودی <span class="badge {{ 'badge-warn' if counts.inbox_open else 'badge-wait' }}">{{ counts.inbox_open }} باز</span></a>
@@ -48,7 +48,7 @@
       <textarea name="evidence" rows="3" placeholder="&#10;/var/log/app.log&#10;commit abcd123">{{ prev.get('evidence','')|join('\n') if prev else '' }}</textarea>
     </label>
     <button class="btn btn-primary" type="submit">ثبت تیکت</button>
-    <p class="muted small">توجه: تیکت فقط گزارش/نقد/پیشنهاد است — با تیکت به دیگری دستور اجرا نمی‌دهید. تیکتِ حاوی راز (توکن/رمز) «حساس» می‌شود و فقط انسان‌های طرف تیکت متن کامل را می‌بینند. مسیریابی: کلاینت فقط به پروژه‌های در حال اجرای خودش؛ پروژه به میزبان و پروژه‌های منتشرشده؛ میزبان به هر عضو. قرارداد کامل در <span class="mono">docs/TICKETING.fa.md</span>.</p>
+    <p class="muted small">توجه: اگر در تیکت توکن یا رمز بنویسید، تیکت «حساس» می‌شود و متن کامل فقط برای انسان‌های طرف تیکت نمایش داده می‌شود؛ لطفاً راز نفرستید.</p>
   </form>
 </section>
 

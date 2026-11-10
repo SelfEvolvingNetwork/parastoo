@@ -2,12 +2,12 @@
 {% block title %}خدمات و قیمت‌ها{% endblock %}
 {% block content %}
 <h1>خدمات و قیمت‌ها</h1>
-<p class="muted">قیمت‌ها ماهانه و بر پایهٔ قیمت‌های رقابتی بازار ایران (۱۴۰۵) تنظیم می‌شود. برای شروع، فرم درخواست را پر کنید — هماهنگی و پرداخت در فاز پایلوت به‌صورت دستی انجام می‌شود.</p>
+<p class="muted">قیمت‌ها ماهانه است و بر پایهٔ قیمت‌های رقابتی بازار ایران تنظیم می‌شود. برای شروع، فرم درخواست را پر کنید — هماهنگی و پرداخت با تماس ما انجام می‌شود.</p>
 <div class="grid grid-3">
 {% for s in items %}
   <div class="card mp-card">
     <div class="mp-head">
-      <h3>{{ s.title }} <span class="muted small">({{ s.code }})</span></h3>
+      <h3>{{ s.title }} <span class="muted small" title="شناسهٔ خدمت">{{ s.code }}</span></h3>
       <span class="badge {{ 'badge-ok' if s.status == 'live' else 'badge-warn' }}">{{ money(s.price) }} {{ settings.CURRENCY }}/{{ s.unit }}</span>
     </div>
     <p class="muted small">{{ s.desc }}</p>

@@ -8,8 +8,8 @@
     <h3>آخرین نمونه</h3>
     {% if st.last %}
     <p><span class="badge {{ 'badge-ok' if st.last.ok else 'badge-warn' }}">{{ 'سبز' if st.last.ok else 'قرمز' }}</span></p>
-    <p class="muted small">{{ st.last.detail or '—' }}</p>
-    <p class="muted small">{{ st.last.created_at }}</p>
+    <p class="muted small">{{ (st.last.detail or '—')|replace('db=ok','پایگاه‌داده سالم')|replace('docker=ok','داکر سالم')|replace('db=fail','پایگاه‌داده ناسالم')|replace('docker=fail','داکر ناسالم')|replace('docker=off','داکر در دسترس نیست') }}</p>
+    <p class="muted small">{{ st.last.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
     {% else %}
     <p class="muted">هنوز نمونه‌ای ثبت نشده.</p>
     {% endif %}
@@ -31,7 +31,7 @@
   <table>
     <tr><th>زمان</th><th>وضعیت</th><th>جزئیات</th></tr>
     {% for h in st.rows %}
-    <tr><td class="small">{{ h.created_at }}</td><td>{{ 'سبز' if h.ok else 'قرمز' }}</td><td class="small">{{ h.detail or '—' }}</td></tr>
+    <tr><td class="small">{{ h.created_at.strftime('%Y-%m-%d %H:%M') }}</td><td>{{ 'سبز' if h.ok else 'قرمز' }}</td><td class="small">{{ (h.detail or '—')|replace('db=ok','پایگاه‌داده سالم')|replace('docker=ok','داکر سالم')|replace('db=fail','پایگاه‌داده ناسالم')|replace('docker=fail','داکر ناسالم')|replace('docker=off','داکر در دسترس نیست') }}</td></tr>
     {% endfor %}
   </table>
   {% else %}

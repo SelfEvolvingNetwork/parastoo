@@ -85,6 +85,10 @@ input, button, select, textarea, a, label, [tabindex] { scroll-margin-top: 5rem;
 }
 
 /* --- کارت و شبکه --- */
+/* کارت‌های کاتالوگ (قیمت‌ها/مارکت): هم‌ترازی دکمه‌ها در پایین کارت — کارت‌های بلندتر CTA یکپارچه نگه می‌دارند */
+.mp-card { display: flex; flex-direction: column; }
+.mp-card .btn-block { margin-top: auto; }
+.mp-card ul { margin-bottom: 1rem; }
 .card {
   background: var(--card); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 1.2rem 1.4rem; margin: 1rem 0;
@@ -153,12 +157,13 @@ tr:last-child td { border-bottom: none; }
 /* --- فرم --- */
 form label { display: block; margin: .8rem 0; font-size: .88rem; color: var(--muted); }
 form input[type="text"], form input[type="email"], form input[type="password"],
-form input[type="number"], form select {
+form input[type="number"], form select, form textarea {
   display: block; width: 100%; margin-top: .25rem;
   padding: .55rem .75rem; font: inherit;
   border: 1px solid var(--line); border-radius: 10px; background: #fbfcfe; color: var(--ink);
 }
-form input:focus, form select:focus { outline: 2px solid #bfd7ff; border-color: var(--brand); }
+form textarea { resize: vertical; }
+form input:focus, form select:focus, form textarea:focus { outline: 2px solid #bfd7ff; border-color: var(--brand); }
 label.check { display: flex; align-items: center; gap: .5rem; }
 label.check input { width: auto; }
 .w100 { width: 90px !important; display: inline-block !important; }

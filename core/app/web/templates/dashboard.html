@@ -72,7 +72,7 @@
 </div>
 
 <section class="card">
-  <div class="card-head"><h2>بیلدهای اخیر</h2></div>
+  <h2>بیلدهای اخیر</h2>
   {% if builds %}
   <table>
     <thead><tr><th>#</th><th>پروژه</th><th>کامیت</th><th>وضعیت</th><th>زمان</th></tr></thead>
@@ -89,7 +89,7 @@
     </tbody>
   </table>
   {% else %}
-  <p class="muted">بیلدی ثبت نشده. بعد از اولین push شما اینجا نمایش داده می‌شود.</p>
+  <p class="muted">بیلدی ثبت نشده. بعد از اولین انتشار شما اینجا نمایش داده می‌شود.</p>
   {% endif %}
 </section>
 {% endblock %}
