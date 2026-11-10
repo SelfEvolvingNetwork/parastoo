@@ -20,7 +20,7 @@
    ```bash
    git clone https://github.com/SelfEvolvingNetwork/parastoo /home/z/my-project/parastoo
    ```
-   اگر کلون از قبل هست: `git pull --ff-only`. سپس `docs/CHARTER.fa.md` + این سند + `WORKLOG.md` + `docs/LESSONS.md` را بخوان.
+   اگر کلون از قبل هست: `git pull --ff-only`. سپس به ترتیبِ خوانشِ §۲ سند `INDEX.fa.md` بخوان: **`docs/ECOSYSTEM.fa.md` (متن بیداری — یک صفحه، هرگز صرف‌نظر ممنوع) → `docs/CHARTER.fa.md` → این سند → `WORKLOG.md` §۵ کامل → `docs/LESSONS.md`**؛ نقشهٔ «موضوع → سند مرجع» همیشه `docs/INDEX.fa.md` است و هیچ سندی متن سند دیگر را تکرار نمی‌کند (قرارداد یکتایی INDEX §۵). همین ترتیب را بلوک تحویل access-agent (v0.6.2+) با سه URL حمل می‌کند.
 2. **ذخیرهٔ امن سه مقدار:** `parastoo/.secrets/access-agent.env` با همین سه کلید بساز (chmod 600، gitignored). قرارداد کامل اتصال: `docs/AGENT_PROTOCOL.fa.md` در مخزن access-agent.
 3. **اتصال پین‌شده و سلامت:** هش گواهیِ دریافتی باید == `CERT_SHA256` شود (در تولید هرگز اعتماد کورکورانه `-k` نه). سپس `GET /healthz` → `GET /api/status`؛ فیلد `parastoo_install_path` می‌گوید پرستو کجای سرور است.
 4. **نصب پرستو اگر نیست (سرور نو):** فقط از lifecycle پل: `POST /api/admin/parastoo/install` — نصب با exec مستقیمِ bootstrap ممنوع است (قرار مالک 2026-11-09 «یک روال شفاف»: یک بازیگرِ تغییردهنده در هر لحظه؛ پل حین اجرای lifecycle، execِ هم‌خوان با نصب/آپدیت را 409 می‌کند). پیشرفت: `GET /api/admin/parastoo/lifecycle-status`. معیار پایان: `/api/version` پنل پاسخ دهد.
