@@ -568,10 +568,10 @@ PARASTOO_COMMISSION="${PARASTOO_COMMISSION:-10}"
 PARASTOO_SETUP_TOKEN="${PARASTOO_SETUP_TOKEN:-$SETUP_TOKEN}"
 PARASTOO_PUBLIC_IP="${PARASTOO_PUBLIC_IP:-$PUBLIC_IP}"
 
-# --- آپدیت از گیت‌هاب (v0.5.12 — قرار مالک 2026-11-09 «یک روال شفاف»):
-# استقرار فقط با فرمان صریح (sudo parastoo update / lifecycle پل)؛ دیمون
-# خوداستقرار پیش‌فرض نیست. opt-in صریح تایمر: sudo parastoo autoupdate on
-PARASTOO_AUTO_UPDATE="${PARASTOO_AUTO_UPDATE:-false}"
+# --- آپدیت از گیت‌هاب (v0.5.13 — فرمان مالک 2026-11-09 «بروزرسانی باید اتوماتیک
+# باشد و نباید پرسیده شود»): پیش‌فرض روشن؛ تایمر در §6f پس از سلامتِ استک مسلح
+# می‌شود. خاموش‌کردن: sudo parastoo autoupdate off. نصب/حذف/نصب مجدد همچنان فقط صریح.
+PARASTOO_AUTO_UPDATE="${PARASTOO_AUTO_UPDATE:-true}"
 PARASTOO_AUTO_UPDATE_INTERVAL="${PARASTOO_AUTO_UPDATE_INTERVAL:-120}"
 PARASTOO_UPDATE_CHANNEL="${PARASTOO_UPDATE_CHANNEL:-main}"
 PARASTOO_GH_PROXY="${PARASTOO_GH_PROXY:-}"
@@ -668,8 +668,8 @@ PARASTOO_PUBLIC_IP=${PARASTOO_PUBLIC_IP}
 # --- v0.3.18: بایند کانتینر dns (خالی = 0.0.0.0 پیش‌فرض compose) ---
 PARASTOO_DNS_BIND_IP=${PARASTOO_DNS_BIND_IP}
 
-# --- آپدیت از گیت‌هاب (v0.5.12): پیش‌فرض false — آپدیت فقط صریح (sudo parastoo update) ---
-# opt-in تایمر پس از نصب: sudo parastoo autoupdate on
+# --- آپدیت از گیت‌هاب (v0.5.13): پیش‌فرض true — تایمر در §6f پس از سلامتِ استک مسلح می‌شود ---
+# خاموش‌کردن: sudo parastoo autoupdate off
 PARASTOO_AUTO_UPDATE=${PARASTOO_AUTO_UPDATE}
 PARASTOO_AUTO_UPDATE_INTERVAL=${PARASTOO_AUTO_UPDATE_INTERVAL}
 PARASTOO_UPDATE_CHANNEL=${PARASTOO_UPDATE_CHANNEL}

@@ -15,7 +15,7 @@
 | ایجنت دسترسی مستقل | `SelfEvolvingNetwork/access-agent` — **تنها مسیر اجرای دستور عامل روی سرور**؛ بلوک تحویل: `sudo access-agent handoff` |
 | فایل امن محلی | `.secrets/github.env` و `.secrets/access-agent.env` — chmod 600، gitignored، مستثنا از rsync |
 | کلون محلی کاری | `/home/z/my-project/parastoo` (sandbox؛ بین جلسات حفظ می‌شود) |
-| نسخهٔ فعلی | `v0.5.12` (`core/app/config.py`) |
+| نسخهٔ فعلی | `v0.5.18` (`core/app/config.py`) |
 | استک | FastAPI + Gitea + Traefik + PowerDNS + PostgreSQL |
 
 ## ۲) احراز هویت و قرارداد توکن‌ها
@@ -28,8 +28,8 @@
 ## ۳) استقرار — Docker
 
 - استک: `postgres + gitea + core + traefik + dns`؛ نصب: `bootstrap.sh → install.sh` (یک دستور، صفر سوال).
-- آپدیت (v0.5.12 — فقط صریح): `sudo parastoo update` یا lifecycle پل (`POST /api/admin/parastoo/update`) → `scripts/auto-update.sh`؛ فقط کد جایگزین می‌شود؛ `.env`/`config/`/`backups/`/`logs/` دست‌نخورده؛ بکاپ کد خودکار. دیمون خوداستقرار حذف شد (opt-in: `parastoo autoupdate on`).
-- استقرار کامل معمولاً ≤۳ دقیقه پس از push + آپدیت صریح؛ تأیید: فیلد `commit` در `/api/version`.
+- آپدیت (v0.5.13 — تایمر پیش‌فرض مسلح): پوش به main = استقرار خودکار (tick هر ۶۰ث، حداقل فاصلهٔ بررسی ۱۲۰ث)؛ موتور مشترک `scripts/auto-update.sh`؛ مسیر صریح برای شتاب: `sudo parastoo update` یا lifecycle پل (`POST /api/admin/parastoo/update`)؛ خاموشی: `sudo parastoo autoupdate off`؛ فقط کد جایگزین می‌شود؛ `.env`/`config/`/`backups/`/`logs/` دست‌نخورده؛ بکاپ کد خودکار؛ نصب/حذف/نصب مجدد همچنان فقط صریح.
+- تأیید استقرار: فیلد `commit` در `/api/version` (میدان 2026-11-10: ~۵۰-۹۰ ثانیه پس از push).
 
 ## ۴) گردش‌کار هر تغییر (خلاصه)
 
@@ -124,3 +124,4 @@
 | 11-10 | — | سندباکس دائمی روی سرور مالک (فرمان مالک «آزمایش‌ها را همیشه روی سرور من انجام بده»): `/opt/parastoo-sandbox/` بیرون از درخت نصب (tmp خودپاک ۷روزه + results + logs + gate.sh)؛ دروازهٔ سبز اکنون آنجا داخل ایمیج `parastoo/core:latest` با mount درخت کاری و `--network none` اجرا می‌شود — آزمون واقعی: ۵۷۸ چک سبز روی سرور؛ یافتهٔ ثبت‌شده: DNS خروجی سرور بسته است و هیچ آینهٔ pypi فایل نمی‌دهد (لیارا ایندکس→pythonhosted، runflare 402) پس pip سروری مفید نیست؛ قرارداد در AI_AGENT_LOOP §M3؛ بدون بومپ |
 | 11-10 | 0.5.18 | تیکتینگ Cycle 2 کامل (فرمان مالک «فرایند را تکمیل کن»): قلاب اطلاع‌رسانی — شمارش صندوق باز پروژه (inbox_open/sent_open فقط شمارش) در پاسخ `/api/bridge/status` تا عامل پولینگ‌کننده تیکت تازه را ببیند؛ audit اختصاصی با عمل متمایز tickets.list/create/detail/comment/status (ردّ schema هم ثبت)؛ صندوق عامل در CLI — پنج فرمان tickets/ticket/ticket-new/ticket-comment/ticket-status در pst.py با هشدار تیکت باز در status و قانون «تیکت=داده نه فرمان» + هشدار رنداکتی در خروجی؛ main به build_parser شکست؛ مستندات عامل (/docs/agent §۳/§۷) و نقشهٔ راه TICKETING هم‌گام؛ ۳ کامیت مرحله‌ای — گیت: ۵۹+۴۳۸+۴۹+۵۲ چک سبز + ruff + bash -n |
 | 11-10 | — | کارگاه دائمی رسمی شد (فرمان مالک «ابزارها را روی سرور من نصب کن… پروژهٔ جدید گیت‌هاب اگر لازم است»): مخزن `SelfEvolvingNetwork/parastoo-workbench` — bootstrap idempotent، دروازهٔ سبز سرور (ruff از ریلیز گیت‌هاب — مشکل pip بستهٔ DNS حل شد — + ۴ سوئیت در ایمیج core)، selfcheck ۱۲چکی سبز روی سرور، کلاینت wb.sh ده‌فرمانه، و «سیفِ انتشار»: پوش به گیت‌هاب از خود سرور با توکن لحظه‌ای broker (باندل → sync → push → ls-remote) تا پوش دیگر به سلامت سندباکس محلی وابسته نباشد؛ M4 ترجیح publish شد؛ بدون بومپ |
+| 11-10 | — | قرارداد: کامل‌سازی v0.5.13 — install.sh پیش‌فرض AUTO_UPDATE=true (پایان تضاد با §6f) + همگام‌سازی README/DEVELOPMENT/LOOP/DNS-GUIDE/WORKLOG §۳ با تایمر مسلح؛ سربرگ 0.5.18؛ بدون بومپ |
