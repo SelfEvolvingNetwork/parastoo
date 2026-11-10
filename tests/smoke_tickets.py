@@ -34,6 +34,7 @@ from app.db import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Project  # noqa: E402
 from app.services import bridge as bsvc  # noqa: E402
+from app.services import tickets as tsvc  # noqa: E402
 
 PASS = 0
 FAIL = 0
@@ -210,6 +211,16 @@ with TestClient(app, follow_redirects=False) as ca, \
     r = ca.post(f"/api/tickets/{sid}/comments", json={"body": "بررسی انسانی شد"},
                 headers=AC(1, admin_csrf))
     check("انسان می‌نویسد", r.status_code == 200)
+
+    print("— حساس‌سنجی: نثر عادی پرچم نمی‌گیرد (درس تیکت ۱) —")
+    check("نثر فارسی «توکن = همهٔ …» مثبت کاذب نیست",
+          tsvc.contains_secret("یک توکن = همهٔ اندپوینت‌های پروژه") is False)
+    check("نثر فارسی «رمز عبور یعنی …» مثبت کاذب نیست",
+          tsvc.contains_secret("رمز عبور یعنی همان گذرواژه است") is False)
+    check("مقدار شبیه‌راز با رقم تطبیق می‌گیرد",
+          tsvc.contains_secret("password: hunter2SECRET99") is True)
+    check("کلید فارسی با مقدار راز تطبیق می‌گیرد",
+          tsvc.contains_secret("گذرواژه: Sk9x2mAbC1") is True)
 
     print("— IDOR-safe و صندوق‌ها —")
     r = cc.get(f"/api/tickets/{tid}")
