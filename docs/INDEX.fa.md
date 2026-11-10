@@ -38,6 +38,7 @@
 | پل عامل پروژه (توکن `pst_`، شیم گیت، `/api/bridge/*`) | `docs/AGENT_BRIDGE.fa.md` (پرستو) |
 | تیکتینگ عضو‌به‌عضو (host/project/client — کانال رسمی همکاری اعضا) | `docs/TICKETING.fa.md` (پرستو) |
 | تحریم‌ها و نصب در ایران | `docs/SANCTIONS.md` (پرستو) |
+| پایداری خدمات و استقلال مالی (رجیستر ریسک، خدمات قابل‌فروش، مسیر درآمد) | `docs/SUSTAINABILITY.fa.md` (پرستو) |
 | دامنه، DNS، وایلدکارد و TLS | `docs/DOMAIN_DNS_GUIDE.fa.md` (پرستو) |
 | پرستو موبایل (APK، لودر، OTA) | `docs/PARASTOO_MOBILE.fa.md` (پرستو) |
 | درس‌های ماندگار میدانی | `docs/LESSONS.md` (پرستو) |
