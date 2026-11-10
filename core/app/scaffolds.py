@@ -72,54 +72,117 @@ INDEX_HTML = """\
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>__NAME__</title>
+  <meta name="description" content="__NAME__ — این سایت در حال آماده‌سازی است و به‌زودی افتتاح می‌شود.">
+  <meta property="og:title" content="__NAME__">
+  <meta property="og:description" content="این سایت در حال آماده‌سازی است — به‌زودی افتتاح می‌شود.">
+  <meta property="og:site_name" content="__NAME__">
+  <title>__NAME__ — به‌زودی</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f4c81'/%3E%3Ccircle cx='11' cy='16' r='4' fill='%23ffffff'/%3E%3Ccircle cx='21' cy='16' r='4' fill='%237fb3e0'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <main class="card">
+    <span class="chip">در حال آماده‌سازی</span>
     <h1>__NAME__</h1>
-    <p>این سایت روی <strong>پرستو</strong> اجرا می‌شود.</p>
-    <p>فایل‌های همین مخزن را تغییر دهید؛ با هر push به شاخهٔ <code>main</code> سایت به‌صورت خودکار بیلد و منتشر می‌شود.</p>
-    <p id="note" class="muted"></p>
+    <p class="lead">این سایت به‌زودی افتتاح می‌شود.</p>
+    <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
+
+    <details class="owner">
+      <summary>راهنمای مالک سایت — انتشار اولین نسخه</summary>
+      <ol>
+        <li>محتوای واقعی سایت را در همین مخزن بگذارید (فایل <code>index.html</code> را جایگزین کنید یا از <code>parastoo.yml</code>/<code>Dockerfile</code>/<code>package.json</code> استفاده کنید).</li>
+        <li>با هر <code>git push</code> به شاخهٔ <code>main</code>، سایت خودکار بیلد و منتشر می‌شود.</li>
+        <li>راهنمای کامل در <code>README.md</code> مخزن؛ از پنل پرستو نیز بخش «پل عامل هوش مصنوعی» در دسترس است.</li>
+      </ol>
+      <p id="note" class="muted small"></p>
+    </details>
   </main>
+  <footer class="foot">
+    <a href="https://panel.zeolitecenter.ir/pricing" rel="noopener">انتشار خودکار با <strong>پرستو</strong></a>
+  </footer>
   <script src="js/script.js"></script>
 </body>
 </html>
 """
 
 STYLE_CSS = """\
-/* __NAME__ — استایل‌ها؛ این فایل را آزادانه تغییر دهید. */
+/* __NAME__ — استایل‌ها؛ این فایل را آزادانه تغییر دهید.
+   بدون هیچ وابستگی بیرونی (فونت/آیکون/CDN) — در ایران هم همیشه کامل رندر می‌شود. */
 * { box-sizing: border-box; }
 body {
   margin: 0;
   min-height: 100vh;
   display: grid;
   place-items: center;
-  font-family: Vazirmatn, Tahoma, sans-serif;
-  background: #f3f6fb;
-  color: #1c2733;
+  font-family: Vazirmatn, Tahoma, "Segoe UI", sans-serif;
+  background: linear-gradient(160deg, #eef3f9 0%, #e2ecf7 55%, #d8e6f4 100%);
+  color: #16242f;
   line-height: 1.9;
+  padding: 1.5rem;
 }
 .card {
   background: #fff;
-  max-width: 42rem;
-  margin: 2rem 1rem;
-  padding: 2.5rem;
-  border-radius: 14px;
-  box-shadow: 0 10px 30px rgba(28, 39, 51, .08);
+  max-width: 34rem;
+  width: 100%;
+  padding: 2.5rem 2.2rem 2.2rem;
+  border-radius: 16px;
+  box-shadow: 0 14px 40px rgba(20, 40, 65, .10);
+  text-align: center;
 }
-h1 { margin-top: 0; color: #0f4c81; }
+.chip {
+  display: inline-block;
+  background: #e7f0fb;
+  color: #0f4c81;
+  border: 1px solid #c6dcf2;
+  border-radius: 999px;
+  padding: .15rem .9rem;
+  font-size: .82rem;
+  margin-bottom: 1rem;
+}
+h1 { margin: .2rem 0 .4rem; color: #0f2b44; font-size: 1.7rem; }
+.lead { color: #54677a; margin: 0 0 1.2rem; }
+.dots { display: flex; gap: .5rem; justify-content: center; margin: 1rem 0 1.6rem; }
+.dots span {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #0f4c81; opacity: .25;
+  animation: pulse 1.4s infinite ease-in-out;
+}
+.dots span:nth-child(2) { animation-delay: .2s; }
+.dots span:nth-child(3) { animation-delay: .4s; }
+@keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: .9; } }
+@media (prefers-reduced-motion: reduce) { .dots span { animation: none; opacity: .55; } }
+.owner {
+  text-align: right;
+  background: #f6f9fc;
+  border: 1px solid #e2eaf3;
+  border-radius: 12px;
+  padding: .8rem 1.1rem;
+  font-size: .9rem;
+}
+.owner summary {
+  cursor: pointer;
+  color: #0f4c81;
+  font-weight: 600;
+  user-select: none;
+}
+.owner ol { margin: .7rem 0 0; padding-inline-start: 1.2rem; }
+.owner li { margin: .3rem 0; }
 a { color: #0f4c81; }
-code { background: #eef2f7; padding: .1rem .4rem; border-radius: 6px; }
+code { background: #eef2f7; padding: .1rem .4rem; border-radius: 6px; font-size: .92em; direction: ltr; unicode-bidi: isolate; }
 .muted { color: #6b7a89; }
+.small { font-size: .8rem; }
+.foot { position: fixed; bottom: 1rem; left: 0; right: 0; text-align: center; font-size: .8rem; }
+.foot a { text-decoration: none; color: #5c7d90; }
 """
 
 SCRIPT_JS = """\
 // __NAME__ — منطق سمت مرورگر؛ نقطهٔ شروع جاوااسکریپت شما.
+// پیام زیر فقط داخل «راهنمای مالک سایت» می‌آید — بازدیدکنندهٔ عادی نمی‌بیند.
 document.addEventListener("DOMContentLoaded", () => {
   const note = document.getElementById("note");
   if (!note) return;
-  note.textContent = "جاوااسکریپت فعال است ✔ — " + new Date().toLocaleDateString("fa-IR");
+  note.textContent = "انتشار خودکار فعال است ✔ — آخرین بیلد: " +
+    new Date().toLocaleDateString("fa-IR");
 });
 """
 

@@ -455,6 +455,11 @@ def _public_labels(sites, port: int) -> dict:
     for site in sites:
         router = f"parastoo-site-{site.slug}"
         labels[f"traefik.http.routers.{router}.rule"] = f"Host(`{site.subdomain}`)"
+        # R11 (میدان 2026-11-10): با ≥۲ سایت روی یک پروژه، چند روتر و چند
+        # سرویس روی «یک» کانتینر تعریف می‌شود؛ بدون پیوند صریح service، ترافیک
+        # پیوند خودکار را مبهم می‌بیند («cannot be linked automatically with
+        # multiple Services») و روتر را خنثی می‌کند → همهٔ سایت‌های پروژه ۴۰۴.
+        labels[f"traefik.http.routers.{router}.service"] = router
         labels[f"traefik.http.routers.{router}.entrypoints"] = (
             "web,websecure" if tls_on else "web")
         labels[f"traefik.http.services.{router}.loadbalancer.server.port"] = str(port)
