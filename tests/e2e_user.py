@@ -134,6 +134,27 @@ def main() -> int:
         icon = {"PASS": "✓", "FAIL": "✗", "SKIP": "−"}[state]
         print(f"[{icon}] {cid:<16} {label}" + (f" — {note}" if note else ""))
 
+    _last_net_err = [""]
+
+    def _final_status(url: str, hops: int = 3) -> int:
+        """GET با پیگیری ریدایرکت‌ها تا وضعیت نهایی.
+
+        میدان 2026-11-10: ترافیکِ سایت‌های منتشرشده ۳۰۸/۳۰۱ به https وایلدکارت
+        می‌دهد؛ وضعیت خامِ http دیگر معیار نیست — پیگیری تا 200/404 واقعی.
+        """
+        st, hdrs, body = b.req("GET", url)
+        for _ in range(hops):
+            if st == 0:
+                _last_net_err[0] = body.decode(errors="replace")[:120]
+                return st
+            if st not in (301, 302, 303, 307, 308):
+                return st
+            loc = hdrs.get("Location") or hdrs.get("location") or ""
+            if not loc:
+                return st
+            st, hdrs, body = b.req("GET", loc)
+        return st
+
     # ---------- L0: خواندنی (همیشه) ----------
     dev_mode = None
     st, _, body = b.req("GET", "/api/version")
@@ -263,17 +284,18 @@ def main() -> int:
                 ok = pub_flash == "published"
                 check("publish", f"انتشار سایت {SITE_SLUG}", PASS if ok else FAIL,
                       f"flash={pub_flash}")
-                # سینک داکر-پروایفر ترافیک در میدان ~۳۰-۳۵ث طول می‌کشد (اندازه‌گیری 2026-11-05)
-                deadline = time.time() + 90
+                # پنجرهٔ آمادگی HTTPS سایت تازه میدان 2026-11-10: تا ~۱۰ دقیقه متغیر
+                # (اتصال گواهی وایلدکارت به روتر تازهٔ لیبلی ترافیک) — سقف ۶۰۰ث
+                deadline = time.time() + 600
                 st = 0
                 while time.time() < deadline:
-                    st, _, _ = b.req("GET", f"http://{SITE_SLUG}.apps.{_apps_domain(base)}")
+                    st = _final_status(f"http://{SITE_SLUG}.apps.{_apps_domain(base)}")
                     if st == 200:
                         break
-                    time.sleep(4)
+                    time.sleep(10)
                 ok = st == 200
-                check("site-live", "سایت منتشرشده 200 می‌دهد (تا ۳۰ث فرصت سینک)", PASS if ok else FAIL,
-                      f"HTTP {st}")
+                check("site-live", "سایت منتشرشده 200 می‌دهد (با پیگیری ریدایرکت TLS، پنجرهٔ گواهی تا ۶۰۰ث)", PASS if ok else FAIL,
+                      f"HTTP {st}" + (f" | last_net_err={_last_net_err[0]}" if st == 0 else ""))
             else:
                 results.append((SKIP, "publish"))
                 results.append((SKIP, "site-live"))
@@ -300,16 +322,17 @@ def main() -> int:
                         ok = cleaned
                         note = f"flash={b.last_flash() or '?'}"
                     else:
-                        # مثل بالا: سینک حذف روتر هم تا ~۳۵ث؛ تا ۹۰ث منتظر 404 می‌مانیم
-                        deadline = time.time() + 90
+                        # مثل بالا: بعد از حذف، SNI تا بستنِ پنجرهٔ گواهی ممکن است
+                        # چند دقیقه default بدهد — تا ۶۰۰ث منتظر 404 واقعی
+                        deadline = time.time() + 600
                         st = 0
                         while time.time() < deadline:
-                            st = b.req("GET", f"http://{SITE_SLUG}.apps.{_apps_domain(base)}")[0]
+                            st = _final_status(f"http://{SITE_SLUG}.apps.{_apps_domain(base)}")
                             if st == 404:
                                 break
-                            time.sleep(4)
+                            time.sleep(10)
                         ok = cleaned and st == 404
-                        note = f"flash={b.last_flash() or '?'} site_http={st}"
+                        note = f"flash={b.last_flash() or '?'} site_http={st}" + (f" | last_net_err={_last_net_err[0]}" if st == 0 else "")
                     check("cleanup", "حذف پروژه (+404شدن سایت)", PASS if ok else FAIL, note)
                 except Exception as e:
                     check("cleanup", "پاکسازی", FAIL, f"استثنا: {e}")
