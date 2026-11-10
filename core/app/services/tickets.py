@@ -441,7 +441,8 @@ def add_comment(db, t, actor: tuple, human_actor: bool, body: str):
     نمی‌نویسد (انسان باید تصمیم بگیرد)، انسان‌ها آزادند."""
     from ..models import TicketEvent
 
-    if actor not in ((t.sender_type, t.sender_id), (t.receiver_type, t.receiver_id)):
+    if not (_side_match(db, t, actor, "sender")
+            or _side_match(db, t, actor, "receiver")):
         from ..models import User
         u = db.get(User, actor[1]) if actor[0] == "user" else None
         if not (u and u.is_admin):
@@ -477,10 +478,38 @@ def _event(db, t, kind, actor, human_actor, data: dict):
                        data_json=json.dumps(data, ensure_ascii=False)))
 
 
-def _is_party(t, actor: tuple, which: str) -> bool:
-    if which == "sender":
-        return actor == (t.sender_type, t.sender_id)
-    return actor == (t.receiver_type, t.receiver_id)
+def user_project_ids(db, user_id: int) -> list[int]:
+    """شناسهٔ پروژه‌های متعلق به کاربر — پایهٔ دیدِ «مالکِ پروژه».
+    تیکتِ عامل، تیکتِ مالکِ آن هم هست: حساب‌پذیری انسانی بدون لو دادن بقیه."""
+    from ..models import Project
+    return [pid for (pid,) in db.query(Project.id)
+            .filter(Project.owner_id == user_id).all()]
+
+
+def _side_match(db, t, actor: tuple, which: str) -> bool:
+    """فراخواننده «آن‌سو»ی تیکت است؟ تطبیق مستقیمِ عضو، یا مالکِ انسانیِ
+    پروژهٔ همان‌سو (درس تیکت ۱ — مالکِ ppp تیکتِ عاملش را نمی‌دید)."""
+    st, sid = ((t.sender_type, t.sender_id) if which == "sender"
+               else (t.receiver_type, t.receiver_id))
+    if actor == (st, sid):
+        return True
+    if actor[0] == "user" and st == "project":
+        from ..models import Project
+        p = db.get(Project, sid)
+        return bool(p and p.owner_id == actor[1])
+    return False
+
+
+def _viewer_side(db, viewer: tuple, type_col, id_col):
+    """شرط SQL «فراخواننده آن‌سو است» — مستقیم یا از طریق پروژه‌های متعلق."""
+    from sqlalchemy import and_, or_
+    if viewer[0] == "user":
+        conds = [and_(type_col == "user", id_col == viewer[1])]
+        pids = user_project_ids(db, viewer[1])
+        if pids:
+            conds.append(and_(type_col == "project", id_col.in_(pids)))
+        return or_(*conds)
+    return and_(type_col == viewer[0], id_col == viewer[1])
 
 
 def open_counts(db, actor: tuple) -> dict:
@@ -489,21 +518,21 @@ def open_counts(db, actor: tuple) -> dict:
     فقط شمارش؛ هیچ محتوایی بیرون نمی‌رود."""
     from ..models import Ticket
     q = db.query(Ticket).filter(Ticket.status.notin_(OPEN_EXCLUDE))
-    return {"inbox_open": q.filter(Ticket.receiver_type == actor[0],
-                                   Ticket.receiver_id == actor[1]).count(),
-            "sent_open": q.filter(Ticket.sender_type == actor[0],
-                                  Ticket.sender_id == actor[1]).count()}
+    return {"inbox_open": q.filter(_viewer_side(db, actor, Ticket.receiver_type,
+                                                Ticket.receiver_id)).count(),
+            "sent_open": q.filter(_viewer_side(db, actor, Ticket.sender_type,
+                                               Ticket.sender_id)).count()}
 
 
-def allowed_moves(t, actor: tuple, is_admin: bool) -> set:
+def allowed_moves(db, t, actor: tuple, is_admin: bool) -> set:
     """گذارهای مجازِ الان برای این فراخواننده — تک‌منبع ماشین حالت؛
     change_status و UI پنل هر دو از همین می‌خوانند تا نمایش هرگز با قاعدهٔ
     واقعی یکی نشود. گذارِ خاص reopen≤۱ در change_status تصمیم می‌گیرد؛
     دکمهٔ بازگشایی همیشه با همین مجوز نشان داده می‌شود."""
     allowed: set = set()
-    if _is_party(t, actor, "receiver"):
+    if _side_match(db, t, actor, "receiver"):
         allowed |= RECEIVER_MOVES.get(t.status, set())
-    if _is_party(t, actor, "sender"):
+    if _side_match(db, t, actor, "sender"):
         allowed |= SENDER_MOVES.get(t.status, set())
     if is_admin and actor[0] == "user":
         allowed |= ADMIN_MOVES.get(t.status, set())
@@ -522,8 +551,8 @@ def change_status(db, t, actor: tuple, human_actor: bool, is_admin: bool,
     if new_status not in STATUSES:
         raise TicketError("transition", f"وضعیت ناشناخته: {new_status}")
 
-    is_sender = _is_party(t, actor, "sender")
-    is_receiver = _is_party(t, actor, "receiver")
+    is_sender = _side_match(db, t, actor, "sender")
+    is_receiver = _side_match(db, t, actor, "receiver")
     if not (is_sender or is_receiver) and not (
             is_admin and actor[0] == "user"
             and new_status in ADMIN_MOVES.get(t.status, set())):
@@ -531,7 +560,7 @@ def change_status(db, t, actor: tuple, human_actor: bool, is_admin: bool,
         raise TicketError("not_party", "این تیکت از آنِ شما نیست")
 
     old = t.status
-    allowed = allowed_moves(t, actor, is_admin)
+    allowed = allowed_moves(db, t, actor, is_admin)
 
     # گذار خاص — reopen فرستنده: سقف ۱؛ عبور از سقف = بن‌بست → escalated
     if is_sender and new_status == "open" and old in ("rejected", "resolved"):
@@ -593,11 +622,11 @@ def list_tickets(db, viewer: tuple, box: str, limit: int = 50):
     from ..models import Ticket
     q = db.query(Ticket)
     if box == "inbox":
-        q = q.filter(Ticket.receiver_type == viewer[0],
-                     Ticket.receiver_id == viewer[1])
+        q = q.filter(_viewer_side(db, viewer, Ticket.receiver_type,
+                                  Ticket.receiver_id))
     elif box == "sent":
-        q = q.filter(Ticket.sender_type == viewer[0],
-                     Ticket.sender_id == viewer[1])
+        q = q.filter(_viewer_side(db, viewer, Ticket.sender_type,
+                                  Ticket.sender_id))
     else:
         raise TicketError("bad_box", "box باید inbox یا sent باشد")
     return (q.order_by(Ticket.id.desc())
@@ -611,7 +640,8 @@ def ticket_for(db, viewer: tuple, is_admin: bool, ticket_id: int):
     t = db.get(Ticket, ticket_id)
     if t is None:
         raise TicketError("not_found", "تیکت یافت نشد")
-    party = viewer in ((t.sender_type, t.sender_id), (t.receiver_type, t.receiver_id))
+    party = (_side_match(db, t, viewer, "sender")
+             or _side_match(db, t, viewer, "receiver"))
     if not party and not (is_admin and viewer[0] == "user"):
         raise TicketError("not_found", "تیکت یافت نشد")
     return t

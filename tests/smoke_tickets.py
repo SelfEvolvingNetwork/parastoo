@@ -65,6 +65,7 @@ AC = lambda u, tok: {"X-CSRF-Token": tok}   # هدر CSRF انسان
 with TestClient(app, follow_redirects=False) as ca, \
         TestClient(app, follow_redirects=False) as cc, \
         TestClient(app, follow_redirects=False) as ag, \
+        TestClient(app, follow_redirects=False) as co, \
         TestClient(app, follow_redirects=False) as anon:
     print("— راه‌اندازی: ادمین (میزبان)، کلاینت، پروژه، توکن پل —")
     r = ca.post("/setup", data={"email": "admin@test.ir", "password": "secret1",
@@ -157,9 +158,13 @@ with TestClient(app, follow_redirects=False) as ca, \
     r = ca.post(f"/api/tickets/{tid}/status", json={"status": "accepted"},
                 headers=AC(1, admin_csrf))
     check("open→accepted مستقیم ممنوع → 409", r.status_code == 409, r.text[:120])
-    r = ca.post(f"/api/tickets/{tid}/status", json={"status": "ack"},
+    r = ca.post("/api/tickets", json=mk_payload("user:2", "تیکت جداسازی نقش فرستنده"),
                 headers=AC(1, admin_csrf))
-    check("open→ack توسط فرستنده ممنوع → 409", r.status_code == 409)
+    stid = r.json()["ticket"]["id"]
+    r = ca.post(f"/api/tickets/{stid}/status", json={"status": "ack"},
+                headers=AC(1, admin_csrf))
+    check("open→ack توسط فرستنده ممنوع → 409 (میزبان به کلاینت)", r.status_code == 409,
+          r.text[:120])
     r = ag.get(f"/api/tickets/{tid}", headers=AH)
     check("عامل جزئیات را می‌بیند", r.status_code == 200
           and r.json()["ticket"]["status"] == "open")
@@ -226,8 +231,8 @@ with TestClient(app, follow_redirects=False) as ca, \
     r = cc.get(f"/api/tickets/{tid}")
     check("غریبه → 404 (نه 403)", r.status_code == 404)
     r = cc.get("/api/tickets?box=inbox")
-    check("صندوق کلاینتِ غریبه خالی", r.status_code == 200
-          and r.json()["tickets"] == [])
+    check("صندوق کلاینتِ غریبه — تیکتِ غریبه در آن نیست", r.status_code == 200
+          and all(t["id"] != tid for t in r.json()["tickets"]))
     r = ca.get("/api/tickets?box=sent")
     check("صندوق ارسالی میزبان", r.status_code == 200
           and all(t["sender"] == "user:1" for t in r.json()["tickets"]))
@@ -430,6 +435,62 @@ with TestClient(app, follow_redirects=False) as ca, \
     r = cc.get("/api/tickets/summary")
     check("خلاصهٔ صندوق برای کلاینت", r.status_code == 200
           and r.json().get("inbox_open") >= 1)
+
+    print("— دیدِ مالکِ پروژه (درس تیکت ۱): تیکتِ عامل، تیکتِ مالکش هم هست —")
+    r = co.post("/register", data={"email": "owner@test.ir", "password": "secret1",
+                                   "name": "مالک پروژه"}, follow_redirects=False)
+    check("مالک ثبت‌نام شد (ورود خودکار)", r.status_code == 303)
+    owner_csrf = security.csrf_token(3)
+    r = co.post("/projects/new", data={"name": "پروژهٔ مالک", "slug": "owner-app",
+                                       "description": "", "csrf": owner_csrf},
+                follow_redirects=False)
+    check("پروژهٔ مالک ساخته شد", r.status_code == 303)
+    db = SessionLocal()
+    o_proj = db.query(Project).filter(Project.slug == "owner-app").first()
+    check("پروژهٔ مالک مالکِ کاربر ۳ است", o_proj is not None
+          and o_proj.owner_id == 3)
+    raw_otoken, _row = bsvc.mint(db, o_proj, "smoke-owner-agent")
+    db.close()
+    OH = {"Authorization": f"Bearer {raw_otoken}"}
+    r = ag.post("/api/tickets", headers=OH,
+                json=mk_payload("user:1", "تیکت عاملِ پروژهٔ مالک"))
+    check("عاملِ پروژهٔ مالک به میزبان تیکت زد", r.status_code == 200, r.text[:120])
+    otid = r.json()["ticket"]["id"]
+    check("فرستندهٔ ثبت‌شده = project:owner-app",
+          r.json()["ticket"]["sender"] == "project:owner-app")
+    r = co.get("/api/tickets?box=sent")
+    check("مالک، تیکتِ عاملش را در «ارسالی» می‌بیند", r.status_code == 200
+          and any(t["id"] == otid for t in r.json()["tickets"]), r.text[:150])
+    r = co.get("/api/tickets/summary")
+    check("خلاصهٔ صندوق مالک — sent_open=1", r.json().get("sent_open") == 1,
+          r.text[:120])
+    r = co.get(f"/api/tickets/{otid}")
+    check("جزئیات تیکتِ عامل برای مالک باز می‌شود", r.status_code == 200)
+    r = cc.get(f"/api/tickets/{otid}")
+    check("غریبهٔ غیرمالک هنوز 404", r.status_code == 404)
+    r = co.get("/tickets?box=sent")
+    check("صفحهٔ «ارسالی» مالک رندر شد", r.status_code == 200
+          and "تیکت عاملِ پروژهٔ مالک" in r.text)
+    r = ca.post(f"/api/tickets/{otid}/status", json={"status": "ack"},
+                headers=AC(1, admin_csrf))
+    check("میزبان ack", r.status_code == 200)
+    ca.post(f"/api/tickets/{otid}/status", json={"status": "accepted"},
+            headers=AC(1, admin_csrf))
+    r = ca.post(f"/api/tickets/{otid}/status",
+                json={"status": "resolved", "evidence": "fix در c0ffee1"},
+                headers=AC(1, admin_csrf))
+    check("میزبان resolved با سند", r.status_code == 200)
+    r = co.post(f"/api/tickets/{otid}/status", json={"status": "closed"},
+                headers=AC(3, owner_csrf))
+    check("مالک به‌جای عاملش تیکت را می‌بندد (resolved→closed)",
+          r.status_code == 200 and r.json()["status"] == "closed", r.text[:120])
+    r = co.get("/api/tickets?box=sent")
+    check("بسته‌شده دیگر در شمار باز نیست", r.status_code == 200
+          and all(t["id"] != otid or t["status"] == "closed"
+                  for t in r.json()["tickets"]))
+    r = ag.get("/api/bridge/status", headers=OH)
+    tk = r.json().get("tickets")
+    check("قلاب پلِ پروژهٔ مالک هم صفر شد", tk and tk["sent_open"] == 0, str(tk))
 
 print(f"\nنتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

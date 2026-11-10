@@ -209,7 +209,7 @@ def ticket_page(request: Request, tid: int,
     return render("ticket_detail.html", ctx(request, user,
                    t=tsvc.ticket_view(db, t, True),
                    events=tsvc.events_view(db, t, True),
-                   allowed=sorted(tsvc.allowed_moves(t, actor, user.is_admin)),
+                   allowed=sorted(tsvc.allowed_moves(db, t, actor, user.is_admin)),
                    counts=tsvc.open_counts(db, actor)))
 
 
