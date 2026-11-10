@@ -71,6 +71,7 @@ core/app/
     wallet.py       موجودی و تراکنش‌ها
     payment.py      شارژ کیف پول + درگاه آزمایشی mock + callback
     bridge.py       پل عامل: /bridge/git/<slug>.git (شیم گیت) + /api/bridge/*
+    tickets.py      تیکتینگ عضو‌به‌عضو: /api/tickets* + صفحات پنل /tickets* (صندوق/جزئیات/فرم — منطق در services/tickets.py)
     dns.py          UI + API مدیریت DNS ادمین
     admin.py        آمار + شارژ دستی + مدیریت کاربران/سایت‌ها
     dev.py          حالت توسعه‌دهنده: /dev + /api/dev/* (خاموش = 404)

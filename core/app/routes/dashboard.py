@@ -45,7 +45,10 @@ def dashboard(request: Request,
                      .join(Project)
                      .filter(Project.owner_id == user.id)
                      .order_by(Build.id.desc()).limit(6).all())
+    from ..services.tickets import open_counts
+    tk_open = open_counts(db, ("user", user.id))["inbox_open"]
     return render("dashboard.html", ctx(request, user,
                                         projects=my_projects,
                                         sites=my_sites,
-                                        builds=recent_builds))
+                                        builds=recent_builds,
+                                        tk_open=tk_open))

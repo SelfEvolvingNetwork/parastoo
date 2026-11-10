@@ -17,6 +17,8 @@
       <a href="/dashboard" class="{{ 'active' if path == '/dashboard' }}">داشبورد</a>
       <a href="/projects" class="{{ 'active' if path.startswith('/projects') }}">پروژه‌ها</a>
       <a href="/sites" class="{{ 'active' if path == '/sites' }}">سایت‌ها</a>
+      {% set tk_open = tickets_badge(user) %}
+      <a href="/tickets" class="{{ 'active' if path.startswith('/tickets') }}">تیکت‌ها{% if tk_open %} <span class="badge badge-warn" title="تیکت باز در صندوق ورودی">{{ tk_open }}</span>{% endif %}</a>
       <a href="/marketplace" class="{{ 'active' if path == '/marketplace' }}">مارکت‌پلیس</a>
       <a href="/download" class="{{ 'active' if path.startswith('/download') }}">دانلود</a>
       <a href="/wallet" class="{{ 'active' if path == '/wallet' }}">کیف پول</a>

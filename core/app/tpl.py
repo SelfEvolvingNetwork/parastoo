@@ -79,6 +79,18 @@ FLASHES = {
     # --- SSO گیت (v0.5.7) ---
     "git_account_pending": "حساب گیت شما هنوز در حال ساخت خودکار است؛ چند لحظه بعد دوباره تلاش کنید.",
     "login_required": "برای ورود به گیت، اول وارد پنل شوید.",
+    # --- تیکتینگ عضو‌به‌عضو — UI پنل (Cycle 3) ---
+    "ticket_created": "تیکت ثبت شد و تحویل صندوق مقصد شد.",
+    "ticket_commented": "کامنت ثبت شد.",
+    "ticket_status_changed": "وضعیت تیکت به‌روزرسانی شد.",
+    "ticket_routing": "ارسال تیکت به این مقصد مجاز نیست — کانال تیکت روی رابطهٔ شکل‌گرفته بنا می‌شود (مقصد باید پروژهٔ در حال اجرای شما، یا پروژهٔ منتشرشده/میزبان باشد).",
+    "ticket_bad_target": "آدرس مقصد معتبر نیست — قالب: project:شناسه یا user:شماره.",
+    "ticket_schema": "اسکیمای تیکت کامل نیست — عنوان (حداقل ۳ نویسه)، نوع، شدت، «مشاهده» و «انتظار» الزامی‌اند.",
+    "ticket_duplicate": "تیکت هم‌موضوعِ باز وجود دارد — به همان تیکت کامنت بدهید.",
+    "ticket_rate": "سقف ارسال تیکت پر شده (حداکثر ۵ تیکت باز هر جفت / سقف نرخ) — ابتدا بازهای قدیمی را ببندید یا کمی صبر کنید.",
+    "ticket_transition": "این تغییر وضعیت برای نقش شما مجاز نیست — ماشین حالت در قرارداد تیکتینگ تعریف شده است.",
+    "ticket_denied": "این تیکت از آنِ شما نیست.",
+    "ticket_needs_human": "این تیکت حساس است — فقط انسان می‌تواند پاسخ بدهد؛ منتظر بمانید.",
 }
 
 
@@ -98,6 +110,24 @@ def tier_label(key: str) -> str:
     return f"{t['label']} ({t['cpus']} CPU / {t['mem']}MB)" if t else key
 
 
+def tickets_badge(user) -> int:
+    """شمار تیکت باز صندوق ورودی کاربر — برای نشان ناوبری/داشبورد.
+    best-effort: شکست = 0 (هیچ‌گاه رندر صفحه را نمی‌شکند)؛ تعریف «باز»
+    از services.tickets.open_counts (تک‌منبع)."""
+    if user is None:
+        return 0
+    try:
+        from .db import SessionLocal
+        from .services.tickets import open_counts
+        db = SessionLocal()
+        try:
+            return int(open_counts(db, ("user", user.id))["inbox_open"])
+        finally:
+            db.close()
+    except Exception:
+        return 0
+
+
 templates.env.globals.update(
     settings=settings,
     domains=domains,
@@ -105,4 +135,5 @@ templates.env.globals.update(
     money=money,
     dt=dt,
     tier_label=tier_label,
+    tickets_badge=tickets_badge,
 )

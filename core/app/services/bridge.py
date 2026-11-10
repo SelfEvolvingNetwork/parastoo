@@ -180,24 +180,20 @@ def audit_tail(limit: int = 50, token_prefix: str | None = None) -> list[dict]:
 def _ticket_counts(db, project) -> dict:
     """قلاب اطلاع‌رسانی تیکت (Cycle 2) — صندوق باز پروژه در یک نگاه.
 
-    فقط شمارش؛ هیچ محتوایی از تیکت اینجا بیرون نمی‌رود (تیکت حساس حتی
-    شمارشِ متن را لو نمی‌دهد). عامل با پولینگ همیشگیِ status همین را می‌بیند
-    و سراغ `pst tickets` می‌رود.
+    تک‌منبع شمارش: services.tickets.open_counts — همان تعریف «باز» که
+    سقف جفت و نشان UI می‌خوانند. هیچ محتوایی از تیکت اینجا بیرون نمی‌رود
+    (تیکت حساس حتی شمارشِ متن را لو نمی‌دهد). عامل با پولینگ همیشگیِ status
+    همین را می‌بیند و سراغ `pst tickets` می‌رود.
     """
-    from ..models import Ticket
-    q = db.query(Ticket).filter(Ticket.status.notin_(("closed",)))
-    inbox = (q.filter(Ticket.receiver_type == "project",
-                      Ticket.receiver_id == project.id).count())
-    sent = (q.filter(Ticket.sender_type == "project",
-                     Ticket.sender_id == project.id).count())
-    return {"inbox_open": inbox, "sent_open": sent}
+    from . import tickets as tsvc
+    return tsvc.open_counts(db, ("project", project.id))
 
 
 def project_status(db, project) -> dict:
     """خروجی JSON /api/bridge/status — عامل با همین یک فراخوانی صاحب تصویر می‌شود."""
-    from . import billing
     from .. import dockerops
     from ..models import Build
+    from . import billing
 
     live = dockerops.project_container_status(project.id)  # خالی = داکر نیست
     services = []

@@ -228,3 +228,19 @@ pre.code { margin: .6rem 0; }
   margin-top: 3rem; padding: 1.2rem 0 2rem;
   color: var(--muted); font-size: .82rem; text-align: center;
 }
+
+/* --- تیکتینگ عضو‌به‌عضو (Cycle 3) --- */
+.grid-5 { grid-template-columns: repeat(5, 1fr); }
+a.stat { display: block; color: inherit; }
+a.stat:hover { text-decoration: none; border-color: var(--brand, #2f6fed); }
+.tabs { display: flex; gap: .6rem; margin: .9rem 0 1.1rem; flex-wrap: wrap; }
+.tabs a { display: inline-flex; align-items: center; gap: .45rem; padding: .38rem .95rem;
+  border: 1px solid var(--line); border-radius: 999px; color: var(--ink); }
+.tabs a:hover { text-decoration: none; background: #eef2f8; }
+.tabs a.active { background: var(--ink, #1c2a3a); color: #fff; border-color: var(--ink, #1c2a3a); }
+.tkt-meta { gap: .5rem; }
+.tkt-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: .2rem 0 .9rem; }
+.tkt-event { border-bottom: 1px dashed var(--line); padding: .55rem 0; }
+.tkt-event:last-of-type { border-bottom: none; }
+.tkt-move { margin: .5rem 0; max-width: 640px; }
+@media (max-width: 900px) { .grid-5 { grid-template-columns: repeat(2, 1fr); } }

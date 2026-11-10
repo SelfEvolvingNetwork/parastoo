@@ -41,6 +41,20 @@ SEVERITY_ALIASES = {"کم": "low", "متوسط": "medium", "بالا": "high", "
 STATUSES = ("open", "ack", "accepted", "rejected", "needs_info",
             "resolved", "closed", "escalated")
 
+# تعریف «باز» — تک‌منبع: سقف جفت (create_ticket)، قلاب پل (bridge.status)
+# و نشان صندوق (UI پنل) همگی همین را می‌خوانند تا هرگز از هم جدا نشوند.
+OPEN_EXCLUDE = ("closed",)
+
+# برچسب‌های فارسی نمایش — قرارداد برچسب در همین سرویس است (تک‌منبع)
+STATUS_LABELS = {
+    "open": "باز", "ack": "دریافت‌شده", "accepted": "پذیرفته‌شده",
+    "rejected": "رد‌شده", "needs_info": "نیازمند توضیح",
+    "resolved": "حل‌شده", "closed": "بسته", "escalated": "بن‌بست (انسانی)",
+}
+SEVERITY_LABELS = {"low": "کم", "medium": "متوسط", "high": "بالا", "critical": "بحرانی"}
+EVENT_LABELS = {"create": "ایجاد", "comment": "کامنت", "status": "گذار وضعیت",
+                "reopen": "بازگشایی", "escalate": "بنی‌سرگشت"}
+
 # ---------- ضد-طوفان ----------
 
 MAX_OPEN_PER_PAIR = 5                 # تیکت بازِ هم‌زمان هر جفت فرستنده→مقصد
@@ -283,10 +297,14 @@ def ticket_view(db, t, human_viewer: bool) -> dict:
         "kind": t.kind,
         "kind_fa": KINDS.get(t.kind, t.kind),
         "severity": t.severity,
+        "severity_fa": SEVERITY_LABELS.get(t.severity, t.severity),
         "title": t.title,
         "status": t.status,
+        "status_fa": STATUS_LABELS.get(t.status, t.status),
         "sender": member_ref(db, t.sender_type, t.sender_id),
+        "sender_label": member_label(db, t.sender_type, t.sender_id),
         "receiver": member_ref(db, t.receiver_type, t.receiver_id),
+        "receiver_label": member_label(db, t.receiver_type, t.receiver_id),
         "observed": REDACTED if redact else t.observed,
         "expected": REDACTED if redact else t.expected,
         "body": REDACTED if redact else t.body,
@@ -295,6 +313,7 @@ def ticket_view(db, t, human_viewer: bool) -> dict:
         "needs_human": t.is_sensitive,   # عامل باید بداند: دست نزن، انسان بیاید
         "reopen_count": t.reopen_count,
         "duplicate_of_id": t.duplicate_of_id,
+        "resolution_evidence": (t.resolution_evidence or "")[:500],
         "created_at": t.created_at.isoformat(sep=" ") if t.created_at else None,
         "updated_at": t.updated_at.isoformat(sep=" ") if t.updated_at else None,
     }
@@ -378,7 +397,7 @@ def create_ticket(db, sender: tuple, human_sender: bool, payload: dict):
                   .filter(Ticket.sender_type == sender[0], Ticket.sender_id == sender[1],
                           Ticket.receiver_type == receiver[0],
                           Ticket.receiver_id == receiver[1],
-                          Ticket.status.notin_(("closed",)))
+                          Ticket.status.notin_(OPEN_EXCLUDE))
                   .count())
     if open_count >= MAX_OPEN_PER_PAIR:
         raise TicketError("rate_limited",
@@ -453,6 +472,33 @@ def _is_party(t, actor: tuple, which: str) -> bool:
     return actor == (t.receiver_type, t.receiver_id)
 
 
+def open_counts(db, actor: tuple) -> dict:
+    """شمار صندوق باز فراخواننده — تک‌منبع شمارش برای نشان ناوبری/داشبورد
+    و قلاب پل (bridge.status). «باز» = هر وضعیت جز closed.
+    فقط شمارش؛ هیچ محتوایی بیرون نمی‌رود."""
+    from ..models import Ticket
+    q = db.query(Ticket).filter(Ticket.status.notin_(OPEN_EXCLUDE))
+    return {"inbox_open": q.filter(Ticket.receiver_type == actor[0],
+                                   Ticket.receiver_id == actor[1]).count(),
+            "sent_open": q.filter(Ticket.sender_type == actor[0],
+                                  Ticket.sender_id == actor[1]).count()}
+
+
+def allowed_moves(t, actor: tuple, is_admin: bool) -> set:
+    """گذارهای مجازِ الان برای این فراخواننده — تک‌منبع ماشین حالت؛
+    change_status و UI پنل هر دو از همین می‌خوانند تا نمایش هرگز با قاعدهٔ
+    واقعی یکی نشود. گذارِ خاص reopen≤۱ در change_status تصمیم می‌گیرد؛
+    دکمهٔ بازگشایی همیشه با همین مجوز نشان داده می‌شود."""
+    allowed: set = set()
+    if _is_party(t, actor, "receiver"):
+        allowed |= RECEIVER_MOVES.get(t.status, set())
+    if _is_party(t, actor, "sender"):
+        allowed |= SENDER_MOVES.get(t.status, set())
+    if is_admin and actor[0] == "user":
+        allowed |= ADMIN_MOVES.get(t.status, set())
+    return allowed
+
+
 def change_status(db, t, actor: tuple, human_actor: bool, is_admin: bool,
                   new_status: str, evidence: str = ""):
     """گذار وضعیت طبق ماشین حالت؛ خروجی: (تیکت، event). نقض = TicketError.
@@ -467,23 +513,14 @@ def change_status(db, t, actor: tuple, human_actor: bool, is_admin: bool,
 
     is_sender = _is_party(t, actor, "sender")
     is_receiver = _is_party(t, actor, "receiver")
-    if not (is_sender or is_receiver):
+    if not (is_sender or is_receiver) and not (
+            is_admin and actor[0] == "user"
+            and new_status in ADMIN_MOVES.get(t.status, set())):
         # ادمینِ غیرطرف فقط روی بن‌بست حق دارد — کمک بررسی، نه داوری
-        if is_admin and actor[0] == "user" and \
-                new_status in ADMIN_MOVES.get(t.status, set()):
-            pass
-        else:
-            raise TicketError("not_party", "این تیکت از آنِ شما نیست")
-
-    allowed: set = set()
-    if is_receiver:
-        allowed |= RECEIVER_MOVES.get(t.status, set())
-    if is_sender:
-        allowed |= SENDER_MOVES.get(t.status, set())
-    if is_admin and actor[0] == "user":
-        allowed |= ADMIN_MOVES.get(t.status, set())
+        raise TicketError("not_party", "این تیکت از آنِ شما نیست")
 
     old = t.status
+    allowed = allowed_moves(t, actor, is_admin)
 
     # گذار خاص — reopen فرستنده: سقف ۱؛ عبور از سقف = بن‌بست → escalated
     if is_sender and new_status == "open" and old in ("rejected", "resolved"):

@@ -358,5 +358,67 @@ with TestClient(app, follow_redirects=False) as ca, \
           ns.fn is pst.cmd_ticket_status and ns.id == 3 and ns.status == "ack"
           and ns.evidence is None)
 
+    print("— UI پنل (Cycle 3) — صندوق، جزئیات، فرم، گذار نقش‌محور —")
+    r = ca.get("/tickets")
+    check("صفحهٔ صندوق برای انسان رندر شد", r.status_code == 200
+          and "صندوق ورودی" in r.text and "تیکت جدید" in r.text, r.status_code)
+    check("پیوند ناوبری تیکت با نشان باز در صفحه هست",
+          ">تیکت‌ها" in r.text and "badge-warn" in r.text)
+    r = anon.get("/tickets")
+    check("بی‌احراز → ورود (303)", r.status_code == 303
+          and "/login" in r.headers.get("location", ""))
+    r = cc.get("/dashboard")
+    check("کارت «تیکت باز در صندوق» در داشبورد", "تیکت باز در صندوق" in r.text)
+    # تیکت میزبان→کلاینت (گیرندهٔ انسانی) برای آزمون گذار از فرم پنل
+    r = ca.post("/api/tickets", json=mk_payload("user:2", "تیکت میزبان به کلاینت برای UI"),
+                headers=AC(1, admin_csrf))
+    check("میزبان→کلاینت ساخته شد", r.status_code == 200, r.text[:120])
+    ui_tid = r.json()["ticket"]["id"]
+    r = cc.get(f"/tickets/{ui_tid}")
+    check("جزئیات برای گیرندهٔ انسانی رندر شد", r.status_code == 200
+          and "دریافت شد" in r.text, r.status_code)
+    r = cc.post(f"/tickets/{ui_tid}/status", data={"status": "ack", "csrf": client_csrf},
+                follow_redirects=False)
+    check("گذار ack از فرم پنل", r.status_code == 303
+          and f"/tickets/{ui_tid}?m=ticket_status_changed" in r.headers.get("location", ""),
+          r.headers.get("location", ""))
+    r = cc.get(f"/tickets/{ui_tid}")
+    check("وضعیت در جزئیات به‌روز شد", "دریافت‌شده" in r.text)
+    r = cc.post(f"/tickets/{ui_tid}/comment",
+                data={"body": "سلام؛ در بررسی است", "csrf": client_csrf},
+                follow_redirects=False)
+    check("کامنت از فرم پنل", r.status_code == 303
+          and "m=ticket_commented" in r.headers.get("location", ""))
+    r = cc.get(f"/tickets/{ui_tid}")
+    check("کامنت در دفتر رخدادها دیده می‌شود", "در بررسی است" in r.text)
+    r = cc.get(f"/tickets/{tid}")
+    check("غریبه در UI → بدون لو دادن وجود به صندوق برمی‌گردد",
+          r.status_code == 303 and "m=not_found" in r.headers.get("location", ""))
+    r = cc.post("/tickets/new", data={"to": "user:1", "kind": "bug", "severity": "بالا",
+                                      "title": "کلاینت به میزبان از فرم", "observed": "مشاهده",
+                                      "expected": "انتظار", "csrf": client_csrf},
+                follow_redirects=False)
+    check("فرم کلاینت→کاربر با مسیریابی رد شد", r.status_code == 200
+          and "مجاز نیست" in r.text and "کلاینت به میزبان از فرم" in r.text,
+          r.status_code)
+    r = ca.post("/tickets/new", data={"to": "user:2", "kind": "پیشنهاد", "severity": "کم",
+                                      "title": "تیکت از فرم پنل میزبان",
+                                      "observed": "مشاهدهٔ فرم پنل", "expected": "انتظار فرم پنل",
+                                      "csrf": admin_csrf},
+                follow_redirects=False)
+    check("فرم ساخت میزبان→کلاینت", r.status_code == 303
+          and "/tickets/" in r.headers.get("location", ""), r.headers.get("location", ""))
+    r = cc.post("/tickets/new", data={"to": "user:1", "kind": "bug", "title": "بدون csrf",
+                                      "observed": "x", "expected": "y"},
+                follow_redirects=False)
+    check("فرم بدون CSRF → m=csrf", r.status_code == 303
+          and "m=csrf" in r.headers.get("location", ""))
+    r = ca.get("/api/tickets/summary")
+    check("خلاصهٔ صندوق (API/ادمین)", r.status_code == 200
+          and r.json().get("ok") is True and r.json().get("sent_open") >= 1, r.text[:120])
+    r = cc.get("/api/tickets/summary")
+    check("خلاصهٔ صندوق برای کلاینت", r.status_code == 200
+          and r.json().get("inbox_open") >= 1)
+
 print(f"\nنتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

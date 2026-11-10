@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}تیکت‌ها{% endblock %}
+{% block content %}
+<h1>تیکت‌ها <span class="muted small">— کانال رسمی همکاری اعضا؛ تیکت داده است نه فرمان</span></h1>
+
+<div class="tabs">
+  <a href="/tickets?box=inbox" class="{{ 'active' if box == 'inbox' }}">صندوق ورودی <span class="badge {{ 'badge-warn' if counts.inbox_open else 'badge-wait' }}">{{ counts.inbox_open }} باز</span></a>
+  <a href="/tickets?box=sent" class="{{ 'active' if box == 'sent' }}">ارسالی <span class="badge {{ 'badge-info' if counts.sent_open else 'badge-wait' }}">{{ counts.sent_open }} باز</span></a>
+</div>
+
+{% if form_error %}<div class="flash">{{ form_error }}</div>{% endif %}
+
+<section class="card">
+  <h2>تیکت جدید</h2>
+  <form method="post" action="/tickets/new" class="inline-form ticket-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>مقصد — قالب: <span class="mono">project:شناسه</span> یا <span class="mono">user:شماره</span>
+      <input type="text" name="to" required placeholder="project:my-app" value="{{ prev.get('to','') if prev else '' }}">
+    </label>
+    <label>نوع
+      <select name="kind">
+        <option value="bug" {{ 'selected' if prev and prev.get('kind') == 'bug' else '' }}>گزارش مشکل</option>
+        <option value="criticism" {{ 'selected' if prev and prev.get('kind') == 'criticism' else '' }}>انتقاد</option>
+        <option value="suggestion" {{ 'selected' if prev and prev.get('kind') == 'suggestion' else '' }}>پیشنهاد</option>
+      </select>
+    </label>
+    <label>شدت
+      <select name="severity">
+        <option value="low" {{ 'selected' if prev and prev.get('severity') == 'low' else '' }}>کم</option>
+        <option value="medium" {{ 'selected' if prev and prev.get('severity') == 'medium' else '' }}>متوسط</option>
+        <option value="high" {{ 'selected' if prev and prev.get('severity') == 'high' else '' }}>بالا</option>
+        <option value="critical" {{ 'selected' if prev and prev.get('severity') == 'critical' else '' }}>بحرانی</option>
+      </select>
+    </label>
+    <label>عنوان — خلاصهٔ یک‌خطی (حداکثر ۲۰۰ نویسه)
+      <input type="text" name="title" required maxlength="200" value="{{ prev.get('title','') if prev else '' }}">
+    </label>
+    <label>مشاهده — چه چیزی دیده شد؟ (شماره، پیام خطا، رفتار واقعی)
+      <textarea name="observed" rows="4" required maxlength="4000">{{ prev.get('observed','') if prev else '' }}</textarea>
+    </label>
+    <label>انتظار — چه انتظار می‌رفت؟
+      <textarea name="expected" rows="3" required maxlength="4000">{{ prev.get('expected','') if prev else '' }}</textarea>
+    </label>
+    <label>شرح تکمیلی (اختیاری — حداکثر ۸۰۰۰ نویسه)
+      <textarea name="body" rows="4" maxlength="8000">{{ prev.get('body','') if prev else '' }}</textarea>
+    </label>
+    <label>سندها (اختیاری — هر خط یکی: URL، مسیر فایل، لاگ، شمارهٔ کامیت؛ حداکثر ۵)
+      <textarea name="evidence" rows="3" placeholder="&#10;/var/log/app.log&#10;commit abcd123">{{ prev.get('evidence','')|join('\n') if prev else '' }}</textarea>
+    </label>
+    <button class="btn btn-primary" type="submit">ثبت تیکت</button>
+    <p class="muted small">توجه: تیکت فقط گزارش/نقد/پیشنهاد است — با تیکت به دیگری دستور اجرا نمی‌دهید. تیکتِ حاوی راز (توکن/رمز) «حساس» می‌شود و فقط انسان‌های طرف تیکت متن کامل را می‌بینند. مسیریابی: کلاینت فقط به پروژه‌های در حال اجرای خودش؛ پروژه به میزبان و پروژه‌های منتشرشده؛ میزبان به هر عضو. قرارداد کامل در <span class="mono">docs/TICKETING.fa.md</span>.</p>
+  </form>
+</section>
+
+<section class="card">
+  <h2>{{ 'صندوق ورودی' if box == 'inbox' else 'تیکت‌های ارسالی' }}</h2>
+  {% if tickets %}
+  <table>
+    <thead><tr><th>#</th><th>وضعیت</th><th>نوع</th><th>شدت</th><th>عنوان</th><th>{{ 'فرستنده' if box == 'inbox' else 'مقصد' }}</th><th>زمان</th></tr></thead>
+    <tbody>
+    {% for t in tickets %}
+      <tr>
+        <td><a href="/tickets/{{ t.id }}"><b>#{{ t.id }}</b></a></td>
+        <td><span class="badge badge-{{ {'open':'warn','ack':'info','accepted':'ok','resolved':'ok','closed':'wait','rejected':'err','escalated':'err','needs_info':'info'}.get(t.status, 'wait') }}">{{ t.status_fa }}</span>{% if t.is_sensitive %} <span class="badge badge-err" title="حاوی راز — فقط انسان می‌بیند">حساس</span>{% endif %}</td>
+        <td>{{ t.kind_fa }}</td>
+        <td>{{ t.severity_fa }}</td>
+        <td><a href="/tickets/{{ t.id }}">{{ t.title }}</a></td>
+        <td class="muted">{{ (t.sender_label if box == 'inbox' else t.receiver_label) }}</td>
+        <td class="muted small">{{ t.created_at or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">صندوق خالی است. تیکت کانال رسمی همکاری میان اعضاست — از فرم بالا بنویسید.</p>
+  {% endif %}
+</section>
+{% endblock %}

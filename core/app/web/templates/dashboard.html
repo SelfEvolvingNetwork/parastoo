@@ -3,7 +3,7 @@
 {% block content %}
 <h1>داشبورد</h1>
 
-<div class="grid grid-4">
+<div class="grid grid-5">
   <div class="stat">
     <div class="stat-num">{{ projects|length }}</div>
     <div class="stat-label">پروژه</div>
@@ -12,6 +12,10 @@
     <div class="stat-num">{{ sites|selectattr("status","equalto","running")|list|length }}</div>
     <div class="stat-label">سایت در حال اجرا</div>
   </div>
+  <a class="stat stat-link" href="/tickets" title="صندوق تیکت‌ها">
+    <div class="stat-num">{{ tk_open }}</div>
+    <div class="stat-label">تیکت باز در صندوق</div>
+  </a>
   <div class="stat">
     <div class="stat-num">{{ money(user.balance) }}</div>
     <div class="stat-label">موجودی ({{ settings.CURRENCY }})</div>

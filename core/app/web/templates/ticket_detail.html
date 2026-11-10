@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}تیکت #{{ t.id }}{% endblock %}
+{% block content %}
+<p class="small"><a href="/tickets">→ بازگشت به صندوق تیکت‌ها</a></p>
+<h1>تیکت #{{ t.id }} — {{ t.title }}</h1>
+
+<p class="row tkt-meta">
+  <span class="badge badge-{{ {'open':'warn','ack':'info','accepted':'ok','resolved':'ok','closed':'wait','rejected':'err','escalated':'err','needs_info':'info'}.get(t.status, 'wait') }}">{{ t.status_fa }}</span>
+  <span class="badge badge-info">{{ t.kind_fa }}</span>
+  <span class="badge badge-{{ {'critical':'err','high':'err','medium':'warn','low':'wait'}.get(t.severity, 'wait') }}">شدت: {{ t.severity_fa }}</span>
+  {% if t.is_sensitive %}<span class="badge badge-err">حساس — حاوی راز؛ فقط انسان‌های طرف تیکت متن کامل را می‌بینند</span>{% endif %}
+</p>
+
+<div class="two-col">
+  <section class="card">
+    <h2>مشخصات</h2>
+    <table>
+      <tr><th>فرستنده</th><td>{{ t.sender_label }} <span class="mono muted small">{{ t.sender }}</span></td></tr>
+      <tr><th>گیرنده</th><td>{{ t.receiver_label }} <span class="mono muted small">{{ t.receiver }}</span></td></tr>
+      <tr><th>ایجاد</th><td>{{ t.created_at or '—' }}</td></tr>
+      <tr><th>آخرین به‌روزرسانی</th><td>{{ t.updated_at or '—' }}</td></tr>
+      <tr><th>بازگشایی‌ها</th><td>{{ t.reopen_count }}</td></tr>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>مشاهده و انتظار</h2>
+    <h3 class="small muted">چه دیده شد</h3>
+    <p class="tkt-text">{{ t.observed }}</p>
+    <h3 class="small muted">چه انتظار می‌رفت</h3>
+    <p class="tkt-text">{{ t.expected }}</p>
+    {% if t.body %}<h3 class="small muted">شرح تکمیلی</h3><p class="tkt-text">{{ t.body }}</p>{% endif %}
+    {% if t.evidence %}
+    <h3 class="small muted">سندها</h3>
+    <ul>{% for e in t.evidence %}<li class="mono small">{{ e }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if t.resolution_evidence %}<h3 class="small muted">سندِ رفع</h3><p class="mono small">{{ t.resolution_evidence }}</p>{% endif %}
+  </section>
+</div>
+
+{% if allowed %}
+<section class="card">
+  <h2>تغییر وضعیت — گذارهای مجازِ شما</h2>
+  {% for s in allowed %}
+  <form method="post" action="/tickets/{{ t.id }}/status" class="inline-form row tkt-move">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="status" value="{{ s }}">
+    {% if s == 'resolved' %}
+    <input type="text" name="evidence" required class="mono" size="42" placeholder="سند: شناسهٔ کامیت استقرار (الزامی) مثلاً abcd123">
+    {% endif %}
+    <button class="btn {{ 'btn-primary' if s in ('ack','accepted','resolved') else 'btn-ghost' }}" type="submit">
+      {{ {'ack':'دریافت شد','accepted':'پذیرش','rejected':'رد','needs_info':'نیازمند توضیح','resolved':'حل‌شده (با سند)','open':'بازگشایی','closed':'بستن نتیجه','escalated':'—'}[s] }}
+    </button>
+  </form>
+  {% endfor %}
+  <p class="muted small">قاعده: دریافت‌کننده ack/پذیرش/رد/نیازمند‌توضیح می‌دهد؛ حل‌شدن فقط با سندِ کامیت استقرار؛ فرستنده بازگشایی (حداکثر یک‌بار) یا پذیرش نتیجه دارد؛ بن‌بست فقط با ادمین انسانی بسته می‌شود.</p>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>دفتر رخدادها</h2>
+  {% if events %}
+    {% for ev in events %}
+    <div class="tkt-event">
+      <b>{{ {'create':'ایجاد','comment':'کامنت','status':'گذار وضعیت','reopen':'بازگشایی','escalate':'بنی‌سرگشت'}.get(ev.kind, ev.kind) }}</b>
+      <span class="muted small">— {{ ev.actor }} · {{ ev.created_at or '—' }}</span>
+      {% if ev.kind == 'comment' and ev.data.get('body') %}
+        <p class="tkt-text">{{ ev.data['body'] }}</p>
+      {% elif ev.kind in ('status','reopen','escalate') and ev.data.get('from') %}
+        <p class="muted small">{{ ev.data['from'] }} → {{ ev.data['to'] }}{% if ev.data.get('evidence') %} — سند: <span class="mono">{{ ev.data['evidence'] }}</span>{% endif %}</p>
+      {% elif ev.kind == 'create' %}
+        <p class="muted small">{{ ev.data.get('kind','') }} · شدت {{ ev.data.get('severity','') }}{% if ev.data.get('sensitive') %} · حساس{% endif %}</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+  <p class="muted">رخدایی ثبت نشده است.</p>
+  {% endif %}
+
+  {% if t.status not in ('closed',) %}
+  <form method="post" action="/tickets/{{ t.id }}/comment" class="inline-form ticket-form mt">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>کامنت جدید (بدون تغییر وضعیت — حداکثر ۸۰۰۰ نویسه)
+      <textarea name="body" rows="3" required maxlength="8000"></textarea>
+    </label>
+    <button class="btn btn-primary" type="submit">افزودن کامنت</button>
+  </form>
+  {% else %}
+  <p class="muted small">تیکت بسته شده است — برای ادامه، فرستنده می‌تواند از دکمهٔ «بازگشایی» استفاده کند (تا یک‌بار).</p>
+  {% endif %}
+</section>
+{% endblock %}
