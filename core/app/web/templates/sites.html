@@ -3,7 +3,9 @@
 {% block content %}
 <div class="card-head">
   <h1>سایت‌های من</h1>
-  <div class="muted">هزینه جاری: {{ money(monthly) }} {{ settings.CURRENCY }}/ماه (کسر ساعتی به ازای هر سرویس)</div>
+  {% if monthly %}
+  <div class="muted">هزینهٔ ماهانهٔ جاری: {{ money(monthly) }} {{ settings.CURRENCY }}/ماه — به‌تدریج از کیف پول شما کسر می‌شود</div>
+  {% endif %}
 </div>
 
 {% if items %}

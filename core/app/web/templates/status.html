@@ -15,9 +15,13 @@
     {% endif %}
   </div>
   <div class="card">
-    <h3>۷ روز گذشته</h3>
+    <h3>{{ '۷ روز گذشته' if st.full_week else 'سابقهٔ ثبت‌شده' }}</h3>
     <p class="muted small">{{ st.green }} سبز از {{ st.total }} نمونه</p>
+    {% if st.full_week %}
     <p>{% if st.pct is not none %}<span class="badge {{ 'badge-ok' if st.pct >= 99 else 'badge-warn' }}">{{ st.pct }}٪</span>{% else %}—{% endif %}</p>
+    {% else %}
+    <p class="muted small">تپش‌نگار تازه راه‌اندازی شده — ثبت از {{ st.since.strftime('%Y-%m-%d %H:%M') if st.since else '—' }}. با گذشت روزها این کارت «۷ روز گذشته» را نشان می‌دهد؛ اعداد همین‌جا رشد می‌کنند، نه ادعا.</p>
+    {% endif %}
   </div>
   <div class="card">
     <h3>زنجیرهٔ سبز پیوسته</h3>

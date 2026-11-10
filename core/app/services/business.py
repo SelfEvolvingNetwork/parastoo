@@ -156,6 +156,12 @@ def status_summary(db: Session) -> dict:
             streak_h = round((db_now() - max(anchors)).total_seconds() / 3600, 1)
     rows = (db.query(Heartbeat)
             .order_by(Heartbeat.id.desc()).limit(20).all())
+    # صداقت نمایش: اگر سابقهٔ ثبت هنوز به ۷ روز نرسیده، کارت نباید «۷ روز گذشته»
+    # را نشان دهد — ۱۴ نمونهٔ ۲ ساعته با این برچسب «شکسته یا جعلی» دیده می‌شود
+    # (ممیزی گرافیکی 2026-11-10 به فرمان مشاور).
+    full_week = first is not None and first.created_at <= week_ago
     return {"last": last, "total": total, "green": green,
             "pct": round(100 * green / total, 1) if total else None,
-            "streak_h": streak_h, "rows": rows}
+            "streak_h": streak_h, "rows": rows,
+            "since": first.created_at if first else None,
+            "full_week": full_week}

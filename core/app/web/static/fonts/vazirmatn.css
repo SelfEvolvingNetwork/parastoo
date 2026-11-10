@@ -1,0 +1,26 @@
+/* وزیرمتن — خودمیزبان (بدون وابستگی به CDN خارجی).
+   پیش‌تر از cdn.jsdelivr.net می‌آمد؛ در ایران دسترس‌پذیری CDN بیرونی
+   متناوب است و اگر بارگذاری نمی‌شد، کل سایت به Tahoma برمی‌گشت —
+   اعتمادِ بصریِ مشتری نباید به یک CDN بیرونی گروگان باشد
+   (ممیزی گرافیکی 2026-11-10 به فرمان مشاور). */
+@font-face {
+  font-family: Vazirmatn;
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url(/static/fonts/Vazirmatn-Regular.woff2) format("woff2");
+}
+@font-face {
+  font-family: Vazirmatn;
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url(/static/fonts/Vazirmatn-Bold.woff2) format("woff2");
+}
+@font-face {
+  font-family: Vazirmatn;
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+  src: url(/static/fonts/Vazirmatn-ExtraBold.woff2) format("woff2");
+}
