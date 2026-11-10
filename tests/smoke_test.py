@@ -580,6 +580,48 @@ with TestClient(app, follow_redirects=False) as c:
     _cfg = open(f"{_c1}/.git/config", encoding="utf-8").read()
     check("پس از clone، توکن از .git/config پاک می‌شود", "SECRET" not in _cfg)
 
+    # pull (درس تیکت ۱ — پیشنهاد شمارهٔ ۱ عامل ppp): تصمیم‌ساز خالص + جریان واقعی گیت
+    from app.web.static.pst import _pull_plan as _pp
+
+    check("pull: هم‌گام → synced", _pp(_old, _old, cwd=_c1) == "synced")
+    check("pull: محلی عقب → ff", _pp(_old, _new, cwd=_c1) == "ff")
+    check("pull: محلی جلو → ahead", _pp(_new, _old, cwd=_c1) == "ahead")
+    check("pull: ریموت بی‌کامیت → empty", _pp(_new, "", cwd=_c1) == "empty")
+    _sub.run(["git", "-C", _c1, "checkout", "-q", "--orphan", "orphan"],
+             capture_output=True)
+    _sub.run(["git", "-C", _c1, "commit", "--allow-empty", "-q", "-m", "o1"],
+             capture_output=True)
+    _orph = _sub.run(["git", "-C", _c1, "rev-parse", "HEAD"],
+                     capture_output=True, text=True).stdout.strip()
+    _sub.run(["git", "-C", _c1, "checkout", "-q", "main"], capture_output=True)
+    check("pull: بی‌شجره → diverged", _orph != _new and _pp(_orph, _new, cwd=_c1) == "diverged")
+    _up = f"{_tmp}/up"
+    _sub.run(["git", "init", "-q", _up], capture_output=True)
+    _sub.run(["git", "-C", _up, "commit", "--allow-empty", "-q", "-m", "u1"],
+             capture_output=True)
+    _cl = f"{_tmp}/upc"
+    _sub.run(["git", "clone", "-q", _up, _cl], capture_output=True)
+    _sub.run(["git", "-C", _up, "commit", "--allow-empty", "-q", "-m", "u2"],
+             capture_output=True)
+    _u2 = _sub.run(["git", "-C", _up, "rev-parse", "HEAD"],
+                   capture_output=True, text=True).stdout.strip()
+    _ub = _sub.run(["git", "-C", _up, "rev-parse", "--abbrev-ref", "HEAD"],
+                   capture_output=True, text=True).stdout.strip()
+    _fr = _sub.run(["git", "-C", _cl, "fetch", _up, f"refs/heads/{_ub}"],
+                   capture_output=True, text=True)
+    _fh = _sub.run(["git", "-C", _cl, "rev-parse", "FETCH_HEAD"],
+                   capture_output=True, text=True).stdout.strip()
+    _hc = _sub.run(["git", "-C", _cl, "rev-parse", "HEAD"],
+                   capture_output=True, text=True).stdout.strip()
+    check("pull: fetch واقعی FETCH_HEAD = سر ریموت",
+          _fr.returncode == 0 and _fh == _u2 and _pp(_hc, _fh, cwd=_cl) == "ff")
+    _mg = _sub.run(["git", "-C", _cl, "merge", "--ff-only", "FETCH_HEAD"],
+                   capture_output=True, text=True)
+    _hc2 = _sub.run(["git", "-C", _cl, "rev-parse", "HEAD"],
+                    capture_output=True, text=True).stdout.strip()
+    check("pull: merge --ff-only سبز و HEAD = ریموت",
+          _mg.returncode == 0 and _hc2 == _u2)
+
 
     # ابطال از پنل + کاسکاد حذف پروژه
     db = SessionLocal()

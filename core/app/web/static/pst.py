@@ -16,6 +16,7 @@ push کد (git)، وضعیت و لاگ بیلدها، لاگ اجرای سروی
   log [ID] [--tail N]        لاگ بیلد (پیش‌فرض: آخرین بیلد)
   build                      بیلد/استقرار مجدد آخرین کامیت
   push [REF]                 پوش شاخهٔ جاری به مخزن پروژه (بیلد خودکار)
+  pull                       همگامی کلون محلی با مخزن پروژه (ff-only امن، بدون اتکا به origin)
   clone [DIR]                کلون مخزن پروژه از طریق پل
   logs [--svc NAME] [--tail N]   لاگ اجرای کانتینر سرویس
   exec [--svc NAME] [--timeout S] -- CMD...   اجرای دستور داخل کانتینر
@@ -226,7 +227,7 @@ def cmd_push(a):
         print("پوش رد شد: مخزنِ جاری با مخزن پروژه هم‌خوان نیست.", file=sys.stderr)
         print("  یا از پوشهٔ والدِ کلون اجرا کرده‌اید (HEADِ مخزن دیگری پوش می‌شد)،", file=sys.stderr)
         print("  یا کلون از main عقب است. داخل کلون پروژه بروید و در صورت نیاز:", file=sys.stderr)
-        print("  git pull --ff-only  و دوباره pst push", file=sys.stderr)
+        print("  python3 pst.py pull  و دوباره pst push", file=sys.stderr)
         raise SystemExit(2)
     ref = a.ref or f"HEAD:refs/heads/{branch}"
     git_url = f"{url}/bridge/git/{_slug()}.git"
@@ -244,6 +245,84 @@ def _slug():
     if st != 200:
         fail(st, payload)
     return payload["project"]["slug"]
+
+
+def _pull_plan(head: str, remote: str, cwd=None) -> str:
+    """تصمیم pull از روی دو sha — تابع خالص برای تست. خروجی:
+    synced (هم‌گام) | ff (محلی عقب — پیش‌فرض‌شدنی) | ahead (محلی جلو — pull ندارد)
+    | diverged (واگرا — تصمیم با عامل) | empty (شاخهٔ ریموت هنوز کامیتی ندارد).
+    شجره‌سازی در مخزن cwd (پیش‌فرض: پوشهٔ جاری — همان کلون عامل)."""
+    if not head or not remote:
+        return "empty"
+    if head == remote:
+        return "synced"
+    if _is_ancestor(head, remote, cwd):
+        return "ff"
+    if _is_ancestor(remote, head, cwd):
+        return "ahead"
+    return "diverged"
+
+
+def _is_ancestor(a: str, b: str, cwd=None) -> bool:
+    """آیا a جدِ b است؟ در مخزن cwd (پیش‌فرض: پوشهٔ جاری عامل)"""
+    chk = subprocess.run(["git", "merge-base", "--is-ancestor", a, b],
+                         capture_output=True, timeout=15, cwd=cwd)
+    return chk.returncode == 0
+
+
+def cmd_pull(a):
+    """همگامی کلون با مخزن پروژه — همان درسِ پیام خطای push («git pull --ff-only»)
+    ولی یک‌فرمانه: fetch با توکن گذرا (بدون نوشتن در .git/config و بدون اتکا به
+    ریموت origin)، تأیید sha از تصمیم‌ساز خالص، و merge فقط در حالت ff امن."""
+    url, token = load_conf()
+    branch = ""
+    try:
+        branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                                capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception:
+        pass
+    if not branch or branch == "HEAD":
+        print("داخل یک مخزن گیت (با شاخه) نیستید — اول: python3 pst.py clone .", file=sys.stderr)
+        raise SystemExit(2)
+    git_url = f"{url}/bridge/git/{_slug()}.git"
+    authed = git_url.replace("://", f"://pst:{token}@", 1)
+    print(f"دریافت {branch} از پل پروژه …")
+    r = subprocess.run(["git", "fetch", authed, f"refs/heads/{branch}"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        if r.stderr:
+            sys.stderr.write(r.stderr)
+        print("دریافت از پل رد شد — شاخهٔ جاری در مخزن پروژه هست؟", file=sys.stderr)
+        raise SystemExit(r.returncode)
+
+    def _sha(ref):
+        return subprocess.run(["git", "rev-parse", ref], capture_output=True,
+                              text=True, timeout=10).stdout.strip()
+
+    head, remote = _sha("HEAD"), _sha("FETCH_HEAD")
+    plan = _pull_plan(head, remote)
+    if plan == "synced":
+        print(f"هم‌گام است ✓ {head[:7]} ({branch})")
+        return
+    if plan == "empty":
+        print("شاخهٔ ریموت هنوز کامیتی ندارد — چیزی برای pull نیست.")
+        return
+    if plan == "ahead":
+        print(f"محلی جلوتر است ({head[:7]}) — چیزی برای pull نیست؛ انتقال: python3 pst.py push")
+        return
+    if plan == "ff":
+        m = subprocess.run(["git", "merge", "--ff-only", "FETCH_HEAD"],
+                           capture_output=True, text=True)
+        if m.returncode != 0:
+            if m.stderr:
+                sys.stderr.write(m.stderr)
+            raise SystemExit(m.returncode)
+        print(f"همگام شد ✓ {head[:7]} → {remote[:7]} ({branch})")
+        print("یادآوری: این فقط کلون محلی را تازه کرد — بیلد/انتشار با push یا pst build است.")
+        return
+    print("شاخهٔ محلی با مخزن پروژه واگرا شده — pull خودکار انجام نشد.", file=sys.stderr)
+    print("  تصمیم با شما: git merge FETCH_HEAD یا git rebase FETCH_HEAD (یا اول stash).", file=sys.stderr)
+    raise SystemExit(2)
 
 
 def _clean_origin(dest: str, clean_url: str) -> None:
@@ -455,6 +534,9 @@ def build_parser():
     p = sub.add_parser("clone", help="کلون مخزن پروژه")
     p.add_argument("dir", nargs="?")
     p.set_defaults(fn=cmd_clone)
+
+    p = sub.add_parser("pull", help="همگامی کلون با مخزن پروژه (ff-only امن)")
+    p.set_defaults(fn=cmd_pull)
 
     p = sub.add_parser("git-url", help="ریموت گیت")
     p.add_argument("--mask", action="store_true", help="بدون توکن در خروجی")
