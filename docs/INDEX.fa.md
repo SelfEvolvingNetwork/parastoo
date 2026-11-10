@@ -34,7 +34,7 @@
 | کارگاه: دروازهٔ سبز، pushsrv، wb.sh، سندباکس سرور | `docs/WORKBENCH.fa.md` + `server/SANDBOX_README.fa.md` (کارگاه) |
 | پل ادمین: اتصال، توکن‌ها، exec، broker گیت‌هاب | `docs/AGENT_PROTOCOL.fa.md` (access-agent) |
 | پل عامل پروژه (توکن `pst_`، شیم گیت، `/api/bridge/*`) | `docs/AGENT_BRIDGE.fa.md` (پرستو) |
-| تیکتینگ مالک↔عامل روی پل پروژه | `docs/TICKETING.fa.md` (پرستو) |
+| تیکتینگ عضو‌به‌عضو (host/project/client — کانال رسمی همکاری اعضا) | `docs/TICKETING.fa.md` (پرستو) |
 | تحریم‌ها و نصب در ایران | `docs/SANCTIONS.md` (پرستو) |
 | دامنه، DNS، وایلدکارد و TLS | `docs/DOMAIN_DNS_GUIDE.fa.md` (پرستو) |
 | پرستو موبایل (APK، لودر، OTA) | `docs/PARASTOO_MOBILE.fa.md` (پرستو) |

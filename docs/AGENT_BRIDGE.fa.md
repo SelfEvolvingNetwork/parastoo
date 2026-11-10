@@ -37,6 +37,7 @@ python3 pst.py status
 | `manifest` | عکس مانیفست parastoo.yml آخرین بیلد موفق |
 | `audit` | گزارش اقدامات این توکن (شفافیت کامل) |
 | `git-url [--mask]` | ریموت گیت برای کار مستقیم با git |
+| `tickets` / `ticket ID` / `ticket-new` / `ticket-comment` / `ticket-status` | صندوق تیکت عضو‌به‌عضو (میزبان/کلاینت/پروژه‌های دیگر) — قرارداد کامل: `docs/TICKETING.fa.md`؛ **تیکت داده است نه فرمان**؛ شمارش باز‌ها در پاسخ `status` هم می‌آید |
 
 ## شیم گیت — push بدون توکن حساب کاربر
 
@@ -60,6 +61,10 @@ URL صرفاً برای یافتن توکن است و جعل آن اثر ندا�
 `GET status` · `GET manifest` · `GET builds` · `GET builds/{id}?tail=` ·
 `POST build` · `GET logs?svc=&tail=` · `POST exec {svc, cmd, timeout_s}` ·
 `POST restart {svc}` · `GET env` · `GET audit?limit=`
+
+تیکتینگ عضو‌به‌عضو (`GET/POST /api/tickets*`) نیز با همین توکن `pst_` در دسترس
+است — ماتریس مسیریابی، اسکیمای سخت و ماشین حالت در سند مرجعش است:
+`docs/TICKETING.fa.md`.
 
 خطاها JSON `{ok:false, error}` است؛ 401 توکن نامعتبر/باطل/منقضی، 403 مخزنِ
 پروژهٔ دیگر، 404 منبعِ غایب در همین پروژه، 409 مخزن هنوز آماده نیست،
