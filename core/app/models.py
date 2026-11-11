@@ -305,6 +305,23 @@ class Setting(Base):
     value: Mapped[str] = mapped_column(Text, default="")
 
 
+class PasswordResetToken(Base):
+    """توکن یادآوری رمز (v0.5.23) — خام فقط در ایمیل می‌آید؛ اینجا فقط هش.
+
+    یک‌بارمصرف، ۶۰ دقیقه اعتبار؛ منطق تک‌منبع در services/password_reset.py.
+    request_ip فقط برای ممیزی مالک است، نه تصمیم (وصیت ۹ — امنیت=ریل‌گذاری).
+    """
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)  # sha256 خام
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
+    request_ip: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now, index=True)
+
+
 class Heartbeat(Base):
     """تپش‌نگار پایداری (v0.5.19) — هر ۱۰ دقیقه یک ردیف صادقانه.
 

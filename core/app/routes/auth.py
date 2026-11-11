@@ -15,6 +15,8 @@ from ..deps import (clear_session, ctx, get_current_user, redirect, render,
 from ..db import get_db
 from ..models import User
 from ..security import hash_password, verify_password
+from ..services import email as mailer
+from ..services import password_reset as prs
 from ..validation import valid_email
 
 router = APIRouter()
@@ -108,7 +110,102 @@ def register_submit(
         db.rollback()
     resp = redirect("/?m=reg_ok")
     set_session(resp, user.id)
+    # نامهٔ خوش‌آمد — best-effort؛ شکست ارسال هرگز ثبت‌نام را نمی‌شکند
+    mailer.send_email(
+        user.email, "به پرستو خوش آمدید",
+        "سلام،\n\nحساب شما در پرستو ساخته شد.\n"
+        f"آدرس ورود به پنل: {_panel_url()}\n"
+        f"ایمیل: {user.email}\n"
+        "اگر شما این حساب را نساخته‌اید، این نامه را نادیده بگیرید.\n\n— پرستو")
     return resp
+
+
+# ---------- یادآوری رمز عبور (ایمیل بازنشانی — v0.5.23) ----------
+
+def _panel_url() -> str:
+    scheme = "https" if settings.TLS_ENABLED else "http"
+    return f"{scheme}://{settings.PANEL_DOMAIN}"
+
+
+def _reset_link(token: str) -> str:
+    return f"{_panel_url()}/reset-password?token={token}"
+
+
+@router.get("/forgot-password")
+def forgot_password_page(
+    request: Request,
+    user: User | None = Depends(get_current_user),
+):
+    if user:
+        return redirect("/")
+    return render("forgot_password.html", ctx(request, None))
+
+
+@router.post("/forgot-password")
+def forgot_password_submit(
+    request: Request,
+    email: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """پاسخ همیشه یکسان است — وجود/نبود حساب و محدودیت نرخ لو نمی‌رود.
+    رمز هرگز ایمیل نمی‌شود؛ فقط لینک بازنشانی یک‌بارمصرف (وصیت ۹)."""
+    email = (email or "").strip().lower()
+    if valid_email(email):
+        user = (db.query(User)
+                .filter(User.email == email, User.is_active == True)  # noqa: E712
+                .first())
+        if user:
+            ip = _client_ip(request)
+            raw = prs.issue(db, user, ip)
+            if raw:
+                body = (
+                    "سلام،\n\n"
+                    "درخواست بازنشانی رمز عبور حساب پرستو شما ثبت شد.\n"
+                    "لینک بازنشانی (۶۰ دقیقه اعتبار دارد):\n"
+                    + _reset_link(raw) + "\n\n"
+                    "اگر شما این درخواست را نداده‌اید، این نامه را نادیده "
+                    "بگیرید — رمز شما تغییری نمی‌کند.\n\n— پرستو"
+                )
+                mailer.send_email(user.email, "بازنشانی رمز عبور پرستو", body)
+    return redirect("/forgot-password", m="forgot_sent")
+
+
+@router.get("/reset-password")
+def reset_password_page(
+    request: Request,
+    token: str = "",
+    user: User | None = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if user:
+        return redirect("/")
+    if not token or not prs.peek(db, token):
+        return redirect("/forgot-password", m="reset_bad_token")
+    return render("reset_password.html", ctx(request, None, token=token))
+
+
+@router.post("/reset-password")
+def reset_password_submit(
+    token: str = Form(""),
+    password: str = Form(""),
+    password2: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """اول اعتبارسنجی رمز، بعد مصرف توکن — غلط تایپی نباید لینک را بسوزاند."""
+    if len(password) < 6:
+        return redirect(f"/reset-password?token={token}", m="pwd_short")
+    if password != password2:
+        return redirect(f"/reset-password?token={token}", m="pwd_mismatch")
+    user = prs.consume(db, token)
+    if user is None:
+        return redirect("/forgot-password", m="reset_bad_token")
+    user.password_hash = hash_password(password)
+    db.commit()
+    mailer.send_email(user.email, "رمز عبور پرستو تغییر کرد",
+                      "سلام،\n\nرمز عبور حساب پرستو شما با لینک بازنشانی "
+                      "تغییر کرد.\nاگر شما این کار را انجام نداده‌اید، "
+                      "فوراً با مدیر تماس بگیرید.\n\n— پرستو")
+    return redirect("/login", m="password_reset_ok")
 
 
 # ---------- ورود / خروج ----------

@@ -1877,6 +1877,116 @@ with TestClient(app, follow_redirects=False) as c2:
     finally:
         db.close()
 
+    print("— ایمیل و یادآوری رمز (v0.5.23) —")
+    import hashlib  # noqa: E402
+    import json as _json  # noqa: E402
+    import re as _re  # noqa: E402
+
+    from app.models import PasswordResetToken  # noqa: E402
+    from app.services import email as mailer  # noqa: E402
+
+    check("پشتیبان ایمیل بدون SMTP = file", mailer.backend() == "file")
+    outbox = Path("/tmp/parastoo-smoke-audit/mail/outbox.jsonl")
+    if outbox.exists():
+        outbox.unlink()
+
+    r = c.post("/register", data={"email": "mailtest@test.ir", "password": "secret1",
+                                  "name": "نامه"}, follow_redirects=False)
+    check("ثبت‌نام کاربر تازه (برای نامهٔ خوش‌آمد)", r.status_code == 303)
+    rows = ([] if not outbox.exists() else
+            [_json.loads(x) for x in outbox.read_text(encoding="utf-8").splitlines()])
+    check("نامهٔ خوش‌آمد ثبت‌نام به صندوق رفت",
+          any("خوش آمدید" in x.get("subject", "") for x in rows))
+    c.get("/logout")
+
+    r = c.get("/login")
+    check("لینک فراموشی رمز در صفحهٔ ورود", r.status_code == 200 and "/forgot-password" in r.text)
+    r = c.get("/forgot-password")
+    check("صفحهٔ فراموشی رمز باز می‌شود", r.status_code == 200 and "بازنشانی" in r.text)
+    r = c.post("/forgot-password", data={"email": "ghost@test.ir"}, follow_redirects=False)
+    check("ایمیل ناشناس → پاسخ یکسان (بدون افشا)",
+          r.status_code == 303 and "forgot_sent" in r.headers["location"])
+    n_out = len(outbox.read_text(encoding="utf-8").splitlines()) if outbox.exists() else 0
+    r = c.post("/forgot-password", data={"email": "not-an-email"}, follow_redirects=False)
+    check("ایمیل قالب‌نادرست → همان پاسخ یکسان",
+          r.status_code == 303 and "forgot_sent" in r.headers["location"])
+    n_out2 = len(outbox.read_text(encoding="utf-8").splitlines()) if outbox.exists() else 0
+    check("برای ایمیل ناشناس/نادرست نامه‌ای افزوده نشد", n_out2 == n_out)
+
+    r = c.post("/forgot-password", data={"email": "ali@test.ir"}, follow_redirects=False)
+    check("درخواست یادآوری → forgot_sent",
+          r.status_code == 303 and "forgot_sent" in r.headers["location"])
+    rows = ([] if not outbox.exists() else
+            [_json.loads(x) for x in outbox.read_text(encoding="utf-8").splitlines()])
+    reset_mails = [x for x in rows if "بازنشانی رمز" in x.get("subject", "")]
+    check("نامهٔ بازنشانی به صندوق فایل رفت", len(reset_mails) == 1)
+    check("نشانی مقصد نامه درست است", reset_mails and reset_mails[0]["to"] == "ali@test.ir")
+    m = _re.search(r"token=([A-Za-z0-9_\-]+)", reset_mails[0]["body"]) if reset_mails else None
+    check("لینک با توکن در متن نامه هست", bool(m))
+    tok = m.group(1) if m else ""
+
+    db = SessionLocal()
+    try:
+        ali = db.query(User).filter(User.email == "ali@test.ir").first()
+        row = (db.query(PasswordResetToken)
+               .filter(PasswordResetToken.user_id == ali.id).first())
+        check("توکن خام ذخیره نشده (فقط هش)", row is not None and row.token_hash != tok)
+        check("هش ذخیره‌شده = sha256 توکن خام",
+              row is not None and hashlib.sha256(tok.encode()).hexdigest() == row.token_hash)
+        n_rows = db.query(PasswordResetToken).count()
+    finally:
+        db.close()
+
+    r = c.post("/forgot-password", data={"email": "ali@test.ir"}, follow_redirects=False)
+    check("درخواست دوبارهٔ زودهنگام → همان پاسخ",
+          r.status_code == 303 and "forgot_sent" in r.headers["location"])
+    rows = [_json.loads(x) for x in outbox.read_text(encoding="utf-8").splitlines()]
+    check("کول‌داون: نامهٔ دوم نرفت",
+          len([x for x in rows if "بازنشانی رمز" in x.get("subject", "")]) == 1)
+    db = SessionLocal()
+    try:
+        check("کول‌داون: ردیف توکن تازه‌ای ساخته نشد",
+              db.query(PasswordResetToken).count() == n_rows)
+    finally:
+        db.close()
+
+    r = c.get(f"/reset-password?token={tok}")
+    check("فرم بازنشانی با توکن معتبر", r.status_code == 200 and "بازنشانی" in r.text)
+    r = c.get("/reset-password?token=bogus")
+    check("توکن بیگانه → reset_bad_token",
+          r.status_code == 303 and "reset_bad_token" in r.headers["location"])
+    r = c.post("/reset-password", data={"token": tok, "password": "abc", "password2": "abc"},
+               follow_redirects=False)
+    check("رمز کوتاه → pwd_short", r.status_code == 303 and "pwd_short" in r.headers["location"])
+    r = c.post("/reset-password", data={"token": tok, "password": "newpass1", "password2": "newpass2"},
+               follow_redirects=False)
+    check("عدم هم‌خوانی → pwd_mismatch",
+          r.status_code == 303 and "pwd_mismatch" in r.headers["location"])
+    r = c.post("/reset-password", data={"token": tok, "password": "newpass1", "password2": "newpass1"},
+               follow_redirects=False)
+    check("بازنشانی موفق → ورود",
+          r.status_code == 303 and "password_reset_ok" in r.headers["location"])
+    r = c.post("/login", data={"email": "ali@test.ir", "password": "secret1"}, follow_redirects=False)
+    check("رمز کهنه دیگر کار نمی‌کند",
+          r.status_code == 303 and "bad_login" in r.headers["location"])
+    r = c.post("/login", data={"email": "ali@test.ir", "password": "newpass1"}, follow_redirects=False)
+    check("رمز تازه کار می‌کند", r.status_code == 303 and "parastoo_session" in r.cookies)
+    c.get("/logout")
+    r = c.get(f"/reset-password?token={tok}")
+    check("توکن مصرف‌شده دیگر فرم نمی‌دهد",
+          r.status_code == 303 and "reset_bad_token" in r.headers["location"])
+    db = SessionLocal()
+    try:
+        ali = db.query(User).filter(User.email == "ali@test.ir").first()
+        row = (db.query(PasswordResetToken)
+               .filter(PasswordResetToken.user_id == ali.id).first())
+        check("ردیف توکن مصرف‌شده علامت خورد", row is not None and row.used)
+    finally:
+        db.close()
+    rows = [_json.loads(x) for x in outbox.read_text(encoding="utf-8").splitlines()]
+    check("نامهٔ اطلاع تغییر رمز هم رفت",
+          len([x for x in rows if "تغییر کرد" in x.get("subject", "")]) == 1)
+
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

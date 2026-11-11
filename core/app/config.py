@@ -9,7 +9,7 @@ def _bool(name: str, default: str = "false") -> bool:
 class Settings:
     # --- پایه ---
     APP_NAME: str = "پرستو"
-    VERSION: str = "0.5.22"
+    VERSION: str = "0.5.23"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me")
 
     # --- دیتابیس ---
@@ -69,6 +69,18 @@ class Settings:
     DOCKER_SOCK: str = os.environ.get("DOCKER_SOCK", "unix:///var/run/docker.sock")
     APPS_NETWORK: str = os.environ.get("APPS_NETWORK", "parastoo-apps")
     DATA_DIR: str = os.environ.get("DATA_DIR", "/data")
+
+    # --- ایمیل خروجی (v0.5.23): نامه‌های حساب — یادآوری رمز، خوش‌آمد، اطلاع تغییر رمز ---
+    # SMTP خارجی پیشنهادی است؛ PARASTOO_SMTP_HOST خالی = پشتیبان فایل:
+    # نامه‌ها در DATA_DIR/mail/outbox.jsonl ثبت می‌شوند تا جریان یادآوری رمز
+    # بدون SMTP هم کامل و آزمایش‌پذیر باشد (اتصال SMTP فقط با env — قرارداد §M2).
+    SMTP_HOST: str = os.environ.get("PARASTOO_SMTP_HOST", "").strip()
+    SMTP_PORT: int = int(os.environ.get("PARASTOO_SMTP_PORT", "587"))
+    SMTP_USER: str = os.environ.get("PARASTOO_SMTP_USER", "").strip()
+    SMTP_PASS: str = os.environ.get("PARASTOO_SMTP_PASS", "").strip()
+    SMTP_SSL: bool = _bool("PARASTOO_SMTP_SSL")  # true = SMTPS پورت 465
+    SMTP_FROM: str = os.environ.get("PARASTOO_SMTP_FROM", "").strip()  # خالی = no-reply@BASE_DOMAIN
+    SMTP_FROM_NAME: str = os.environ.get("PARASTOO_SMTP_FROM_NAME", "پرستو")
 
     # --- رفتار ---
     REGISTER_OPEN: bool = _bool("REGISTER_OPEN", "true")

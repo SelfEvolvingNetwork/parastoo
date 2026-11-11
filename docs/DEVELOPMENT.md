@@ -56,10 +56,12 @@ core/app/
     bridge.py     پل عامل: mint/authenticate توکن (فقط sha256) + سقف نرخ + audit JSONL
     dnsops.py     کلاینت PowerDNS: create_zone(kind=base|customer)/upsert_record/sync_base_zone
     agentops.py   پل‌های dev: netcheck + readonly_sql (با audit)
+    email.py      ارسال نامهٔ خروجی (v0.5.23): SMTP با env (PARASTOO_SMTP_*) + فالبک صندوق فایل DATA_DIR/mail/outbox.jsonl؛ best-effort — هیچ‌گاه مسیر HTTP را نمی‌شکند
+    password_reset.py  یادآوری رمز: توکن یک‌بارمصرف ۶۰دقیقه (فقط sha256 ذخیره) + کول‌داون ۱۲۰ث + سقف ۳/ساعت + خودپاک‌ساز رکوردهای تمام‌شده
   main.py       کارخانهٔ create_app() + مونتاژ: میان‌افزار هدر امنیتی، استاتیک، روترها، هندلر خطا
   routes/
     setup.py        ویزارد سه‌گامی: توکن نصب ← مدیر ← دامنه/HTTPS
-    auth.py         ثبت‌نام/ورود/خروج + ضد brute-force
+    auth.py         ثبت‌نام/ورود/خروج + ضد brute-force + یادآوری رمز (v0.5.23): /forgot-password و /reset-password — پاسخ یکسان بدون افشای وجود حساب؛ رمز هرگز ایمیل نمی‌شود، فقط لینک یک‌بارمصرف
     account.py      صفحهٔ /account + تغییر رمز
     gitsso.py       /git/sso — درِ ورود به جریان استاندارد OAuth2 گیتا (v0.5.7): مرورگر به /user/oauth2/parastoo گیتا می‌رود و هویت پنل با ACCOUNT_LINKING=auto به حساب گیتای هم‌ایمیل می‌خورد (جایگزین ترفند کوکی‌ریلی v0.5.5)
     oauthidp.py     /oauth/authorize|token|userinfo — تأمین‌کنندهٔ OAuth2 استاندارد پنل (RFC 6749) که گیتا با Auth Source رسمی خودش به آن وصل است؛ قرارداد پروفایل = client «gitea» در goth v1.80.0
@@ -74,6 +76,7 @@ core/app/
     payment.py      شارژ کیف پول + درگاه آزمایشی mock + callback
     bridge.py       پل عامل: /bridge/git/<slug>.git (شیم گیت) + /api/bridge/*
     tickets.py      تیکتینگ عضو‌به‌عضو: /api/tickets* + صفحات پنل /tickets* (صندوق/جزئیات/فرم — منطق در services/tickets.py)
+    auth.py         ثبت‌نام/ورود/خروج + یادآوری رمز (v0.5.23): /forgot-password و /reset-password — منطق توکن در services/password_reset.py، نامه‌ها با services/email.py
     dns.py          UI + API مدیریت DNS ادمین
     admin.py        آمار + شارژ دستی + مدیریت کاربران/سایت‌ها
     dev.py          حالت توسعه‌دهنده: /dev + /api/dev/* (خاموش = 404)
