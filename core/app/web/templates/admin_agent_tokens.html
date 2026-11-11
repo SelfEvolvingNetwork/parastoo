@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}توکن‌های عامل اکوسیستم{% endblock %}
+{% block content %}
+<h1>توکن‌های عامل اکوسیستم <span class="muted small">— عضو «مرکز فرماندهی پرستو» (توکن‌های pat_)</span></h1>
+
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+{% if new_token %}
+<section class="card">
+  <h2>توکن تازه ساخته شد — فقط همین یک‌بار نمایش داده می‌شود</h2>
+  <p>این مقدار را همین حالا کپی کنید و در جای امن نگه دارید. دیتابیس فقط هش آن را نگه می‌دارد و هرگز دوباره نمایش داده نمی‌شود. اگر گم شد، توکن را باطل کنید و تازه بسازید.</p>
+  <p class="mono" style="direction:ltr;text-align:left;background:#f6f8fa;padding:12px;border-radius:6px;word-break:break-all;font-size:15px">{{ new_token }}</p>
+  <p class="muted small">کاربرد: عامل اکوسیستم با این توکن از مسیرهای <span class="mono">/api/tickets*</span> با هدر <span class="mono">Authorization: Bearer pat_…</span> تیکت می‌زند و می‌خواند — همان قواعد تیکتینگ، بدون نشست پنل.</p>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>ساخت توکن تازه برای «پرستو» (مرکز فرماندهی)</h2>
+  <form method="post" action="/admin/agent-tokens/new" class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>نام (نمایشی — مثلاً «جاروی تیکت عامل»)
+      <input type="text" name="name" value="عامل پرستو" maxlength="80">
+    </label>
+    <label>انقضا (روز — خالی = بی‌انقضا؛ حداکثر ۳۶۵)
+      <input type="number" name="days" min="1" max="365">
+    </label>
+    <button class="btn btn-primary" type="submit">ساخت توکن</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>توکن‌ها</h2>
+  {% if tokens %}
+  <table>
+    <thead><tr><th>#</th><th>نام</th><th>اثر انگشت</th><th>وضعیت</th><th>آخرین استفاده</th><th>انقضا</th><th>ساخته‌شده</th><th></th></tr></thead>
+    <tbody>
+    {% for t in tokens %}
+    <tr>
+      <td>{{ t.id }}</td>
+      <td>{{ t.name }}</td>
+      <td class="mono">{{ t.prefix }}…</td>
+      <td>{% if t.revoked_at %}<span class="badge badge-err">باطل‌شده</span>
+          {% elif t.expires_at and t.expires_at < now %}<span class="badge badge-warn">منقضی</span>
+          {% else %}<span class="badge badge-ok">فعال</span>{% endif %}</td>
+      <td class="muted small">{{ t.last_used_at or '—' }}</td>
+      <td class="muted small">{{ t.expires_at or '—' }}</td>
+      <td class="muted small">{{ t.created_at or '—' }}</td>
+      <td>{% if not t.revoked_at and not (t.expires_at and t.expires_at < now) %}
+        <form method="post" action="/admin/agent-tokens/{{ t.id }}/revoke" style="display:inline">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn" type="submit">ابطال</button>
+        </form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">هنوز توکنی ساخته نشده است. عامل اکوسیستم («پرستو») برای زدن و خواندن تیکت به یک توکن pat_ نیاز دارد.</p>
+  {% endif %}
+</section>
+{% endblock %}

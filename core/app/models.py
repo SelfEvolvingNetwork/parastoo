@@ -223,6 +223,49 @@ class AgentToken(Base):
     project: Mapped["Project"] = relationship()
 
 
+class EcosystemAgent(Base):
+    """عضو درجه‌یک «agent» (Cycle 5) — عامل اکوسیستم پرستو.
+
+    آدرس تیکتی: agent:<id>. نخستین عضو: id=1 «پرستو» (مرکز فرماندهی) —
+    به‌صورت تنبل با نخستین استفاده ساخته می‌شود (ensure_default_agent).
+    نه کاربر است (نشست پنل ندارد) و نه پروژه (ایمیج/سایت ندارد) — عضوی
+    از جنس سوم: با توکن pat_ خودش تیکت می‌زند و تیکت می‌گیرد.
+    """
+
+    __tablename__ = "agents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), default="agent")
+    note: Mapped[str] = mapped_column(String(200), default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
+
+
+class AgentPatToken(Base):
+    """توکن عامل اکوسیستم (pat_) (Cycle 5) — جدول agent_pat_tokens.
+
+    قرارداد TICKETING §۶ این جدول را «agent_tokens» می‌خواند؛ آن نام
+    پیش‌تر به توکن‌های پل (pst_) تعلق داشت — نام صریح‌تر انتخاب و سند در
+    همین چرخه اصلاح شد. همان قرارداد امنیتی پل: دیتابیس فقط sha256؛
+    نمایش کامل فقط یک‌بار در لحظهٔ ساخت؛ ابطال فوری؛ انقضای اختیاری؛
+    قلمرو مستقل از توکن پل و پل ادمین (ابطال یکی دیگری را نمی‌شکند).
+    """
+
+    __tablename__ = "agent_pat_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80), default="agent")
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    prefix: Mapped[str] = mapped_column(String(16), default="")   # برای نمایش: pat_xxxxxxxx
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=db_now)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    agent: Mapped["EcosystemAgent"] = relationship()
+
+
 class Ticket(Base):
     """تیکت عضو‌به‌عضو (v0.5.17) — کانال رسمی ارتباط اعضای اکوسیستم.
 

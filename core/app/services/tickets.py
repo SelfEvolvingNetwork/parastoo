@@ -18,6 +18,7 @@ import time
 
 from ..db import db_now
 from ..validation import SLUG_RE
+from .agents import DEFAULT_AGENT_ID
 
 # ---------- اسکیمای سخت ----------
 
@@ -133,7 +134,7 @@ def _allow(key: tuple, limit: int, window: int) -> bool:
 # ---------- عضوها و آدرس‌دهی ----------
 
 def resolve_member(db, ref: str):
-    """رشتهٔ آدرس → (type, id) یا None. قالب: user:<id> یا project:<slug>."""
+    """رشتهٔ آدرس → (type, id) یا None. قالب: user:<id> | project:<slug> | agent:<id>."""
     ref = (ref or "").strip()
     if ref.startswith("user:"):
         tail = ref[5:]
@@ -142,6 +143,13 @@ def resolve_member(db, ref: str):
         from ..models import User
         u = db.get(User, int(tail))
         return ("user", u.id) if u and u.is_active else None
+    if ref.startswith("agent:"):
+        tail = ref[6:]
+        if not tail.isdigit():
+            return None
+        from ..models import EcosystemAgent
+        a = db.get(EcosystemAgent, int(tail))
+        return ("agent", a.id) if a and a.is_active else None
     if ref.startswith("project:"):
         slug = ref[8:]
         if not SLUG_RE.match(slug):
@@ -155,6 +163,8 @@ def resolve_member(db, ref: str):
 def member_ref(db, mtype: str, mid: int) -> str:
     if mtype == "user":
         return f"user:{mid}"
+    if mtype == "agent":
+        return f"agent:{mid}"
     from ..models import Project
     p = db.get(Project, mid)
     return f"project:{p.slug}" if p else f"project:{mid}"
@@ -162,6 +172,12 @@ def member_ref(db, mtype: str, mid: int) -> str:
 
 def member_label(db, mtype: str, mid: int) -> str:
     """نمایش فارسی عضو — برای UI و گزارش."""
+    if mtype == "agent":
+        from ..models import EcosystemAgent
+        a = db.get(EcosystemAgent, mid)
+        if mid == DEFAULT_AGENT_ID:
+            return "مرکز فرماندهی پرستو (پرستو)"
+        return f"عامل اکوسیستم ({a.name})" if a else f"عامل اکوسیستم {mid}"
     if mtype == "user":
         from ..models import User
         u = db.get(User, mid)
@@ -198,6 +214,24 @@ def routing_error(db, sender: tuple, receiver: tuple) -> str | None:
     rt, rid = receiver
     if sender == receiver:
         return "self"
+    if rt == "agent":
+        if st == "agent":
+            return "bad_target"   # عامل→عامل در ماتریس نیست (خودش بالاتر گرفته شد)
+        # هر عضو → عامل اکوسیستم (فرمان مالک ۱۱-۱۱: کانال درخواست = تیکت)
+        from ..models import EcosystemAgent
+        a = db.get(EcosystemAgent, rid)
+        return None if (a and a.is_active) else "no_member"
+    if st == "agent":
+        # عامل اکوسیستم → میزبان + هر پروژه (گزارش/شواهد/ارجاع)؛ کلاینت: نه —
+        # پاسخ کلاینت در تیکت خودِ او می‌آید (قرارداد §۲)
+        if rt == "user":
+            from ..models import User
+            u = db.get(User, rid)
+            return None if (u and u.is_admin) else "only_host"
+        if rt == "project":
+            from ..models import Project
+            return None if db.get(Project, rid) else "no_member"
+        return "bad_target"
     if st == "project":
         if rt == "project":
             from ..models import Project
@@ -347,11 +381,111 @@ def events_view(db, t, human_viewer: bool, limit: int = 200) -> list[dict]:
         out.append({
             "id": ev.id, "kind": ev.kind,
             "actor": member_ref(db, ev.actor_type, ev.actor_id)
-                     if ev.actor_type in ("user", "project") else "system",
+                     if ev.actor_type in ("user", "project", "agent") else "system",
             "data": d,
             "created_at": ev.created_at.isoformat(sep=" ") if ev.created_at else None,
         })
     return out
+
+
+# ---------- مقصدگیری آسان (§۸-۱ — فرمان مالک ۲۰۲۶-۱۱-۱۱ سوم) ----------
+
+# گروه‌بندی UI — گروه «مرکز فرماندهی» همیشه نخست (فرمان «کانال درخواست = تیکت»)
+DEST_GROUPS = ("center", "projects", "users")
+DEST_GROUP_LABELS = {"center": "مرکز فرماندهی پرستو", "projects": "پروژه‌ها",
+                     "users": "کاربران"}
+
+
+def allowed_destinations(db, sender: tuple) -> list[dict]:
+    """فهرست مقصدهای مجاز همین فرستنده — تک‌منبع: خودِ ماتریس مسیریابی.
+
+    هر نامزد از همان routing_error عبور می‌کند که در POST اعتبارسنجی
+    می‌کند — فهرست هرگز نمی‌تواند دروغ بگوید (قرارداد §۸-۱: یک قاعده،
+    دو مصرف). کاربران فقط در دامنهٔ میزبان عرضه می‌شوند؛ کلاینت فقط
+    مرکز فرماندهی + پروژه‌های مرتبط خودش را می‌بیند.
+    """
+    from ..models import EcosystemAgent, Project, User
+    from . import agents as asvc
+    asvc.ensure_default_agent(db)
+    cands: list[tuple] = [("agent", a.id) for a in
+                          db.query(EcosystemAgent)
+                          .filter(EcosystemAgent.is_active.is_(True))
+                          .order_by(EcosystemAgent.id).all()]
+    cands += [("project", p.id) for p in
+              db.query(Project).order_by(Project.id).all()]
+    # کاربران همیشه نامزد می‌شوند؛ خودِ ماتریس مسیریابی تصمیم می‌گیرد —
+    # کلاینت هیچ‌کس را نمی‌گیرد (client_user_only)، پروژه/عامل فقط میزبان را.
+    cands += [("user", x.id) for x in
+              db.query(User).filter(User.is_active.is_(True))
+              .order_by(User.id).all()]
+    out = []
+    for mtype, mid in cands:
+        if routing_error(db, sender, (mtype, mid)) is not None:
+            continue
+        out.append({
+            "to": member_ref(db, mtype, mid),
+            "kind": mtype,
+            "group": ("center" if mtype == "agent"
+                      else "projects" if mtype == "project" else "users"),
+            "label": _dest_label(db, sender, mtype, mid),
+            "sub": _dest_sub(db, sender, mtype, mid),
+        })
+    return out
+
+
+def _dest_label(db, sender, mtype, mid) -> str:
+    """برچسب خوانای مقصد (قرارداد §۸-۱)."""
+    if mtype == "agent":
+        return "مرکز فرماندهی پرستو" if mid == DEFAULT_AGENT_ID \
+            else member_label(db, mtype, mid)
+    if mtype == "project":
+        from ..models import Project
+        p = db.get(Project, mid)
+        return p.name if p else member_label(db, mtype, mid)
+    from ..models import User
+    u = db.get(User, mid)
+    return (u.name or u.email) if u else member_label(db, mtype, mid)
+
+
+def _dest_sub(db, sender, mtype, mid) -> str:
+    """زیرنویس رابطه — «چرا این مقصد برای من مجاز است» (قرارداد §۸-۱)."""
+    if mtype == "agent":
+        return "عامل اکوسیستم (نرم‌افزار پرستو)" if mid == DEFAULT_AGENT_ID \
+            else "عامل اکوسیستم"
+    if mtype == "user":
+        from ..models import User
+        u = db.get(User, mid)
+        return "میزبان اکوسیستم" if (u and u.is_admin) else "کاربر پنل"
+    from ..models import Project, Site
+    if sender[0] == "user":
+        site = (db.query(Site)
+                .filter(Site.owner_id == sender[1], Site.project_id == mid)
+                .first())
+        if site:
+            return "سازندهٔ ایمیج سایت شما"
+        installed = (db.query(Project)
+                     .filter(Project.owner_id == sender[1],
+                             Project.source_project_id == mid).first())
+        if installed:
+            return "نصب‌شده از مارکت"
+        return "پروژه"
+    if sender[0] == "project":
+        return "پروژهٔ منتشرشده"
+    if sender[0] == "agent":
+        return "پروژهٔ مستقر"
+    return "پروژه"
+
+
+def last_destination(db, sender: tuple) -> str | None:
+    """آخرین مقصد ارسالی فرستنده — یادآوری فرم (قرارداد §۸-۱)."""
+    from ..models import Ticket
+    t = (db.query(Ticket)
+         .filter(Ticket.sender_type == sender[0],
+                 Ticket.sender_id == sender[1])
+         .order_by(Ticket.id.desc()).first())
+    if t is None:
+        return None
+    return member_ref(db, t.receiver_type, t.receiver_id)
 
 
 # ---------- ایجاد تیکت ----------

@@ -492,5 +492,130 @@ with TestClient(app, follow_redirects=False) as ca, \
     tk = r.json().get("tickets")
     check("قلاب پلِ پروژهٔ مالک هم صفر شد", tk and tk["sent_open"] == 0, str(tk))
 
+    # ---- Cycle 5: عضو درجه‌یک agent (pat_) + انتخاب‌گر مقصد (§۸-۱) ----
+    print("— Cycle 5: عضو agent (pat_) + انتخاب‌گر مقصد —")
+    from app.db import db_now as _dbnow
+    from app.models import AgentPatToken, EcosystemAgent
+    from app.services import agents as asvc
+    db = SessionLocal()
+    agent_row = asvc.ensure_default_agent(db)
+    check("عضو پیش‌فرض agent:1 «پرستو» ساخته شد",
+          agent_row is not None and agent_row.id == 1 and agent_row.name == "پرستو")
+    pat_raw, pat_row = asvc.mint(db, agent_row, "smoke-eco-agent")
+    db.close()
+    check("توکن pat_ با پیشوند درست ساخته شد", pat_raw.startswith("pat_"))
+    PH = {"Authorization": f"Bearer {pat_raw}"}
+
+    r = anon.get("/api/tickets/destinations")
+    check("مقاصد بدون احراز → 401", r.status_code == 401)
+    r = cc.get("/api/tickets/destinations")
+    check("مقاصد کلاینت → 200", r.status_code == 200 and r.json().get("ok") is True)
+    dests = r.json().get("destinations", [])
+    check("کلاینت: مرکز فرماندهی در فهرست هست",
+          any(d["to"] == "agent:1" for d in dests))
+    check("کلاینت: هیچ کاربری در فهرست نیست",
+          all(d["kind"] != "user" for d in dests))
+    r = ca.get("/api/tickets/destinations")
+    dests_h = r.json().get("destinations", [])
+    check("میزبان: کاربران هم در فهرست‌اند",
+          any(d["kind"] == "user" for d in dests_h))
+    check("میزبان: برچسب مرکز فرماندهی درست",
+          any(d["to"] == "agent:1" and d["label"] == "مرکز فرماندهی پرستو"
+              and d["sub"] == "عامل اکوسیستم (نرم‌افزار پرستو)" for d in dests_h),
+          str([d for d in dests_h if d.get("to") == "agent:1"]))
+    r = ag.get("/api/tickets/destinations", headers=AH)
+    dests_p = r.json().get("destinations", [])
+    check("عامل پروژه: مرکز + میزبان + پروژه‌ها",
+          any(d["to"] == "agent:1" for d in dests_p)
+          and any(d["kind"] == "user" and d["sub"] == "میزبان اکوسیستم"
+                  for d in dests_p), str(dests_p[:5]))
+    r = anon.get("/api/tickets/destinations", headers=PH)
+    dests_a = r.json().get("destinations", [])
+    check("عامل اکوسیستم: پروژه‌ها + میزبان، بدون کلاینت",
+          any(d["kind"] == "project" for d in dests_a)
+          and all(d["kind"] != "user" or d["sub"] == "میزبان اکوسیستم"
+                  for d in dests_a), str(dests_a[:6]))
+    check("گروه‌بندی: center همیشه نخست (کلاینت/میزبان)",
+          bool(dests) and dests[0]["group"] == "center"
+          and bool(dests_h) and dests_h[0]["group"] == "center")
+
+    r = anon.post("/api/tickets", headers=PH,
+                  json=mk_payload("agent:1", "تیکت عامل به خودش"))
+    check("عامل→خودش → 403 routing (self)", r.status_code == 403
+          and r.json().get("code") == "routing")
+    r = anon.post("/api/tickets", headers=PH,
+                  json=mk_payload("user:2", "تیکت عامل به کلاینت"))
+    check("عامل→کلاینت → 403 routing", r.status_code == 403
+          and r.json().get("code") == "routing", r.text[:120])
+    r = anon.post("/api/tickets", headers=PH,
+                  json=mk_payload("user:1", "گزارش عامل به میزبان"))
+    check("عامل→میزبان → 200", r.status_code == 200, r.text[:150])
+    check("فرستندهٔ ثبت‌شده = agent:1",
+          r.json()["ticket"]["sender"] == "agent:1")
+    htid = r.json()["ticket"]["id"]
+    r = ca.get("/api/tickets?box=inbox")
+    check("میزبان تیکت عامل را در ورودی می‌بیند",
+          any(t["id"] == htid for t in r.json()["tickets"]))
+    r = ag.post("/api/tickets", headers=AH,
+                json=mk_payload("agent:1", "تیکت پروژه به مرکز فرماندهی"))
+    check("پروژه→مرکز فرماندهی → 200", r.status_code == 200, r.text[:150])
+
+    r = cc.post("/api/tickets", json=mk_payload("agent:1", "تیکت کلاینت به مرکز فرماندهی"),
+                headers=AC(2, client_csrf))
+    check("کلاینت→مرکز فرماندهی → 200", r.status_code == 200, r.text[:150])
+    atid = r.json()["ticket"]["id"]
+    check("گیرندهٔ ثبت‌شده = agent:1",
+          r.json()["ticket"]["receiver"] == "agent:1")
+    check("برچسب گیرنده = مرکز فرماندهی پرستو",
+          "مرکز فرماندهی پرستو" in r.json()["ticket"]["receiver_label"])
+    r = anon.get("/api/tickets?box=inbox", headers=PH)
+    check("صندوق ورودی عامل: تیکت هست", r.status_code == 200
+          and any(t["id"] == atid for t in r.json()["tickets"]))
+    r = anon.post(f"/api/tickets/{atid}/status", headers=PH, json={"status": "ack"})
+    check("عامل open→ack (گیرنده)", r.status_code == 200
+          and r.json()["status"] == "ack", r.text[:150])
+    r = anon.post(f"/api/tickets/{atid}/comments", headers=PH,
+                  json={"body": "دریافت شد — در حال بررسی"})
+    check("کامنت عامل ثبت شد", r.status_code == 200, r.text[:150])
+
+    r = cc.post("/api/tickets", json=mk_payload("agent:1", "تیکت حساس به مرکز",
+                                                observed="توکن: ghp_AbCdEf0123456789XyZabC"),
+                headers=AC(2, client_csrf))
+    stid2 = r.json()["ticket"]["id"]
+    r = anon.get(f"/api/tickets/{stid2}", headers=PH)
+    check("تیکت حساس برای عامل اکوسیستم رنداکتی",
+          r.status_code == 200
+          and r.json()["ticket"]["observed"].startswith("[محتوای محرمانه")
+          and r.json()["ticket"]["needs_human"] is True, r.text[:150])
+    r = ca.get(f"/api/tickets/{stid2}")
+    check("انسان متن کامل را می‌بیند",
+          r.json()["ticket"]["observed"].startswith("توکن:"))
+    r = anon.post(f"/api/tickets/{stid2}/comments", headers=PH,
+                  json={"body": "می‌خواهم کمک کنم"})
+    check("عامل نمی‌تواند روی تیکت حساس بنویسد", r.status_code == 403
+          and r.json().get("code") == "needs_human", r.text[:120])
+
+    r = ca.get("/tickets?box=inbox")
+    check("فرم پنل: انتخاب‌گر مقصد با گروه مرکز فرماندهی",
+          r.status_code == 200 and "مرکز فرماندهی پرستو" in r.text
+          and "<select" in r.text and 'name="to"' in r.text)
+    r = ca.get("/admin/agent-tokens")
+    check("صفحهٔ توکن عامل برای ادمین باز شد",
+          r.status_code == 200 and "توکن‌های عامل اکوسیستم" in r.text)
+    r = cc.get("/admin/agent-tokens")
+    check("غیرادمین → ریدایرکت (303)", r.status_code == 303)
+    r = ca.post("/admin/agent-tokens/new", follow_redirects=False,
+                data={"name": "تست جارو", "days": "", "csrf": admin_csrf})
+    check("ساخت توکن از پنل → نمایش یک‌بار pat_",
+          r.status_code == 200 and "pat_" in r.text)
+
+    db = SessionLocal()
+    _row = db.get(AgentPatToken, pat_row.id)
+    _row.revoked_at = _dbnow()
+    db.commit()
+    db.close()
+    r = anon.get("/api/tickets?box=inbox", headers=PH)
+    check("توکن باطل‌شده → 401", r.status_code == 401)
+
 print(f"\nنتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

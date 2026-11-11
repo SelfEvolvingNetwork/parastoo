@@ -1,10 +1,11 @@
-"""مسیرهای تیکتینگ عضو‌به‌عضو (v0.5.17 → Cycle 3) — /api/tickets* + صفحات پنل.
+"""مسیرهای تیکتینگ عضو‌به‌عضو (v0.5.17 → Cycle 5) — /api/tickets* + صفحات پنل.
 
 همهٔ قواعد در services/tickets.py است؛ اینجا فقط احراز هویت، CSRF،
-نگاشت خطا به HTTP/فلش و JSON. سه نوع فراخواننده:
+نگاشت خطا به HTTP/فلش و JSON. سه نوع فراخواننده (Cycle 5: سومین شاخهٔ احراز):
 - انسان (API): کوکی نشست پنل (کاربر/ادمین) + CSRF در POST (هدر X-CSRF-Token)
 - انسان (UI): فرم‌های پنل با فیلد csrf (گارد csrf_guard) — /tickets*
 - عامل پروژه: توکن پل `pst_` (Bearer/Basic — همان قرارداد پل) + باکت نرخ + audit
+- عامل اکوسیستم: توکن `pat_` (Bearer) — عضو درجه‌یک «agent» (قرارداد §۶)
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -14,6 +15,7 @@ from ..db import get_db
 from ..deps import csrf_guard, ctx, get_current_user, render, resolve_user
 from ..models import User
 from ..security import check_csrf
+from ..services import agents as asvc
 from ..services import bridge as bsvc
 from ..services import tickets as tsvc
 from ..services.tickets import TicketError
@@ -57,15 +59,24 @@ async def _json(request: Request) -> dict:
 
 
 def _actor(request: Request, db: Session):
-    """فراخواننده → (actor, human, user, project, token). ناموفق = 401."""
+    """فراخواننده → (actor, human, user, project, token, eco_agent). ناموفق = 401.
+
+    سه شاخهٔ احراز (Cycle 5): نشست پنل → توکن پل pst_ → توکن عامل اکوسیستم pat_.
+    قلمروها مستقل‌اند؛ هر عامل فقط با توکن خودش و در قواعد همین سامانه.
+    """
     user = resolve_user(request, db)
     if user is not None:
-        return ("user", user.id), True, user, None, None
-    row = bsvc.authenticate(db, bsvc.token_from_headers(request))
+        return ("user", user.id), True, user, None, None, None
+    raw = bsvc.token_from_headers(request)
+    row = bsvc.authenticate(db, raw)
     if row is not None:
         token, project = row
-        return ("project", project.id), False, None, project, token
-    raise HTTPException(401, "احراز هویت لازم است — نشست پنل یا توکن پل (pst_)")
+        return ("project", project.id), False, None, project, token, None
+    arow = asvc.authenticate(db, raw)
+    if arow is not None:
+        token, eco_agent = arow
+        return ("agent", eco_agent.id), False, None, None, token, eco_agent
+    raise HTTPException(401, "احراز هویت لازم است — نشست پنل یا توکن پل (pst_) یا توکن عامل (pat_)")
 
 
 def _csrf_ok(user: User, request: Request) -> bool:
@@ -73,24 +84,33 @@ def _csrf_ok(user: User, request: Request) -> bool:
     return check_csrf(user.id, request.headers.get("x-csrf-token"))
 
 
-def _agent_gate(token, project, request: Request, action: str, detail: str = "",
-                ok: bool = True):
-    """سقف نرخ + audit پل برای فراخوانی‌های عامل — best-effort."""
+def _agent_gate(token, project, eco_agent, request: Request, action: str,
+                detail: str = "", ok: bool = True):
+    """سقف نرخ + audit برای فراخوانی عامل‌ها (pst_ پل و pat_ اکوسیستم) — best-effort.
+
+    قلمروها جدا می‌مانند (قرارداد §۶): هر توکن باکت و audit خودش را دارد؛
+    ابطال/سقفِ یکی دیگری را نمی‌شکند.
+    """
     if token is None:
         return
-    if not bsvc.allow(token.id, "tickets"):
-        bsvc.audit(token, project, action, "rate limited",
-                   request.client.host if request.client else "", ok=False)
-        raise HTTPException(429, "سقف نرخ پل پر شد — کمی صبر کنید")
-    bsvc.audit(token, project, action, detail,
-               request.client.host if request.client else "", ok=ok)
+    ip = request.client.host if request.client else ""
+    if project is not None:   # عامل پروژه — پل pst_
+        if not bsvc.allow(token.id, "tickets"):
+            bsvc.audit(token, project, action, "rate limited", ip, ok=False)
+            raise HTTPException(429, "سقف نرخ پل پر شد — کمی صبر کنید")
+        bsvc.audit(token, project, action, detail, ip, ok=ok)
+    elif eco_agent is not None:   # عامل اکوسیستم — pat_
+        if not asvc.allow(token.id, "tickets"):
+            asvc.audit(token, eco_agent, action, "rate limited", ip, ok=False)
+            raise HTTPException(429, "سقف نرخ عامل اکوسیستم پر شد — کمی صبر کنید")
+        asvc.audit(token, eco_agent, action, detail, ip, ok=ok)
 
 
 @router.get("/api/tickets")
 def list_box(request: Request, box: str = "sent", limit: int = 50,
              db: Session = Depends(get_db)):
-    actor, human, _user, _project, token = _actor(request, db)
-    _agent_gate(token, _project, request, "tickets.list", f"box={box}")
+    actor, human, _user, _project, token, eco_agent = _actor(request, db)
+    _agent_gate(token, _project, eco_agent, request, "tickets.list", f"box={box}")
     try:
         rows = tsvc.list_tickets(db, actor, box, limit)
     except TicketError as e:
@@ -103,24 +123,37 @@ def list_box(request: Request, box: str = "sent", limit: int = 50,
 def summary(request: Request, db: Session = Depends(get_db)):
     """شمار صندوق باز فراخواننده — همان تک‌منبعِ نشان UI و قلاب پل.
     قبل از مسیر {tid} ثبت می‌شود تا «summary» به‌عنوان شناسه تفسیر نشود."""
-    actor, _human, _user, _project, token = _actor(request, db)
-    _agent_gate(token, _project, request, "tickets.summary", "summary")
+    actor, _human, _user, _project, token, eco_agent = _actor(request, db)
+    _agent_gate(token, _project, eco_agent, request, "tickets.summary", "summary")
     return {"ok": True, **tsvc.open_counts(db, actor)}
+
+
+@router.get("/api/tickets/destinations")
+def destinations(request: Request, db: Session = Depends(get_db)):
+    """مقصدهای مجاز فراخواننده (قرارداد §۸-۱) — تک‌منبع: ماتریس مسیریابی.
+
+    قبل از مسیر {tid} ثبت می‌شود تا «destinations» شناسه تفسیر نشود.
+    همانی که در POST اعتبارسنجی می‌کند؛ فهرست هرگز دروغ نمی‌گوید.
+    """
+    actor, human, user, project, token, eco_agent = _actor(request, db)
+    _agent_gate(token, project, eco_agent, request, "tickets.destinations", "list")
+    return {"ok": True, "destinations": tsvc.allowed_destinations(db, actor),
+            "groups": tsvc.DEST_GROUP_LABELS, "last_to": tsvc.last_destination(db, actor)}
 
 
 @router.post("/api/tickets")
 async def create(request: Request, db: Session = Depends(get_db)):
-    actor, human, user, project, token = _actor(request, db)
+    actor, human, user, project, token, eco_agent = _actor(request, db)
     payload = await _json(request)
     if human and not _csrf_ok(user, request):
         raise HTTPException(403, "توکن CSRF نامعتبر است")
     try:
         t, dup = tsvc.create_ticket(db, actor, human, payload)
     except TicketError as e:
-        _agent_gate(token, project, request, "tickets.create",
+        _agent_gate(token, project, eco_agent, request, "tickets.create",
                     f"create rejected: {e.code}", ok=False)
         return _err(e)
-    _agent_gate(token, project, request, "tickets.create",
+    _agent_gate(token, project, eco_agent, request, "tickets.create",
                 f"create #{t.id} dup={dup} to={payload.get('to', '')[:40]}")
     return {"ok": True, "duplicate": dup,
             "ticket": tsvc.ticket_view(db, t, human)}
@@ -128,19 +161,19 @@ async def create(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/api/tickets/{tid}")
 def detail(request: Request, tid: int, db: Session = Depends(get_db)):
-    actor, human, user, project, token = _actor(request, db)
+    actor, human, user, project, token, eco_agent = _actor(request, db)
     try:
         t = tsvc.ticket_for(db, actor, bool(user and user.is_admin), tid)
     except TicketError as e:
         return _err(e)
-    _agent_gate(token, project, request, "tickets.detail", f"detail #{tid}")
+    _agent_gate(token, project, eco_agent, request, "tickets.detail", f"detail #{tid}")
     return {"ok": True, "ticket": tsvc.ticket_view(db, t, human),
             "events": tsvc.events_view(db, t, human)}
 
 
 @router.post("/api/tickets/{tid}/comments")
 async def comment(request: Request, tid: int, db: Session = Depends(get_db)):
-    actor, human, user, project, token = _actor(request, db)
+    actor, human, user, project, token, eco_agent = _actor(request, db)
     payload = await _json(request)
     if human and not _csrf_ok(user, request):
         raise HTTPException(403, "توکن CSRF نامعتبر است")
@@ -149,13 +182,13 @@ async def comment(request: Request, tid: int, db: Session = Depends(get_db)):
         ev = tsvc.add_comment(db, t, actor, human, str(payload.get("body") or ""))
     except TicketError as e:
         return _err(e)
-    _agent_gate(token, project, request, "tickets.comment", f"comment #{tid}")
+    _agent_gate(token, project, eco_agent, request, "tickets.comment", f"comment #{tid}")
     return {"ok": True, "event_id": ev.id, "status": t.status}
 
 
 @router.post("/api/tickets/{tid}/status")
 async def status_change(request: Request, tid: int, db: Session = Depends(get_db)):
-    actor, human, user, project, token = _actor(request, db)
+    actor, human, user, project, token, eco_agent = _actor(request, db)
     payload = await _json(request)
     if human and not _csrf_ok(user, request):
         raise HTTPException(403, "توکن CSRF نامعتبر است")
@@ -167,7 +200,7 @@ async def status_change(request: Request, tid: int, db: Session = Depends(get_db
                                    str(payload.get("evidence") or ""))
     except TicketError as e:
         return _err(e)
-    _agent_gate(token, project, request, "tickets.status", f"status #{tid} → {t.status}")
+    _agent_gate(token, project, eco_agent, request, "tickets.status", f"status #{tid} → {t.status}")
     return {"ok": True, "status": t.status, "event_id": ev.id}
 
 
@@ -182,7 +215,12 @@ def _box_rows(db, actor: tuple, box: str):
 def tickets_page(request: Request, box: str = "inbox",
                  user: User | None = Depends(get_current_user),
                  db: Session = Depends(get_db)):
-    """صندوق تیکت‌ها (ورودی/ارسالی) + فرم ساخت — ناوبری با نشان شمار باز."""
+    """صندوق تیکت‌ها (ورودی/ارسالی) + فرم ساخت — ناوبری با نشان شمار باز.
+
+    فرم با انتخاب‌گر مقصد می‌سازد (قرارداد §۸-۱): گروه‌بندی «مرکز فرماندهی
+    پرستو / پروژه‌ها / کاربران» از همان ماتریس مسیریابی — کاربر دیگر
+    لازم نیست قالب agent:/project: را بداند.
+    """
     if user is None:
         return RedirectResponse("/login", status_code=303)
     actor = ("user", user.id)
@@ -190,7 +228,9 @@ def tickets_page(request: Request, box: str = "inbox",
         box = "inbox"
     return render("tickets.html", ctx(request, user, box=box,
                                       tickets=_box_rows(db, actor, box),
-                                      counts=tsvc.open_counts(db, actor)))
+                                      counts=tsvc.open_counts(db, actor),
+                                      dests=tsvc.allowed_destinations(db, actor),
+                                      last_to=tsvc.last_destination(db, actor)))
 
 
 @router.get("/tickets/{tid}")
@@ -233,7 +273,9 @@ async def ticket_new(request: Request, user: User = Depends(csrf_guard),
     except TicketError as e:
         return render("tickets.html", ctx(request, user, box="inbox",
                        tickets=_box_rows(db, actor, "inbox"),
-                       counts=tsvc.open_counts(db, actor), prev=payload,
+                       counts=tsvc.open_counts(db, actor),
+                       dests=tsvc.allowed_destinations(db, actor),
+                       last_to=tsvc.last_destination(db, actor), prev=payload,
                        form_error=FLASHES.get(_FLASH_FOR.get(e.code, "error"),
                                               FLASHES["error"])))
     return RedirectResponse(f"/tickets/{t.id}?m=ticket_created", status_code=303)

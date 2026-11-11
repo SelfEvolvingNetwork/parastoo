@@ -14,8 +14,19 @@
   <h2>تیکت جدید</h2>
   <form method="post" action="/tickets/new" class="inline-form ticket-form">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>مقصد — قالب: <span class="mono">project:شناسه</span> یا <span class="mono">user:شماره</span>
-      <input type="text" name="to" required placeholder="project:my-app" value="{{ prev.get('to','') if prev else '' }}">
+    <label>مقصد — تیکت به کدام عضو؟
+      <select name="to" required>
+        {% for g, glabel in [('center','مرکز فرماندهی پرستو'),('projects','پروژه‌ها'),('users','کاربران')] %}
+          {% set items = dests | selectattr('group', 'equalto', g) | list %}
+          {% if items %}
+          <optgroup label="{{ glabel }}">
+            {% for d in items %}
+            <option value="{{ d.to }}" {% if (prev and prev.get('to') == d.to) or (not prev and last_to == d.to) %}selected{% endif %}>{{ d.label }}{% if d.sub %} — {{ d.sub }}{% endif %}</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
+        {% endfor %}
+      </select>
     </label>
     <label>نوع
       <select name="kind">

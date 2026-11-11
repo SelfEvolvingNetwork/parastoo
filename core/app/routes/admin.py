@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import dockerops, gitea
 from ..deps import admin_guard, ctx, redirect, render
-from ..db import get_db
+from ..db import db_now, get_db
 from ..models import Build, Project, Site, User, WalletTx
 from ..services import billing as billing_svc
 from ..services import sites as sites_svc
@@ -102,3 +102,64 @@ def admin_site_action(request: Request, site_id: int,
               + traceback.format_exc())
         return redirect("/admin?m=publish_failed")
     return redirect(f"/admin?m={flash}")
+
+
+# ---------- توکن‌های عامل اکوسیستم (Cycle 5 — pat_) ----------
+
+@router.get("/admin/agent-tokens")
+def agent_tokens_page(request: Request, user=Depends(admin_guard),
+                      db: Session = Depends(get_db)):
+    """صفحهٔ توکن عامل اکوسیستم — ساخت/ابطال pat_ (قرارداد TICKETING §۶).
+
+    مقدار خام توکن هرگز در دیتابیس نیست؛ فقط هش sha256. نمایش کامل فقط
+    یک‌بار، در پاسخِ خودِ فرم ساخت (new_token) — نه در ریدایرکت (URL لاگ می‌شود).
+    """
+    from ..models import AgentPatToken, EcosystemAgent
+    from ..services import agents as asvc
+    asvc.ensure_default_agent(db)
+    agents_rows = db.query(EcosystemAgent).order_by(EcosystemAgent.id).all()
+    tokens = (db.query(AgentPatToken)
+              .order_by(AgentPatToken.id.desc()).limit(100).all())
+    return render("admin_agent_tokens.html",
+                  ctx(request, user, agents=agents_rows, tokens=tokens,
+                      new_token=None, now=db_now()))
+
+
+@router.post("/admin/agent-tokens/new")
+def agent_token_new(request: Request, name: str = Form(""),
+                    days: str = Form(""),
+                    user=Depends(admin_guard), db: Session = Depends(get_db)):
+    """ساخت توکن تازه برای عضو «پرستو» (مرکز فرماندهی) — نمایش یک‌بار."""
+    from ..models import AgentPatToken, EcosystemAgent
+    from ..services import agents as asvc
+    agent = asvc.ensure_default_agent(db)
+    if not asvc.name_ok(name):
+        return redirect("/admin/agent-tokens?m=agent_token_bad_name")
+    days_n = None
+    if (days or "").strip():
+        try:
+            days_n = max(1, min(int(days.strip()), 365))
+        except ValueError:
+            return redirect("/admin/agent-tokens?m=agent_token_bad_days")
+    raw, _row = asvc.mint(db, agent, name, days_n)
+    agents_rows = db.query(EcosystemAgent).order_by(EcosystemAgent.id).all()
+    tokens = (db.query(AgentPatToken)
+              .order_by(AgentPatToken.id.desc()).limit(100).all())
+    return render("admin_agent_tokens.html",
+                  ctx(request, user, agents=agents_rows, tokens=tokens,
+                      new_token=raw, now=db_now()))
+
+
+@router.post("/admin/agent-tokens/{token_id}/revoke")
+def agent_token_revoke(request: Request, token_id: int,
+                       user=Depends(admin_guard),
+                       db: Session = Depends(get_db)):
+    """ابطال توکن عامل — فوری و قطعی (قلمرو مستقل از توکن پل و ادمین)."""
+    from ..models import AgentPatToken
+    row = db.get(AgentPatToken, token_id)
+    if row is None:
+        return redirect("/admin/agent-tokens?m=not_found")
+    if row.revoked_at is None:
+        row.revoked_at = db_now()
+        db.commit()
+    return redirect("/admin/agent-tokens?m=agent_token_revoked")
