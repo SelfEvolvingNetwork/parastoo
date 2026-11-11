@@ -348,3 +348,53 @@ def settings_gitea_internal() -> str:
 @router.api_route("/bridge/git/{repo_path:path}", methods=["GET", "POST"])
 async def git_shim(request: Request, repo_path: str, db: Session = Depends(get_db)):
     return await _git_shim(request, repo_path, db)
+
+
+# ---------- جفت‌سازی عامل پروژه (v0.5.27 — عمومی، بدون توکن) ----------
+# آینهٔ پل ادمین (access-agent v0.7.1) با دانهٔ پروژه: عامل رمز ۵ رقمی
+# خودش را ادعا می‌کند، صاحب پروژه در صفحهٔ پروژه تأییدش می‌کند و عامل
+# توکن pst_ تازه برمی‌دارد. هیچ رازی از چت عبور نمی‌کند؛ متن دعوت
+# بی‌رمز است و لورفتنش بی‌خطر است (سقف‌ها و هش‌ها در services/agentpair.py).
+
+@router.post("/api/agent/claim")
+async def agent_claim(request: Request, db: Session = Depends(get_db)):
+    """ادعای جفت‌سازی — بدنه: {"project": "<slug>", "code": "<5 رقم ASCII>"}."""
+    from ..services import agentpair as apair
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "بدنهٔ JSON نامعتبر است")
+    slug = str(body.get("project") or "").strip()
+    if not _SLUG_RE.match(slug):
+        raise HTTPException(404, "پروژهٔ موردنظر یافت نشد")
+    project = (db.query(Project).filter(Project.slug == slug).first())
+    if project is None:
+        raise HTTPException(404, "پروژهٔ موردنظر یافت نشد")
+    ip = request.client.host if request.client else ""
+    res = apair.mint_claim(project.id, str(body.get("code") or ""), ip)
+    if not res.get("ok"):
+        apair.audit_pair("claim_refused", f"slug={slug} error={res.get('error')}",
+                         ip, ok=False)
+        raise HTTPException(res.get("status", 400), res.get("detail") or res.get("error"))
+    apair.audit_pair("claim", f"slug={slug} claim_id={res.get('claim_id')}", ip)
+    return res
+
+
+@router.post("/api/agent/claim/poll")
+async def agent_claim_poll(request: Request, db: Session = Depends(get_db)):
+    """برداشت توکن — بدنه: {"claim_id": "...", "claim_secret": "..."}.
+
+    وضعیت‌ها: pending / approved (+pst_) / expired / unknown. مقدار رمز یا
+    راز هیچ‌گاه در پاسخ، دیسک یا audit بازنمی‌گردد."""
+    from ..services import agentpair as apair
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "بدنهٔ JSON نامعتبر است")
+    ip = request.client.host if request.client else ""
+    res = apair.collect(db, str(body.get("claim_id") or ""),
+                        str(body.get("claim_secret") or ""))
+    if res.get("status") == "approved":
+        apair.audit_pair("token_issued",
+                         f"slug={res.get('project')} prefix={res.get('token_prefix')}", ip)
+    return res

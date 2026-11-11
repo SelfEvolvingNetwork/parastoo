@@ -12,6 +12,7 @@ from .. import domains, traefik_ops
 from ..db import get_db, db_now
 from ..deps import ctx, csrf_guard, redirect, render
 from ..models import AgentToken, Build, Project, Site
+from ..services import agentpair as agentpair_svc
 from ..services import bridge as bridge_svc
 from ..services import billing as billing_svc
 from ..services import projects as projects_svc
@@ -71,11 +72,13 @@ def _project_page(request: Request, user, db: Session, project: Project,
               .all())
     scheme = "https" if domains.tls() else "http"
     panel_url = f"{scheme}://{domains.panel()}"
+    agent_invite = agentpair_svc.invite_text(project.slug, panel_url)
     return render("project_detail.html", ctx(
         request, user, p=project, builds=builds, sites=sites, services=services,
         hourly=hourly, has_repo=has_repo,
         git_ready=git_ready,
         tokens=tokens, new_token=new_token, panel_url=panel_url,
+        agent_invite=agent_invite,
     ))
 
 
@@ -112,6 +115,30 @@ def agent_token_create(
     bridge_svc.audit(None, project, "token_created", f"{label} ({_row.prefix}…)",
                      request.client.host if request.client else "")
     return _project_page(request, user, db, project, new_token=raw)
+
+
+@router.post("/projects/{slug}/agent-approve")
+def agent_pairing_approve(
+    request: Request, slug: str,
+    code: str = Form(""),
+    user=Depends(csrf_guard), db: Session = Depends(get_db),
+):
+    """تأیید انسانی رمز ۵ رقمیِ عامل — فقط برای ادعاهای همین پروژه (v0.5.27).
+
+    همان الگوی پل ادمین: عامل رمز را خودش ساخته و در چت نشان داده است؛
+    صاحب پروژه همین‌جا تأییدش می‌کند تا عامل توکن pst_ بگیرد. مقدار رمز
+    هرگز ذخیره یا لاگ نمی‌شود — فقط هش."""
+    project = projects_svc.project_for(db, user, slug)
+    if project is None:
+        return redirect("/projects?m=not_found")
+    ip = request.client.host if request.client else ""
+    res = agentpair_svc.approve(project.id, code, ip)
+    if res.get("ok"):
+        agentpair_svc.audit_pair("approved", f"slug={slug} claim_id={res.get('claim_id')}", ip)
+        return redirect(f"/projects/{slug}?m=agent_approved")
+    agentpair_svc.audit_pair("approve_failed", f"slug={slug} error={res.get('error')}",
+                             ip, ok=False)
+    return redirect(f"/projects/{slug}?m=agent_approve_failed")
 
 
 @router.post("/projects/{slug}/agent-tokens/{tid}/revoke")

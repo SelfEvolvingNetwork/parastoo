@@ -433,11 +433,16 @@ with TestClient(app, follow_redirects=False) as c:
 
     # متن آمادهٔ کپی عامل در صفحهٔ پروژه + ارجاع به سند + ماشین کپی یک‌دکمه‌ای (v0.5.4)
     # + پایان نمایش توکن گیتا (v0.5.5): صفحه هیچ توکن گیتایی/الگوی کهنه‌ای ندارد
+    # + v0.5.27: دعوت بدون توکن (راه پیشنهادی) + مسیر قدیمی توکن‌دار با برچسب روشن
     r = c.get("/projects/bridge-proj")
     check("صفحهٔ پروژه متن راه‌اندازی عامل را دارد (با دکمهٔ کپی یک‌دکمه‌ای)",
-          "متن راه‌اندازی عامل" in r.text and "/docs/agent" in r.text
+          "متن راه‌اندازی" in r.text and "/docs/agent" in r.text
           and "bridge/git/bridge-proj.git" in r.text and "PST_TOKEN" in r.text
           and 'id="agent-setup-text"' in r.text and "pstCopy" in r.text)
+    check("صفحهٔ پروژه دعوت بدون توکن دارد (v0.5.27 — راه پیشنهادی)",
+          "دعوت بدون توکن" in r.text and 'id="agent-invite-text"' in r.text
+          and "/api/agent/claim" in r.text
+          and "agent-approve" in r.text)
     check("توکن گیتا دیگر در صفحهٔ پروژه نیست (SSO جایگزین شد)",
           "YOUR_TOKEN" not in r.text and "نمایش توکن دسترسی" not in r.text)
 

@@ -78,6 +78,14 @@ probe() {  # probe <label> <url> — any HTTP answer counts as reachable
   echo "[docker]"
   docker --version 2>/dev/null || echo "  docker: NOT INSTALLED"
   docker compose version 2>/dev/null || echo "  docker compose: NOT AVAILABLE"
+  # v0.5.27 — آمادگی ری‌استارت: داکر و یونیت همگرایی بوت استک باید enable باشند
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl is-enabled docker >/dev/null 2>&1 \
+      || echo "  !! docker.service NOT enabled — the stack will NOT come back after a reboot (fix: sudo systemctl enable docker)"
+    systemctl is-enabled parastoo-stack.service >/dev/null 2>&1 \
+      && echo "  boot convergence: parastoo-stack.service enabled" \
+      || echo "  !! parastoo-stack.service NOT enabled — after a reboot the stack relies on per-container restore only (fix: sudo systemctl enable parastoo-stack.service)"
+  fi
   echo "  active registry mirrors (from the daemon):"
   docker info 2>/dev/null | sed -n '/Registry Mirrors:/,+6p' | sed 's/^/  /' || true
   grep -q 'Registry Mirrors' <(docker info 2>/dev/null) || echo "    none configured"

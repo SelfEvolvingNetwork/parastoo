@@ -1,0 +1,33 @@
+[Unit]
+Description=Parastoo stack boot convergence (docker compose up --wait)
+Documentation=https://github.com/SelfEvolvingNetwork/parastoo
+# v0.5.27 — آمادگی ری‌استارت (فرمان مالک، پس از اولین ری‌استارت واقعی سرور):
+# داکرِ فعال، خودش کانتینرهای restart=unless-stopped را برمی‌گرداند اما مسیر
+# بازیابی per-container شکننده است (فیلد 2026-11-11: «restart canceled» روی
+# traefik در لاگ dockerd) و همگرایی نهایی عملاً به تایمر auto-update سپرده
+# می‌شد که مالک می‌تواند خاموشش کند. این یونیت بوت را قطعی می‌کند: پس از
+# docker.service و network-online، یک «docker compose up -d --wait» ایدمپوتنت
+# می‌زند — سرویس یک‌بار‌مصرف dns-init هم دوباره اجرا می‌شود، هر رانش تازه
+# هم‌ساز می‌شود و --wait تا سالم‌شدنِ کانتینرها صبر می‌کند. در حالت عادی
+# چند ثانیه بیشتر نیست چون کانتینرها از قبل بالا هستند.
+After=network-online.target docker.service
+Requires=docker.service
+Wants=network-online.target
+ConditionPathExists=/etc/parastoo-install-path
+# تایمر auto-update هم ممکن است در بوت compose بزند؛ هر دو ایدمپوتنت‌اند و
+# قفل پروژهٔ compose v2 آنها را صف می‌کند — تداخلی نیست.
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=/usr/bin/docker compose up -d --wait
+TimeoutStartSec=900
+Nice=5
+# اگر همگرایی شکست خورد (مثلاً داکر هنوز آماده نیست) دوباره تلاش کن —
+# بدون سقف شمارش؛ بوتِ سالم ارزش تلاش بی‌سقف دارد.
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

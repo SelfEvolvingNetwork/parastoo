@@ -254,6 +254,19 @@ if docker compose up -d --build >>"$LOG" 2>&1; then
       echo "commit=${REMOTE}"
       echo "time=${NOW_H}"
     } > "$DEPLOY"
+    # v0.5.27 — آمادگی ری‌استارت (فرمان مالک، پس از اولین ری‌استارت واقعی سرور):
+    # تازه‌سازی یونیت همگرایی بوت (parastoo-stack.service) با هر آپدیت موفق —
+    # ایدمپوتنت و best-effort؛ خودآپدیت از مخزن می‌آید و install.sh را اجرا
+    # نمی‌کند، پس بدون این گام یونیت هرگز روی سرورهای موجود نصب نمی‌شد.
+    if command -v systemctl >/dev/null 2>&1 \
+       && [ -f "deploy/systemd/parastoo-stack.service" ]; then
+      sed "s|__INSTALL_DIR__|$PWD|g" "deploy/systemd/parastoo-stack.service" \
+        > /etc/systemd/system/parastoo-stack.service 2>/dev/null \
+        && systemctl daemon-reload >/dev/null 2>&1 \
+        && systemctl enable parastoo-stack.service >/dev/null 2>&1 \
+        && log "boot convergence unit refreshed+enabled (parastoo-stack.service)" \
+        || log "WARN: could not refresh parastoo-stack.service — after a reboot run: sudo systemctl enable parastoo-stack.service"
+    fi
     record "ok" "deployed ${REMOTE:0:12} (v${NEW_VER:-?})"
     log "update complete: v${NEW_VER:-?} (${REMOTE:0:12})"
     exit 0

@@ -73,6 +73,21 @@ services:
   <h2>پل عامل هوش مصنوعی (Agent Bridge)</h2>
   <p class="muted small">با یک توکنِ مخصوص همین پروژه، عامل هوش مصنوعی شما (مثلاً Claude Code یا Cursor) می‌تواند کد را <b>پوش کند</b>، بیلد و لاگ‌ها را <b>ببیند</b>، داخل کانتینرها <b>تست و عیب‌یابی کند</b> (exec) و سرویس را ری‌استارت کند — فقط روی همین پروژه. دیدن کانتینرها، مخزن‌ها و داده‌های پروژه‌های دیگر و زیرساخت سرور از دید عامل خارج است و هر فراخوانی در گزارش پل ثبت می‌شود.</p>
 
+  <details class="mt" open>
+    <summary class="btn-link">دعوت بدون توکن + تأیید رمز — راه پیشنهادی (v0.5.27)</summary>
+    <p class="muted small">متن دعوت زیر را کپی و در چت عامل خود بچسبانید. <b>هیچ توکن یا رمزی در آن نیست</b> — لورفتنش بی‌خطر است. عامل خودش یک رمز ۵ رقمی می‌سازد و در چت به شما نشان می‌دهد؛ همان رمز را در فرم پایین تأیید کنید تا عامل توکنِ مخصوص همین پروژه را مستقیم از سرور بگیرد. هیچ مقدار حساسی از چت عبور نمی‌کند.</p>
+    <pre class="code" id="agent-invite-text" dir="ltr">{{ agent_invite }}</pre>
+    <p class="mt"><button class="btn btn-primary btn-small" type="button" onclick="pstCopy(this,'agent-invite-text')">کپی متن دعوت</button></p>
+    <form method="post" action="/projects/{{ p.slug }}/agent-approve" class="inline-form mt">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>رمز ۵ رقمی که عامل در چت نشان داده
+        <input type="text" name="code" required maxlength="5" inputmode="numeric" pattern="[0-9]{5}" placeholder="-----" style="max-width:9ch;direction:ltr;text-align:center">
+      </label>
+      <button class="btn btn-primary" type="submit">تأیید عامل</button>
+    </form>
+    <p class="muted small">مهلت تأیید: ۲ دقیقه از ساخت رمز توسط عامل. بعد از تأیید، عامل تا ۳۰ دقیقه فرصت برداشت توکن را دارد؛ توکن در فهرست پایین با نام «عامل جفت‌شده» ظاهر می‌شود و مثل بقیه ابطال‌پذیر است.</p>
+  </details>
+
   {% if new_token %}
   <div class="badge badge-ok">هشدار محرمانه: این کلیدِ همین پروژه است — فقط به کلاینت عامل خودتان بدهید و جایی منتشر/کامیت نکنید. این مقدار فقط همین یک‌بار نمایش داده می‌شود:</div>
   <pre class="code" dir="ltr">{{ new_token }}</pre>
@@ -105,6 +120,9 @@ services:
   <p class="muted small">هنوز توکنی نساخته‌اید.</p>
   {% endif %}
 
+  <details class="mt">
+    <summary class="btn-link">مسیر قدیمی: ساخت دستی توکن و متن راه‌اندازی</summary>
+    <p class="muted small">در این مسیر خودِ شما توکن می‌سازید و آن را به عامل می‌دهید — یعنی توکن از چت عبور می‌کند. راه پیشنهادی، دعوت بدون توکن بالای همین کارت است؛ این بخش برای عامل‌هایی مانده که هنوز جریان جفت‌سازی را نمی‌شناسند.</p>
   <form method="post" action="/projects/{{ p.slug }}/agent-tokens" class="inline-form">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label>نام توکن (مثلاً «لپ‌تاپ کلاز-کد»)
@@ -117,7 +135,7 @@ services:
   </form>
 
   <details class="mt">
-    <summary class="btn-link">متن راه‌اندازی عامل — با یک دکمه کپی و به کلاینت عامل بدهید</summary>
+    <summary class="btn-link">متن راه‌اندازی قدیمی (توکن‌دار) — با یک دکمه کپی و به کلاینت عامل بدهید</summary>
     <p class="muted small">متن کوتاه و فنی انگلیسی — مخاطبش عامل است نه کاربر؛ با خاستگاه (تولید پنل به درخواست کاربر) و مدل اعتماد (قلمرو پروژه، ابطال فوری، حسابرسی). جزئیات کامل قرارداد را عامل از <a href="/docs/agent" target="_blank" rel="noopener">/docs/agent</a> می‌خواند (تک‌منبع همیشه‌به‌روز).</p>
     <pre class="code" id="agent-setup-text" dir="ltr">{% set tok = new_token if new_token else 'PST_TOKEN (mint one in the Agent Bridge card above)' -%}
 Parastoo agent bootstrap — project: {{ p.slug }}

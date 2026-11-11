@@ -975,17 +975,29 @@ bash "$INSTALL_DIR/scripts/tls-store.sh" save || true
 #   sudo parastoo autoupdate off
 if command -v systemctl >/dev/null 2>&1; then
   mkdir -p /etc/systemd/system
-  for _u in parastoo-autoupdate.service parastoo-autoupdate.timer \
+  for _u in parastoo-stack.service parastoo-autoupdate.service parastoo-autoupdate.timer \
             parastoo-tls-store.service parastoo-tls-store.timer; do
     sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" "deploy/systemd/$_u" > "/etc/systemd/system/$_u" 2>/dev/null || true
   done
   systemctl daemon-reload 2>/dev/null || true
+  # v0.5.27 — آمادگی ری‌استارت (فرمان مالک): یونیت همگرایی بوت استک باید
+  # فعال باشد تا «بالا آمدن پرستو بعد از ری‌استارت» به بازیابیِ per-container
+  # داکر یا تایمر auto-update وابسته نباشد.
+  systemctl enable parastoo-stack.service >/dev/null 2>&1 \
+    && ok "Boot convergence enabled (parastoo-stack.service: docker compose up --wait after docker.service at every boot)." \
+    || warn "Could not enable parastoo-stack.service — after a reboot run: cd $INSTALL_DIR && sudo docker compose up -d --wait"
   systemctl enable --now parastoo-tls-store.timer 2>/dev/null \
     && ok "TLS store sync timer enabled (certificates mirror to /var/lib/parastoo/tls every 10 min)." \
     || warn "Could not enable parastoo-tls-store.timer (certificates still saved at install time)."
   systemctl enable --now parastoo-autoupdate.timer 2>/dev/null \
     && ok "Auto-update timer armed — Parastoo now tracks the GitHub channel on its own (opt-out: sudo parastoo autoupdate off)." \
     || warn "Could not enable parastoo-autoupdate.timer (manual update still works: sudo parastoo update)."
+  # v0.5.27 — بررسی بلند داکر: اگر داکر enable نباشد، بعد از ری‌استارت هیچ
+  # کانتینری برنمی‌گردد؛ بی‌صدا رد شدنش (|| true قدیمی) این حقیقت را می‌پوشاند.
+  if ! systemctl is-enabled docker >/dev/null 2>&1; then
+    warn "docker.service is NOT enabled — the stack will NOT come back after a reboot!"
+    warn "Fix now:  sudo systemctl enable docker"
+  fi
 else
   warn "systemd not available; auto-update timer not armed (manual update: sudo parastoo update)."
 fi
