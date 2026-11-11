@@ -617,5 +617,56 @@ with TestClient(app, follow_redirects=False) as ca, \
     r = anon.get("/api/tickets?box=inbox", headers=PH)
     check("توکن باطل‌شده → 401", r.status_code == 401)
 
+    # ---- Cycle 6-prep: بوت‌استرپ خودکار توکن agent:1 (فرمان مالک ۱۱-۱۱ ششم) ----
+    # هیچ‌گاه از کاربر/ادمین توکن pat_ نخواسته نمی‌شود. ensure_default_agent_token
+    # در lifespan صدا زده می‌شود — اما چون TestClient lifespan را اجرا می‌کند،
+    # توکن خودکار از قبل ساخته شده. اینجا فقط راستی‌آزمایی می‌کنیم.
+    print("— Cycle 6-prep: بوت‌استرپ خودکار توکن agent:1 —")
+    from app.services import agents as asvc2
+    token_file_path = asvc2._agent_token_file()
+    check("فایل توکن عامل ساخته شده (بوت‌استرپ خودکار lifespan)",
+          os.path.isfile(token_file_path), token_file_path)
+    check("فایل توکن قابل خواندن و مقدار pat_ دارد",
+          asvc2._token_file_valid(token_file_path))
+    # محتوای فایل هرگز در خروجی تست نمی‌آید — فقط ساختار
+    with open(token_file_path, "r", encoding="utf-8") as _f:
+        _content = _f.read()
+    check("فایل توکن فقط کلید AGENT_TICKET_TOKEN دارد",
+          "AGENT_TICKET_TOKEN=" in _content and _content.count("\n") == 1)
+    # idempotent: صدا زدن دوباره نباید توکن تازه بسازد (توکن فعال + فایل هست)
+    db = SessionLocal()
+    from app.models import AgentPatToken as _APT2
+    before = db.query(_APT2).filter(_APT2.agent_id == 1,
+                                   _APT2.revoked_at.is_(None)).count()
+    result = asvc2.ensure_default_agent_token(db)
+    after = db.query(_APT2).filter(_APT2.agent_id == 1,
+                                   _APT2.revoked_at.is_(None)).count()
+    db.close()
+    check("بوت‌استرپ idempotent: توکن تازه نساخت (None)",
+          result is None and before == after and before >= 1,
+          f"before={before} after={after} result={result is not None}")
+    # سناریوی از دست رفتن فایل: توکن کهنه ابطال، تازه ساخته
+    os.remove(token_file_path)
+    check("فایل توکن حذف شد (شبیه‌سازی ری‌استارت روی volume تازه)",
+          not os.path.isfile(token_file_path))
+    db = SessionLocal()
+    new_raw = asvc2.ensure_default_agent_token(db)
+    _new_row = (db.query(_APT2).filter(_APT2.agent_id == 1,
+                                      _APT2.revoked_at.is_(None))
+                .order_by(_APT2.id.desc()).first())
+    revoked_count = (db.query(_APT2).filter(_APT2.agent_id == 1,
+                                           _APT2.revoked_at.is_not(None)).count())
+    db.close()
+    check("بوت‌استرپ پس از حذف فایل: توکن تازه ساخته + کهنه ابطال",
+          new_raw is not None and new_raw.startswith("pat_")
+          and _new_row is not None and revoked_count >= 1,
+          f"new_row={_new_row.id if _new_row else None} revoked={revoked_count}")
+    check("فایل توکن دوباره ساخته شد",
+          asvc2._token_file_valid(token_file_path))
+    # توکن تازه باید واقعاً کار کند (احراز هویت تیکتی)
+    _new_auth = asvc2.authenticate(SessionLocal(), new_raw)
+    check("توکن بوت‌استرپ‌شده واقعاً احراز می‌شود",
+          _new_auth is not None and _new_auth[1].id == 1)
+
 print(f"\nنتیجه: {PASS} موفق، {FAIL} ناموفق")
 sys.exit(1 if FAIL else 0)

@@ -9,7 +9,7 @@ def _bool(name: str, default: str = "false") -> bool:
 class Settings:
     # --- پایه ---
     APP_NAME: str = "پرستو"
-    VERSION: str = "0.5.24"
+    VERSION: str = "0.5.25"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me")
 
     # --- دیتابیس ---
@@ -69,6 +69,14 @@ class Settings:
     DOCKER_SOCK: str = os.environ.get("DOCKER_SOCK", "unix:///var/run/docker.sock")
     APPS_NETWORK: str = os.environ.get("APPS_NETWORK", "parastoo-apps")
     DATA_DIR: str = os.environ.get("DATA_DIR", "/data")
+
+    # --- بوت‌استرپ خودکار توکن عامل اکوسیستم (فرمان مالک ۱۱-۱۱ ششم) ---
+    # عامل پرستو (agent:1) توکن pat_ خودش را خودکار می‌سازد — هیچ‌گاه از کاربر/ادمین
+    # توکن نخواسته نمی‌شود. مقدار خام در این فایل ذخیره می‌شود (chmod 600).
+    # خالی = پیش‌فرض DATA_DIR/agent-ticket.env. فایل در volume داکر است که هسته
+    # می‌نویسد و عامل پرستو (از بیرون کانتینر) با docker exec می‌خواند.
+    AGENT_TICKET_TOKEN_FILE: str = os.environ.get(
+        "PARASTOO_AGENT_TICKET_TOKEN_FILE", "").strip()
 
     # --- ایمیل خروجی (v0.5.23): نامه‌های حساب — یادآوری رمز، خوش‌آمد، اطلاع تغییر رمز ---
     # SMTP خارجی پیشنهادی است؛ PARASTOO_SMTP_HOST خالی = پشتیبان فایل:

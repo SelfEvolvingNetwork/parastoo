@@ -29,6 +29,19 @@ WEB_STATIC = pathlib.Path(__file__).parent / "web" / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)  # اسکیما فقط از مدل‌های همین کد (بدون مهاجرت)
+    # بوت‌استرپ خودکار توکن عامل پرستو (فرمان مالک ۱۱-۱۱ ششم): هیچ‌گاه از کاربر/ادمین
+    # توکن pat_ نخواسته نمی‌شود. agent:1 و توکن فعالش همین‌جا، در هر بالا آمدن،
+    # آماده می‌شوند — عامل از ضربان بعد جاروی تیکت زنده می‌کند.
+    try:
+        from .db import SessionLocal
+        from .services import agents as asvc
+        db = SessionLocal()
+        try:
+            asvc.ensure_default_agent_token(db)
+        finally:
+            db.close()
+    except Exception:
+        log.exception("agent token bootstrap failed (non-fatal)")
     workers.start_workers()
     yield
 

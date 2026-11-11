@@ -62,6 +62,102 @@ def ensure_default_agent(db):
     return row
 
 
+# ---------- بوت‌استرپ خودکار توکن agent:1 (فرمان مالک ۱۱-۱۱ ششم) ----------
+# هیچ‌گاه از کاربر/ادمین توکن pat_ نخواهیم. عامل پرستو خودش توکن خودش را
+# می‌سازد و نگه می‌دارد. این تابع در startup صدا زده می‌شود: اگر agent:1
+# توکن فعال ندارد، یکی می‌سازد و مقدار خام را در فایل ذخیره می‌کند.
+# اگر فایل نباشد (مثلاً پس از ری‌استارت کانتینر روی volume تازه)، یکی تازه
+# می‌سازد و توکن کهنه را ابطال می‌کند — هیچ‌گاه «بدون توکن» نمی‌مانیم.
+#
+# مسیر فایل از config خوانده می‌شود (AGENT_TICKET_TOKEN_FILE). فایل فقط‌خواندنی
+# برای پروسهٔ parastoo-core نیست — خود هسته آن را می‌نویسد؛ عامل پرستو (از
+# بیرون کانتینر) با docker exec یا exec سرور آن را می‌خواند.
+
+def ensure_default_agent_token(db) -> str | None:
+    """اگر agent:1 توکن فعال pat_ ندارد، یکی بساز و در فایل بنویس.
+
+    خروجی: مقدار خام توکن (یا None اگر ناموفق بود). idempotent: اگر توکن
+    فعال هست و فایل هم هست، کاری نمی‌کند.
+    """
+    from ..models import AgentPatToken
+    agent = ensure_default_agent(db)
+    if agent is None:
+        return None
+
+    token_file = _agent_token_file()
+    active = (db.query(AgentPatToken)
+              .filter(AgentPatToken.agent_id == agent.id,
+                      AgentPatToken.revoked_at.is_(None))
+              .order_by(AgentPatToken.id.desc()).first())
+
+    # اگر توکن فعال هست و فایل هم هست و قابل خواندن است → کاری نکن
+    if active is not None and _token_file_valid(token_file):
+        return None
+
+    # اگر توکن فعال هست ولی فایل نیست (یعنی کانتینر ری‌استارت شده روی volume
+    # تازه، یا فایل دستی پاک شده) → توکن کهنه را ابطال و یکی تازه بساز.
+    # (ما مقدار خام توکن کهنه را نداریم — فقط هش داریم؛ پس نمی‌توانیم فایل
+    # را بازسازی کنیم. یک توکن تازه امن‌ترین راه است.)
+    if active is not None and not _token_file_valid(token_file):
+        try:
+            from ..db import db_now
+            active.revoked_at = db_now()
+            active.name = (active.name or "agent") + " [auto-revoked: file lost]"
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    raw, _row = mint(db, agent, "بوت‌استرپ خودکار عامل پرستو")
+    if not _write_token_file(token_file, raw):
+        # فایل نوشته نشد (مثلاً docker read-only) — توکن ساخته شد ولی عامل
+        # نمی‌تواند آن را بخواند. در audit ثبت می‌شود؛ ادمین می‌تواند ببیند.
+        return None
+    return raw
+
+
+def _agent_token_file() -> str:
+    """مسیر فایل توکن عامل — از config یا پیش‌فرض DATA_DIR/agent-ticket.env."""
+    return getattr(settings, "AGENT_TICKET_TOKEN_FILE", "") \
+        or str(Path(settings.DATA_DIR) / "agent-ticket.env")
+
+
+def _token_file_valid(path: str) -> bool:
+    """آیا فایل توکن هست و مقدار pat_ دارد؟"""
+    try:
+        p = Path(path)
+        if not p.is_file():
+            return False
+        text = p.read_text(encoding="utf-8")
+        # یک خط کلید=مقدار با پیشوند pat_
+        for ln in text.splitlines():
+            ln = ln.strip()
+            if ln.startswith("#") or "=" not in ln:
+                continue
+            val = ln.split("=", 1)[1].strip().strip('"').strip("'")
+            if val.startswith(TOKEN_PREFIX):
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def _write_token_file(path: str, raw: str) -> bool:
+    """نوشتن فایل توکن با chmod 600. best-effort — خطا = False."""
+    try:
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        # فقط مقدار خام — کلید ثابت برای خوانندهٔ عامل
+        p.write_text(f'AGENT_TICKET_TOKEN="{raw}"\n', encoding="utf-8")
+        try:
+            p.chmod(0o600)
+        except Exception:
+            pass  # chmod در برخی filesystemها (مثل volume داکر) ممکن است نرود
+        return True
+    except Exception:
+        return False
+
+
+
 def mint(db, agent, name: str, days: int | None = None):
     """ساخت توکن تازه. خروجی: (مقدار خام — فقط یک‌بار نمایش، ردیف)."""
     from datetime import timedelta
