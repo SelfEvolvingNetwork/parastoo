@@ -38,7 +38,7 @@ MAX_SQL_ROWS = 200          # سقف ردیف پاسخ SQL
 MAX_CELL_CHARS = 300        # سقف طول هر سلول سریالایزشده
 
 # گروه‌های پیش‌فرض netcheck — سرویس‌هایی که چرخهٔ نصب/آپدیت/بیلد پرستو واقعاً
-# به آن‌ها وابسته است (SANCTIONS.md/README) + پراکسی‌هایی که در .env تنظیم شده‌اند.
+# به آن‌ها وابسته است (SANCTIONS.fa.md/README) + پراکسی‌هایی که در .env تنظیم شده‌اند.
 NETCHECK_GROUPS: dict[str, list[str]] = {
     "github": [
         "https://github.com",

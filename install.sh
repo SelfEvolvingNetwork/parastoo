@@ -9,7 +9,7 @@
 #    2) Images:         Docker Hub     <- on sanctions -> Iranian mirrors in daemon.json
 #    3) Fully offline:  offline-images/ folder next to the package -> docker load (no pull at all)
 #    4) Builds:         PyPI/npm       <- on sanctions -> Iranian mirrors written into .env
-#  Details: docs/SANCTIONS.md
+#  Details: docs/SANCTIONS.fa.md
 #
 #  NOTE: all installer output is English on purpose — Persian/RTL
 #  text gets mangled over SSH. The web panel itself stays Persian.
@@ -81,7 +81,7 @@ ensure_docker_daemon() {
   fi
   echo "        --- last journal lines (docker.service / docker.socket): ---" >&2
   journalctl -u docker.service -u docker.socket --no-pager -n 12 2>/dev/null | sed 's/^/        /' >&2
-  die "Docker daemon did not come up — a host problem, not a network problem. See the journal above; docs/SANCTIONS.md, section 'Docker install'."
+  die "Docker daemon did not come up — a host problem, not a network problem. See the journal above; docs/SANCTIONS.fa.md, section 'Docker install'."
 }
 
 # ---------- 1) prerequisites ----------
@@ -126,7 +126,7 @@ if ! command -v docker >/dev/null 2>&1; then
     # route 2: Ubuntu repos — always reachable from inside Iran
     warn "get.docker.com is not reachable (sanctions); falling back to Ubuntu repositories"
     install_docker_from_ubuntu \
-      || die "Docker install failed. Manual fix: docs/SANCTIONS.md, section 'Docker install'"
+      || die "Docker install failed. Manual fix: docs/SANCTIONS.fa.md, section 'Docker install'"
     ok "Docker installed from Ubuntu repositories."
   fi
 else
@@ -136,7 +136,7 @@ systemctl enable --now docker >/dev/null 2>&1 || true
 ensure_docker_daemon
 
 if ! docker compose version >/dev/null 2>&1; then
-  die "docker compose plugin not found. Install docker-compose-v2 (docs/SANCTIONS.md)."
+  die "docker compose plugin not found. Install docker-compose-v2 (docs/SANCTIONS.fa.md)."
 fi
 
 # buildx: newer compose emits a Bake warning without it; best-effort install
@@ -195,7 +195,7 @@ if [ -n "${PARASTOO_REGISTRY_MIRRORS:-}" ]; then
   say "Configuring mirrors from env (PARASTOO_REGISTRY_MIRRORS)..."
   apply_mirrors "$PARASTOO_REGISTRY_MIRRORS" \
     && ok "Mirrors configured." \
-    || die "Failed to set mirrors; edit /etc/docker/daemon.json manually (docs/SANCTIONS.md)."
+    || die "Failed to set mirrors; edit /etc/docker/daemon.json manually (docs/SANCTIONS.fa.md)."
 elif hub_reachable; then
   ok "Docker Hub is reachable (no mirrors needed)."
 else
@@ -206,17 +206,17 @@ else
     if [ -n "$ALIVE" ]; then
       apply_mirrors "$ALIVE" && ok "Mirrors also configured for future builds." || true
     else
-      warn "No live mirror found — continuing with the offline bundle; for future builds see docs/SANCTIONS.md."
+      warn "No live mirror found — continuing with the offline bundle; for future builds see docs/SANCTIONS.fa.md."
     fi
   else
     ALIVE="$(bash scripts/check-mirrors.sh || true)"
     if [ -n "$ALIVE" ]; then
       apply_mirrors "$ALIVE" \
         && ok "$(echo "$ALIVE" | wc -l) live mirror(s) active in /etc/docker/daemon.json (fastest first)." \
-        || warn "Failed to write mirrors — docs/SANCTIONS.md"
+        || warn "Failed to write mirrors — docs/SANCTIONS.fa.md"
     else
       warn "No live mirror found; update the list: deploy/mirrors.txt or use PARASTOO_REGISTRY_MIRRORS"
-      warn "Without mirrors, image pulls fail — reliable route: offline bundle (docs/SANCTIONS.md, layer 3)"
+      warn "Without mirrors, image pulls fail — reliable route: offline bundle (docs/SANCTIONS.fa.md, layer 3)"
     fi
     # final verification: a small real pull (same image the backup command needs)
     if timeout 90 docker pull -q alpine:3.20 >/dev/null 2>&1; then
@@ -312,7 +312,7 @@ if [ -z "${PARASTOO_PIP_INDEX_URL:-}" ]; then
       fi
       echo "fail"
     done
-    [ -n "$DETECTED_PIP_MIRROR" ] || warn "No live pip mirror found; the core build may fail — docs/SANCTIONS.md, layer 4"
+    [ -n "$DETECTED_PIP_MIRROR" ] || warn "No live pip mirror found; the core build may fail — docs/SANCTIONS.fa.md, layer 4"
   fi
 fi
 if [ -z "${PARASTOO_NPM_REGISTRY:-}" ]; then
@@ -524,7 +524,7 @@ PARASTOO_ACME_EAB_HMAC="${PARASTOO_ACME_EAB_HMAC:-}"
 # باید همین‌جا باشد نه لحظهٔ صدور گواهی.
 if [ "$TLS_ENABLED" = "true" ] && [ "$ACME_CA" = "zerossl" ] \
    && printf '%s' "$BASE_DOMAIN" | grep -qiE '(^|\.)ir$'; then
-  die "ZeroSSL does not issue certificates for .ir domains (restricted TLD — US/EU export laws; see docs/SANCTIONS.md). Re-run without PARASTOO_ACME_CA (default letsencrypt — LE does issue .ir certificates)."
+  die "ZeroSSL does not issue certificates for .ir domains (restricted TLD — US/EU export laws; see docs/SANCTIONS.fa.md). Re-run without PARASTOO_ACME_CA (default letsencrypt — LE does issue .ir certificates)."
 fi
 ACME_CA_URL="https://acme-v02.api.letsencrypt.org/directory"
 ACME_EAB_BLOCK=""
@@ -552,7 +552,7 @@ ACME_CASERVER_BLOCK="      caServer: \"${ACME_CA_URL}\""
 # is seen honestly here, not hours later in traefik logs
 if [ "$TLS_ENABLED" = "true" ]; then
   _ACME_CODE="$(timeout 15 curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$ACME_CA_URL" 2>/dev/null || echo 000)"
-  [ "$_ACME_CODE" = "200" ] || warn "ACME CA directory ($ACME_CA) answered '$_ACME_CODE' — certificate issuance may fail (network/sanctions). See docs/SANCTIONS.md."
+  [ "$_ACME_CODE" = "200" ] || warn "ACME CA directory ($ACME_CA) answered '$_ACME_CODE' — certificate issuance may fail (network/sanctions). See docs/SANCTIONS.fa.md."
 fi
 
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(gen)}"
@@ -686,7 +686,7 @@ PARASTOO_DEV_TOKEN=${PARASTOO_DEV_TOKEN}
 PARASTOO_DEPLOYED_COMMIT="${PARASTOO_DEPLOYED_COMMIT}"
 PARASTOO_DEPLOYED_AT="${PARASTOO_DEPLOYED_AT}"
 
-# --- sanctions (optional; docs/SANCTIONS.md) ---
+# --- sanctions (optional; docs/SANCTIONS.fa.md) ---
 # pip mirror for Python builds, e.g.: https://package-mirror.liara.ir/repository/pypi/simple
 PARASTOO_PIP_INDEX_URL=${PARASTOO_PIP_INDEX_URL}
 # npm registry for node builds, e.g.: https://registry.npmjs.ir
@@ -771,7 +771,7 @@ fi
 # Replaces the v0.3.20 insurance that backed up a dead path (config/letsencrypt
 # — the real storage is the volume); the store now mirrors the volume every
 # 10 min (parastoo-tls-store.timer) plus right here at install time. Off-server
-# copies remain the agent's job (docs/AI_AGENT_LOOP.md §0).
+# copies remain the agent's job (docs/AI_AGENT_LOOP.fa.md §0).
 mark "4c) persistent TLS store (restore -> save)"
 bash "$INSTALL_DIR/scripts/tls-store.sh" ensure || true
 bash "$INSTALL_DIR/scripts/tls-store.sh" save || true
@@ -809,7 +809,7 @@ if ! docker compose up -d --build; then
     sleep 3
   done
   if [ "$UP_PROBE" = "ok" ]; then
-    warn "compose exited non-zero, but core answers /healthz — health-check race; continuing (docs/LESSONS.md)."
+    warn "compose exited non-zero, but core answers /healthz — health-check race; continuing (docs/LESSONS.fa.md)."
   else
     echo ""
     warn "The auto-update timer is already armed — pushing the fix to GitHub deploys it automatically."
@@ -822,7 +822,7 @@ if ! docker compose up -d --build; then
   2) or set a healthy mirror: PARASTOO_REGISTRY_MIRRORS=\"https://docker.arvancloud.ir\" sudo -E bash install.sh
   3) if the error mentions pypi.org / files.pythonhosted.org: set a pip mirror and re-run:
      PARASTOO_PIP_INDEX_URL=\"https://package-mirror.liara.ir/repository/pypi/simple\" sudo -E bash install.sh
-  Full guide: docs/SANCTIONS.md"
+  Full guide: docs/SANCTIONS.fa.md"
   fi
 fi
 
@@ -1020,5 +1020,5 @@ echo ""
 echo "  Management commands:  parastoo status | logs | update | autoupdate | backup | restart"
 echo "  Updates:  automatic — the server tracks the GitHub channel on its own (owner decree 2026-11-09); opt-out: sudo parastoo autoupdate off"
 echo "  Version API:  ${SCHEME}://${PANEL_DOMAIN}/api/version"
-echo "  Sanctions & offline bundle:  docs/SANCTIONS.md"
+echo "  Sanctions & offline bundle:  docs/SANCTIONS.fa.md"
 echo ""

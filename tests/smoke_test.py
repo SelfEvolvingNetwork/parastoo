@@ -1569,7 +1569,7 @@ check("CA ACME قابل‌انتخاب است: نگاشت caServer و EAB در �
       and "PARASTOO_ACME_CA" in _inst
       and "PARASTOO_ACME_EAB_KID" in _inst)
 check("دایرکتوری CA پیش از نصب پروب می‌شود — CA مسدود (میدان: BuyPass/Actalis از ایران تایم‌اوت) همان‌جا صادقانه دیده می‌شود نه ساعت‌ها بعد در لاگ ترافیک",
-      "ACME CA directory" in _inst and "docs/SANCTIONS.md" in _inst
+      "ACME CA directory" in _inst and "docs/SANCTIONS.fa.md" in _inst
       and "_ACME_CODE" in _inst)
 _doc = (ROOT / "scripts" / "doctor.sh").read_text()
 check("doctor.sh برای ریدایرکت ۳۰۱ مسیر HTTPS را هم می‌سنجد و تفسیر می‌کند",
@@ -1619,7 +1619,7 @@ check("پشتیبان CLI اول فروشگاه را همگام و بعد آرش
 check("فروشگاه هرگز فروشگاه سالم را با فایل خراب نمی‌پوشاند و JSON را اعتبارسنجی می‌کند",
       "_json_valid" in _t32 and "refusing to archive garbage" in _t32)
 check("قانون در قرارداد حلقهٔ ایجنت ثبت است (AI_AGENT_LOOP §3 و §0)",
-      "قانون گواهی ماندگار" in (ROOT / "docs/AI_AGENT_LOOP.md").read_text())
+      "قانون گواهی ماندگار" in (ROOT / "docs/AI_AGENT_LOOP.fa.md").read_text())
 
 
 print()

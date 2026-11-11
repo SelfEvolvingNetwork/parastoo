@@ -30,7 +30,7 @@ from ..config import settings
 REPO_API = ("https://api.github.com/repos/"
             "SelfEvolvingNetwork/parastoo-mobile/releases/latest")
 ASSET_NAME = "parastoo-mobile-debug.apk"
-# فال‌بک تحریم (SANCTIONS.md): اگر دانلود مستقیم از githubusercontent از سرور
+# فال‌بک تحریم (SANCTIONS.fa.md): اگر دانلود مستقیم از githubusercontent از سرور
 # نگذشت، همان URL از پروکسی دانلود شناخته‌شدهٔ پروژه امتحان می‌شود.
 DOWNLOAD_MIRRORS = ("", "https://gh-proxy.com/")
 MAX_APK_BYTES = 200 * 1024 * 1024

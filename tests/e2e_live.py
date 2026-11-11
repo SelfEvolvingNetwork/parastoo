@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """راستی‌آزمایی زندهٔ پرستو — لایهٔ عمومی (+ لایهٔ توسعه‌دهنده اگر توکن باشد).
 
-این هارنس استانداردِ گام M6 از docs/AI_AGENT_LOOP.md است: بعد از هر استقرار،
+این هارنس استانداردِ گام M6 از docs/AI_AGENT_LOOP.fa.md است: بعد از هر استقرار،
 وضعیت سرور واقعی را «از چشم بیرون» آزمود و بدون هیچ POST تغییردهنده‌ای خارج می‌شود.
 فقط یک POST ردشدنی زده می‌شود (وب‌هوک بدون امضا) که صرفاً رفتار گارد را می‌سنجد.
 
@@ -332,7 +332,7 @@ def main() -> int:
         check("dev-dns-status", "/api/dns/status — سرویس نیم‌سرور", c_dev_dns_status)
         check("dev-dns-roundtrip", "/api/dns/zones — ساخت/رکورد/حذف زون موقت", c_dev_dns_roundtrip)
 
-    # ---------- لایهٔ پل عامل (v0.4.6) — قرارداد ارتباط سرویس‌ها در DEVELOPMENT.md ----------
+    # ---------- لایهٔ پل عامل (v0.4.6) — قرارداد ارتباط سرویس‌ها در DEVELOPMENT.fa.md ----------
     bridge_token = os.environ.get("PARASTOO_BRIDGE_TOKEN", "").strip()
     cross_target = os.environ.get("PARASTOO_CROSS_TARGET", "").strip()
     bridge_svc = (os.environ.get("PARASTOO_BRIDGE_SVC", "web").strip() or "web")
