@@ -1,5 +1,7 @@
 # پرستو (Parastoo) v0.5.19
 
+> مخاطب: انسان — مالک/نصاب/توسعه‌دهندهٔ تازه‌وارد · عامل‌ها: از INDEX §۲ و ROLES وارد شوید
+
 [![CI](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml/badge.svg)](https://github.com/SelfEvolvingNetwork/parastoo/actions/workflows/ci.yml)
 
 پلتفرم خودمیزبانِ «ساخت، انتشار و فروش» وب‌اپلیکیشن‌ها — روی یک سرور اوبونتو، با یک دستور.

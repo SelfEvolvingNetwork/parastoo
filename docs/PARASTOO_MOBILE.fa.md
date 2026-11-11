@@ -1,5 +1,7 @@
 # پرستو موبایل — اپ اندروید ادمین (قرارداد یکپارچگی)
 
+> مخاطب: کلاه I3 در کار موبایل و مالک
+
 این سند رابطهٔ پرستو و پل access-agent با اپ اندروید **پرستو موبایل** را ثبت می‌کند تا قرارداد یک‌جا و به‌روز باشد. مخزن اپ: [`SelfEvolvingNetwork/parastoo-mobile`](https://github.com/SelfEvolvingNetwork/parastoo-mobile).
 
 ## نقش اپ در معماری
