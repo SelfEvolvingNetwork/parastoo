@@ -72,7 +72,11 @@ def _project_page(request: Request, user, db: Session, project: Project,
               .all())
     scheme = "https" if domains.tls() else "http"
     panel_url = f"{scheme}://{domains.panel()}"
-    agent_invite = agentpair_svc.invite_text(project.slug, panel_url)
+    # v0.5.28 — دعوت پروژه-مند: هر رندر دعوت تازه می‌سازد (تنها دعوت زندهٔ
+    # پروژه همین است)؛ شناسهٔ دعوت فقط در همین پاسخ چاپ می‌شود و روی دیسک
+    # تنها هشش می‌ماند. با نخستین تأیید مصرف می‌شود (یک دعوت = یک عامل).
+    invite_iid, _irec = agentpair_svc.mint_invite(project.id)
+    agent_invite = agentpair_svc.invite_text(project.slug, panel_url, invite_iid)
     return render("project_detail.html", ctx(
         request, user, p=project, builds=builds, sites=sites, services=services,
         hourly=hourly, has_repo=has_repo,
@@ -123,10 +127,11 @@ def agent_pairing_approve(
     code: str = Form(""),
     user=Depends(csrf_guard), db: Session = Depends(get_db),
 ):
-    """تأیید انسانی رمز ۵ رقمیِ عامل — فقط برای ادعاهای همین پروژه (v0.5.27).
+    """تأیید انسانی رمز ۵ رقمیِ سرورساخته — فقط برای ادعاهای همین پروژه (v0.5.28).
 
-    همان الگوی پل ادمین: عامل رمز را خودش ساخته و در چت نشان داده است؛
-    صاحب پروژه همین‌جا تأییدش می‌کند تا عامل توکن pst_ بگیرد. مقدار رمز
+    همان الگوی پل ادمین: سرور رمز را در پاسخ GET آدرس دعوت ساخته و عامل
+    برای کاربر چاپش کرده است؛ صاحب پروژه همین‌جا تأییدش می‌کند تا عامل
+    توکن pst_ بگیرد (و دعوت مصرف شود — یک دعوت = یک عامل). مقدار رمز
     هرگز ذخیره یا لاگ نمی‌شود — فقط هش."""
     project = projects_svc.project_for(db, user, slug)
     if project is None:

@@ -350,34 +350,82 @@ async def git_shim(request: Request, repo_path: str, db: Session = Depends(get_d
     return await _git_shim(request, repo_path, db)
 
 
-# ---------- جفت‌سازی عامل پروژه (v0.5.27 — عمومی، بدون توکن) ----------
-# آینهٔ پل ادمین (access-agent v0.7.1) با دانهٔ پروژه: عامل رمز ۵ رقمی
-# خودش را ادعا می‌کند، صاحب پروژه در صفحهٔ پروژه تأییدش می‌کند و عامل
-# توکن pst_ تازه برمی‌دارد. هیچ رازی از چت عبور نمی‌کند؛ متن دعوت
-# بی‌رمز است و لورفتنش بی‌خطر است (سقف‌ها و هش‌ها در services/agentpair.py).
+# ---------- جفت‌سازی عامل پروژه (v0.5.27 → v0.5.28 — عمومی، بدون توکن) ----------
+# آینهٔ پل ادمین (access-agent v0.8) با دانهٔ پروژه: رمز ۵ رقمی را «سرور»
+# در پاسخ GET آدرس دعوت می‌سازد و عامل فقط چاپش می‌کند؛ صاحب پروژه در
+# صفحهٔ پروژه تأییدش می‌کند و عامل توکن pst_ تازه برمی‌دارد. هیچ رازی از
+# چت عبور نمی‌کند؛ متن دعوت بی‌رمز است و لورفتنش بی‌خطر است (سقف‌ها و
+# هش‌ها در services/agentpair.py).
+
+@router.get("/api/agent/onboarding")
+async def agent_onboarding(request: Request, project: str = "", iid: str = "",
+                           db: Session = Depends(get_db)):
+    """دریافت رمز سرورساخته — پارامترها: ?project=<slug>&iid=<شناسهٔ دعوت>.
+
+    بدون پارامتر فقط سند کوتاه می‌دهد (invite_required). عامل هیچ محاسبه‌ای
+    نمی‌کند؛ فقط pairing.code را عیناً برای کاربر چاپ می‌کند. مقدار رمز یا
+    iid هرگز در دیسک/audit بازنمی‌گردد — فقط هش."""
+    from .. import domains
+    from ..services import agentpair as apair
+    scheme = "https" if domains.tls() else "http"
+    panel_url = f"{scheme}://{domains.panel()}"
+    ip = request.client.host if request.client else ""
+    if not project or not iid:
+        return {"ok": True, "service": "parastoo", "protocol": "onboarding/0.8",
+                "invite_required": True,
+                "guide": f"{panel_url}/docs/agent",
+                "note": "متن دعوتی که کاربر به تو داده، آدرس کامل (project + "
+                        "iid) را دارد؛ همان را عیناً GET کن تا رمز ۵ رقمیِ "
+                        "یک‌بارمصرفِ سرورساخته را بگیری — تو هیچ رمزی نمی‌سازی."}
+    if not _SLUG_RE.match(project):
+        raise HTTPException(404, "پروژهٔ موردنظر یافت نشد")
+    proj = db.query(Project).filter(Project.slug == project).first()
+    if proj is None:
+        raise HTTPException(404, "پروژهٔ موردنظر یافت نشد")
+    res = apair.mint_server_claim(proj.id, iid, ip)
+    if not res.get("ok"):
+        apair.audit_pair("onboarding_refused",
+                         f"slug={project} error={res.get('error')}", ip, ok=False)
+        raise HTTPException(res.get("status", 404),
+                            res.get("detail") or res.get("error"))
+    apair.audit_pair("onboarding_code",
+                     f"slug={project} claim_id={res.get('claim_id')}", ip)
+    return {
+        "ok": True, "service": "parastoo", "protocol": "onboarding/0.8",
+        "project": project,
+        "guide": f"{panel_url}/docs/agent",
+        "pairing": {
+            "code": res.get("code", ""),
+            "print_for_user": (
+                "این رمز یک‌بارمصرف ۵ رقمی را عیناً و بدون هیچ تغییری برای "
+                "کاربر چاپ کن — تو هیچ رمزی نمی‌سازی و هیچ محاسبه‌ای "
+                "نمی‌کنی. کاربر آن را در صفحهٔ پروژه (بخش «تأیید عامل هوش "
+                "مصنوعی») تأیید می‌کند."
+            ),
+            "claim_id": res.get("claim_id", ""),
+            "claim_secret": res.get("claim_secret", ""),
+            "approve_window_s": res.get("approve_window_s", 0),
+            "pickup_window_s": res.get("pickup_window_s", 0),
+        },
+        "poll": {"method": "POST", "path": "/api/agent/claim/poll",
+                 "body": {"claim_id": "...", "claim_secret": "..."}},
+    }
+
 
 @router.post("/api/agent/claim")
 async def agent_claim(request: Request, db: Session = Depends(get_db)):
-    """ادعای جفت‌سازی — بدنه: {"project": "<slug>", "code": "<5 رقم ASCII>"}."""
+    """بازنشسته (v0.5.28) — رمز «عامل‌ساخته» حذف شد؛ سرور رمز را می‌سازد.
+
+    مسیر تازه: GET /api/agent/onboarding?project=<slug>&iid=<شناسهٔ دعوت>"""
     from ..services import agentpair as apair
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(400, "بدنهٔ JSON نامعتبر است")
-    slug = str(body.get("project") or "").strip()
-    if not _SLUG_RE.match(slug):
-        raise HTTPException(404, "پروژهٔ موردنظر یافت نشد")
-    project = (db.query(Project).filter(Project.slug == slug).first())
-    if project is None:
-        raise HTTPException(404, "پروژهٔ موردنظر یافت نشد")
     ip = request.client.host if request.client else ""
-    res = apair.mint_claim(project.id, str(body.get("code") or ""), ip)
-    if not res.get("ok"):
-        apair.audit_pair("claim_refused", f"slug={slug} error={res.get('error')}",
-                         ip, ok=False)
-        raise HTTPException(res.get("status", 400), res.get("detail") or res.get("error"))
-    apair.audit_pair("claim", f"slug={slug} claim_id={res.get('claim_id')}", ip)
-    return res
+    apair.audit_pair("claim_retired", "agent-made codes retired (v0.5.28)",
+                     ip, ok=False)
+    raise HTTPException(
+        410, "v0.5.28: the SERVER issues the pairing code now — GET "
+             "/api/agent/onboarding?project=<slug>&iid=<invite-id> (the full "
+             "URL is in your invite) and print the code it gives you; your user "
+             "confirms it on the project page")
 
 
 @router.post("/api/agent/claim/poll")

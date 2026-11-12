@@ -1,20 +1,28 @@
-"""جفت‌سازی عامل پروژه با رمز عامل‌ساخته + تأیید انسانی (v0.5.27).
+"""جفت‌سازی عامل پروژه با رمز «سرورساخته» + تأیید انسانی (v0.5.28).
 
-همان الگوی اثبات‌شدهٔ پل ادمین (access-agent v0.7.1) اما با دانهٔ «پروژه»:
+همان الگوی اثبات‌شدهٔ پل ادمین (access-agent v0.8) اما با دانهٔ «پروژه»:
 کاربر در صفحهٔ پروژه **متن دعوت بدون توکن** را کپی می‌کند و به عامل هوش
-مصنوعی خودش می‌دهد؛ عامل رمز ۵ رقمی می‌سازد و ادعا می‌کند؛ کاربر همان
-رمز را در همان صفحه تأیید می‌کند؛ عامل توکن `pst_` تازه (مخصوص همین
-پروژه) را برمی‌دارد. سرور از همان لحظه می‌داند این عامل پای کدام
-کاربر/پروژه در میان است و همهٔ فراخوانی‌هایش در audit پل ثبت می‌شود.
+مصنوعی خودش می‌دهد؛ عامل آدرس دعوت (URL با شناسهٔ دعوت مخصوص همین
+پروژه) را GET می‌کند و **سرور خودش رمز ۵ رقمی یک‌بارمصرف را می‌سازد و در
+همان پاسخ می‌دهد** — عامل هیچ محاسبه‌ای نمی‌کند، فقط همان رمز را برای
+کاربر چاپ می‌کند؛ کاربر همان رمز را در همان صفحه تأیید می‌کند؛ عامل توکن
+`pst_` تازه (مخصوص همین پروژه) را برمی‌دارد. سرور از همان لحظه می‌داند
+این عامل پای کدام کاربر/پروژه در میان است و همهٔ فراخوانی‌هایش در audit
+پل ثبت می‌شود.
 
 قرارداد امنیتی (آینهٔ پل ادمین):
-1. هیچ رازی از چت عبور نمی‌کند. متن دعوت فقط مسیر و شناسهٔ پروژه دارد —
+1. هیچ رازی از چت عبور نمی‌کند. متن دعوت فقط مسیر و شناسهٔ دعوت دارد —
    لورفتنش بی‌خطر است؛ اعتماد با تأیید انسانیِ صاحب پروژه ساخته می‌شود.
-2. روی دیسک فقط هش (رمز و راز ادعا) می‌ماند (dev/agent-pairing.json،
-   chmod 600)؛ audit هرگز مقدار رمز را نمی‌نویسد.
+2. روی دیسک فقط هش (رمز، راز ادعا و شناسهٔ دعوت) می‌ماند
+   (dev/agent-pairing.json و dev/agent-invites.json، chmod 600)؛ audit هرگز
+   مقدار رمز یا iid را نمی‌نویسد.
 3. سقف‌ها: نرخ هر IP = ۵ در ۵ دقیقه؛ ادعای هم‌زمان هر IP = ۲ و هر
-   پروژه = ۴؛ پنجرهٔ تأیید ۲ دقیقه؛ برداشت یک‌بارمصرف تا ۳۰ دقیقه پس
-   از تأیید. تطبیق در تأیید: قدیمی‌ترین ادعای زندهٔ «همان پروژه».
+   پروژه = ۴؛ پنجرهٔ تأیید ۱۵ دقیقه (v0.5.28 — رمز حالا از مسیر اپ/چت
+   غیرهم‌زمان به کاربر می‌رسد)؛ برداشت یک‌بارمصرف تا ۳۰ دقیقه پس از
+   تأیید. تطبیق در تأیید: قدیمی‌ترین ادعای زندهٔ «همان پروژه».
+4. یک دعوت = یک عامل: شناسهٔ دعوت با نخستین تأیید مصرف می‌شود؛ رندر
+   تازهٔ صفحهٔ پروژه دعوت تازه می‌سازد و دعوت‌های قبلی همان پروژه را
+   می‌کُشد (تازه‌ترین دعوت، دعوت زندهٔ پروژه است).
 """
 from __future__ import annotations
 
@@ -29,28 +37,26 @@ from pathlib import Path
 
 from ..config import settings
 
-APPROVE_WINDOW_S = 120     # مهلت تأیید کاربر — هم‌ارز پل ادمین (فرمان مالک)
+APPROVE_WINDOW_S = 900     # مهلت تأیید کاربر — v0.5.28: ۱۵ دقیقه (آینهٔ پل v0.8)
 PICKUP_WINDOW_S = 1800     # مهلت برداشت توکن پس از تأیید
 PENDING_MAX_PER_PROJECT = 4
 PENDING_PER_IP = 2
 RATE_WINDOW_S = 300
 RATE_MAX = 5
 
-# رمزهای ضعیف — همان فهرست پل ادمین؛ عامل‌های زبانی این‌ها را «تصادفی»
-# انتخاب می‌کنند و رد می‌شوند.
-WEAK_CODES = frozenset({
-    "00000", "11111", "22222", "33333", "44444", "55555", "66666",
-    "77777", "88888", "99999", "12345", "54321", "01234", "43210",
-    "98765", "56789", "67890", "11100", "00111", "10101", "01010",
-    "12121", "12321", "11223", "10000", "01000", "00100", "00010",
-    "00001", "20000", "30000", "90000", "13579", "24680", "11112", "22221",
-})
+# ---------- دعوت‌نامهٔ پروژه-مند (v0.5.28 — آینهٔ پل v0.8) ----------
+# شناسهٔ دعوت (iid) یک «توانایی» است: ۹۶ بیت تصادفی، فقط هش روی دیسک،
+# raw فقط در همان رندر صفحه/پاسخی که آن را ساخته چاپ می‌شود. TTL ۲۴ ساعت؛
+# سقف جهانی ۲۵۶ دعوت زنده؛ رندر تازه = دعوت‌های قبلی همان پروژه می‌میرند.
+
+INVITE_TTL_S = 24 * 3600
+INVITES_MAX = 256
 
 _LOCK = threading.Lock()
 _RATE: dict[str, list[float]] = {}
 
 
-# ---------- ذخیرهٔ ادعاها (فقط هش) ----------
+# ---------- ذخیرهٔ ادعاها و دعوت‌ها (فقط هش) ----------
 
 def _claims_path() -> Path:
     d = Path(settings.DATA_DIR) / "dev"
@@ -58,26 +64,54 @@ def _claims_path() -> Path:
     return d / "agent-pairing.json"
 
 
-def _load() -> list[dict]:
+def _invites_path() -> Path:
+    d = Path(settings.DATA_DIR) / "dev"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "agent-invites.json"
+
+
+def _load_json_list(path: Path, key: str) -> list[dict]:
     try:
-        data = json.loads(_claims_path().read_text(encoding="utf-8"))
-        if isinstance(data, dict) and isinstance(data.get("claims"), list):
-            return [c for c in data["claims"] if isinstance(c, dict)]
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get(key), list):
+            return [c for c in data[key] if isinstance(c, dict)]
     except Exception:
         pass
     return []
 
 
-def _save(claims: list[dict]) -> None:
-    p = _claims_path()
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps({"claims": claims}, indent=2, ensure_ascii=False) + "\n",
+def _save_json_list(path: Path, key: str, rows: list[dict]) -> None:
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps({key: rows}, indent=2, ensure_ascii=False) + "\n",
                    encoding="utf-8")
-    tmp.replace(p)
+    tmp.replace(path)
     try:
-        p.chmod(0o600)
+        path.chmod(0o600)
     except Exception:
         pass
+
+
+def _load() -> list[dict]:
+    return _load_json_list(_claims_path(), "claims")
+
+
+def _save(claims: list[dict]) -> None:
+    _save_json_list(_claims_path(), "claims", claims)
+
+
+def _load_invites() -> list[dict]:
+    return _load_json_list(_invites_path(), "invites")
+
+
+def _save_invites(invites: list[dict]) -> None:
+    _save_json_list(_invites_path(), "invites", invites)
+
+
+def _sweep_invites(invites: list[dict], now: float | None = None) -> list[dict]:
+    """دعوت‌های مصرف‌شده/منقضی را می‌ریزد — فقط زنده‌ها می‌مانند."""
+    now = time.time() if now is None else now
+    return [i for i in invites
+            if not i.get("used") and i.get("expires_ts", 0.0) > now]
 
 
 def _sweep(claims: list[dict], now: float | None = None) -> list[dict]:
@@ -108,7 +142,7 @@ def _sha(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-# ---------- audit (جدا از پل توکن‌دار؛ بدون هیچ مقدار رمز) ----------
+# ---------- audit (جدا از پل توکن‌دار؛ بدون هیچ مقدار رمز/iid) ----------
 
 def audit_pair(action: str, detail: str = "", ip: str = "", ok: bool = True) -> None:
     try:
@@ -124,22 +158,70 @@ def audit_pair(action: str, detail: str = "", ip: str = "", ok: bool = True) -> 
         pass  # audit هرگز نباید خودش خطا بدهد
 
 
-# ---------- چرخهٔ جفت‌سازی ----------
+# ---------- چرخهٔ جفت‌سازی (رمز سرورساخته — v0.5.28) ----------
 
-def mint_claim(project_id: int, code: str, ip: str = "") -> dict:
-    """ثبت ادعای جفت‌سازی برای «همین پروژه» — رمز ۵ رقمیِ عامل‌ساخته."""
+def mint_invite(project_id: int) -> tuple[str, dict]:
+    """ساخت دعوت پروژه-مند — raw فقط در همین رندر/پاسخ برمی‌گردد.
+
+    رندر تازهٔ صفحهٔ پروژه دعوت‌های قبلیِ همان پروژه را می‌کُشد: همیشه فقط
+    تازه‌ترین دعوتِ هر پروژه زنده است (متنِ روی صفحه = دعوتِ معتبر)."""
+    now = time.time()
+    raw = "pinv_" + secrets.token_hex(12)
+    rec = {
+        "iid_sha": _sha(raw),
+        "project_id": int(project_id),
+        "created_ts": now,
+        "expires_ts": now + INVITE_TTL_S,
+        "used": False,
+    }
+    with _LOCK:
+        invites = _sweep_invites(_load_invites(), now)
+        invites = [i for i in invites if i.get("project_id") != int(project_id)]
+        if len(invites) >= INVITES_MAX:
+            invites = invites[-INVITES_MAX + 1:]
+        invites.append(rec)
+        _save_invites(invites)
+    return raw, rec
+
+
+def _find_live_invite(project_id: int, raw_iid: str, now: float | None = None):
+    """دعوت زندهٔ منطبق با همین پروژه — هش + مقایسهٔ زمان-ثابت؛ وگرنه None."""
+    if not raw_iid:
+        return None
+    now = time.time() if now is None else now
+    target = _sha(raw_iid)
+    for i in _sweep_invites(_load_invites(), now):
+        if i.get("project_id") == int(project_id) \
+                and hmac.compare_digest(str(i.get("iid_sha", "")), target):
+            return i
+    return None
+
+
+def _use_invite(iid_sha: str) -> None:
+    """مصرف دعوت با نخستین تأیید (یک دعوت = یک عامل). فقط هش می‌گیرد."""
+    now = time.time()
+    invites = _sweep_invites(_load_invites(), now)
+    for i in invites:
+        if hmac.compare_digest(str(i.get("iid_sha", "")), str(iid_sha)):
+            i["used"] = True
+            i["used_ts"] = now
+    _save_invites(invites)
+
+
+def mint_server_claim(project_id: int, raw_iid: str, ip: str = "") -> dict:
+    """قلب v0.5.28 — رمز ۵ رقمی را «سرور» می‌سازد و به عامل می‌دهد تا فقط چاپش کند.
+
+    ورودی توانایی است، نه راز چت: شناسهٔ دعوتی که کاربر در متن دعوت به
+    عامل داده است. خروجی: رمز raw (فقط در همین پاسخ)، claim_id و
+    claim_secret. فقط هش‌ها روی دیسک می‌مانند. سقف‌ها همان v0.5.27 است."""
     global _RATE
-    code = str(code or "").strip()
-    if len(code) != 5 or not (code.isascii() and code.isdigit()):
-        return {"ok": False, "status": 400, "error": "bad_code",
-                "detail": "code must be exactly 5 ASCII digits (0-9)"}
-    if code in WEAK_CODES:
-        return {"ok": False, "status": 400, "error": "weak_code",
-                "detail": "this code is too predictable — generate a fresh one "
-                          "with secure randomness"}
     now = time.time()
     with _LOCK:
-        claims = _sweep(_load(), now)
+        invite = _find_live_invite(project_id, raw_iid, now)
+        if invite is None:
+            return {"ok": False, "status": 404, "error": "unknown_invite",
+                    "detail": "invite unknown, expired or already used — ask your "
+                              "user for a fresh invite text from the project page"}
         # جاروی دیکشنری نرخ — با آدرس‌های یکتای بسیار، حافظه بی‌کران نگردد
         if len(_RATE) > 512:
             cutoff = now - RATE_WINDOW_S
@@ -148,7 +230,8 @@ def mint_claim(project_id: int, code: str, ip: str = "") -> dict:
         window = [t for t in _RATE.get(ip, []) if t > now - RATE_WINDOW_S]
         if len(window) >= RATE_MAX:
             return {"ok": False, "status": 429, "error": "rate_limited",
-                    "detail": "too many claims from this address — wait a few minutes"}
+                    "detail": "too many pairing codes from this address — wait a few minutes"}
+        claims = _sweep(_load(), now)
         pending = [c for c in claims if _pending(c, now)]
         if sum(1 for c in pending if c.get("project_id") == project_id) \
                 >= PENDING_MAX_PER_PROJECT:
@@ -157,12 +240,16 @@ def mint_claim(project_id: int, code: str, ip: str = "") -> dict:
         if sum(1 for c in pending if c.get("ip") == ip) >= PENDING_PER_IP:
             return {"ok": False, "status": 429, "error": "busy",
                     "detail": "too many pending claims from this address"}
+        # رمز سرورساخته — توزیع یکنواخت روی ۱۰۰٬۰۰۰ حالت؛ نه محاسبهٔ عامل،
+        # نه سوگیری زبانی، نه فهرست رمز ضعیف. صفرهای ابتدایی حفظ می‌شوند.
+        code = f"{secrets.randbelow(100000):05d}"
         cid = "apc_" + secrets.token_hex(12)
         secret = "apcsk_" + secrets.token_hex(24)
         claims.append({
             "id": cid,
             "secret_sha": _sha(secret),
             "code_sha": _sha(code),
+            "iid_sha": str(invite.get("iid_sha", "")),
             "project_id": int(project_id),
             "ip": ip,
             "created_ts": now,
@@ -174,7 +261,7 @@ def mint_claim(project_id: int, code: str, ip: str = "") -> dict:
         _save(claims)
         window.append(now)
         _RATE[ip] = window
-    return {"ok": True, "claim_id": cid, "claim_secret": secret,
+    return {"ok": True, "code": code, "claim_id": cid, "claim_secret": secret,
             "approve_window_s": APPROVE_WINDOW_S,
             "pickup_window_s": PICKUP_WINDOW_S}
 
@@ -183,7 +270,8 @@ def approve(project_id: int, code: str, ip: str = "") -> dict:
     """تأیید انسانی — فقط قدیمی‌ترین ادعای زندهٔ «همان پروژه» تأیید می‌شود.
 
     دانه‌بندی پروژه یعنی تأیید صاحب پروژهٔ A هرگز ادعای پروژهٔ B را باز
-    نمی‌کند (حتی با رمز یکسان). مقدار رمز هرگز ذخیره یا لاگ نمی‌شود."""
+    نمی‌کند (حتی با رمز یکسان). مقدار رمز هرگز ذخیره یا لاگ نمی‌شود.
+    v0.5.28: با همین تأیید، دعوتِ ادعا هم مصرف می‌شود (یک دعوت = یک عامل)."""
     code = str(code or "").strip()
     if len(code) != 5 or not (code.isascii() and code.isdigit()):
         return {"ok": False, "status": 400, "error": "bad_code",
@@ -205,6 +293,9 @@ def approve(project_id: int, code: str, ip: str = "") -> dict:
         oldest["approved"] = True
         oldest["approved_ts"] = now
         _save(claims)
+        iid_sha = str(oldest.get("iid_sha", ""))
+        if iid_sha:
+            _use_invite(iid_sha)  # یک دعوت = یک عامل؛ مصرف با تأیید
     return {"ok": True, "claim_id": oldest.get("id", ""),
             "pickup_window_s": PICKUP_WINDOW_S}
 
@@ -250,11 +341,13 @@ def collect(db, claim_id: str, claim_secret: str) -> dict:
 
 # ---------- متن دعوت (بی‌رمز — لورفتنش بی‌خطر است) ----------
 
-def invite_text(slug: str, panel_url: str) -> str:
+def invite_text(slug: str, panel_url: str, iid: str) -> str:
     """متن آمادهٔ کپی برای عامل هوش مصنوعیِ کاربر — هیچ توکنی در آن نیست.
 
-    «متن هر کاربر متفاوت است»: شناسهٔ پروژه (slug) متن را منحصر به هر
-    کاربر/پروژه می‌کند و سرور از روی همین می‌داند ادعا پای کدام پروژه است."""
+    v0.5.28: آدرس دعوت، شناسهٔ دعوت مخصوص همین پروژه را حمل می‌کند و
+    رمز ۵ رقمی را «سرور» در پاسخ GET می‌سازد — عامل هیچ محاسبه‌ای
+    نمی‌کند؛ فقط همان رمز را برای کاربر چاپ می‌کند و کاربر در صفحهٔ
+    پروژه تأییدش می‌کند."""
     return (
         "---- PARASTOO AGENT INVITE — copy to your AI agent ----\n"
         "This invite was generated by the Parastoo panel at your user's request.\n"
@@ -262,20 +355,22 @@ def invite_text(slug: str, panel_url: str) -> str:
         "No token or secret is included on purpose — nothing sensitive passes through chat.\n"
         "\n"
         f"guide (read first): {panel_url}/docs/agent\n"
-        f"panel: {panel_url}\n"
-        f"project: {slug}\n"
+        "invite URL (GET it exactly as-is):\n"
+        f"{panel_url}/api/agent/onboarding?project={slug}&iid={iid}\n"
         "\n"
-        "Pairing (human-confirmed, no secrets in chat):\n"
-        f"1) POST {panel_url}/api/agent/claim  body: {{\"project\": \"{slug}\", "
-        "\"code\": \"<5-digit code YOU generate with secure randomness>\"}\n"
-        "   (predictable codes like 12345 are rejected; response: claim_id + claim_secret)\n"
-        "2) Print that same 5-digit code in chat and ask your user to confirm it\n"
-        f"   on the project page, 'تأیید عامل هوش مصنوعی' — within 2 minutes.\n"
-        f"3) POST {panel_url}/api/agent/claim/poll  body: "
+        "The server's answer to that GET contains:\n"
+        "  a) a one-time 5-digit code the SERVER generated — you compute\n"
+        "     nothing and invent nothing; print that exact code for your user,\n"
+        "     unchanged.\n"
+        "  b) claim_id + claim_secret — keep both to yourself.\n"
+        "Your user relays the printed code back and confirms it on the project\n"
+        f"page ('تأیید عامل هوش مصنوعی') — within {APPROVE_WINDOW_S // 60} minutes of the\n"
+        "code being issued; if it expires, GET the invite URL again for a fresh one.\n"
+        f"Then POST {panel_url}/api/agent/claim/poll  body: "
         "{\"claim_id\": \"...\", \"claim_secret\": \"...\"}\n"
         "   statuses: pending (retry) / approved (a project-scoped pst_ token comes "
         "with the response; pickup is one-time, available for 30 min after approval)\n"
-        "4) Use that token as `Authorization: Bearer pst_...` on the Agent Bridge\n"
+        "Use that token as `Authorization: Bearer pst_...` on the Agent Bridge\n"
         f"   API ({panel_url}/api/bridge/*) and git remote — the contract and red\n"
         "   lines live in the guide above. It is scoped to this project only,\n"
         "   instantly revocable by your user, and every call is audited.\n"
