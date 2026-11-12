@@ -9,7 +9,7 @@ def _bool(name: str, default: str = "false") -> bool:
 class Settings:
     # --- پایه ---
     APP_NAME: str = "پرستو"
-    VERSION: str = "0.5.28"
+    VERSION: str = "0.5.29"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me")
 
     # --- دیتابیس ---
@@ -51,10 +51,10 @@ class Settings:
     # کامیت مستقر روی این سرور و زمان استقرار — توسط install.sh/auto-update.sh ثبت می‌شود
     DEPLOYED_COMMIT: str = os.environ.get("PARASTOO_DEPLOYED_COMMIT", "").strip()
     DEPLOYED_AT: str = os.environ.get("PARASTOO_DEPLOYED_AT", "").strip()
-    # --- حالت توسعه‌دهنده (v0.2.12): صفحه /dev و API گزارش/لاگ/تاریخچهٔ آپدیت ---
-    # فقط روی نصب آزمایشی true بگذارید؛ در حالت عادی همهٔ مسیرهای /dev و /api/dev/* وجود ندارند (404)
-    DEV_MODE: bool = _bool("PARASTOO_DEV_MODE")
-    # توکن اختیاری برای دسترسی curl بدون لاگین: PARASTOO_DEV_TOKEN=xxx ← هدر X-Dev-Token: xxx
+    # --- کنسول توسعه (v0.5.29 — فرمان مالک ۲۰۲۶-۱۱-۱۲: حذف مفهوم دو-حالتی) ---
+    # معماری واحد است: تجاریِ همواره در حال توسعه مستمر — ابزارهای /dev و
+    # /api/dev/* همیشه روشن‌اند و پشت احراز هستند (ادمین یا X-Dev-Token).
+    # توکن اختیاری برای دسترسی curl/عامل بدون لاگین: PARASTOO_DEV_TOKEN=xxx ← هدر X-Dev-Token: xxx
     DEV_TOKEN: str = os.environ.get("PARASTOO_DEV_TOKEN", "").strip()
 
     # --- Gitea ---

@@ -810,26 +810,29 @@ check("auto-update متادیتای استقرار را صریح صادر می�
       and _au.find("set -a; . ./.env; set +a") < _au.find('export PARASTOO_DEPLOYED_COMMIT="$REMOTE"'))
 
 print()
-print("— API نسخه و حالت توسعه‌دهنده (v0.2.12) —")
+print("— API نسخه و کنسول توسعه (همیشه روشن — v0.5.29) —")
 r = c.get("/api/version")
 check("GET /api/version عمومی و سبک (بدون لاگین)", r.status_code == 200 and r.json().get("ok") is True
       and r.json().get("version") == _ver)
+check("/api/version فیلد dev_mode ندارد (سوییچ حالت حذف شد)",
+      "dev_mode" not in r.json())
 r = c.get("/healthz")
 check("/healthz نسخه و فیلدهای استقرار را دارد", r.status_code == 200 and r.json().get("version") == _ver)
 r = c.get("/api/dev/report")
-check("حالت توسعه خاموش → /api/dev/report 404 (نه 403)", r.status_code == 404)
+check("کنسول توسعه بدون احراز معتبر → 401 (همیشه روشن؛ شفاف)", r.status_code == 401)
 r = c.get("/dev")
-check("حالت توسعه خاموش → /dev 404", r.status_code == 404)
+check("صفحه /dev بدون احراز → 401", r.status_code == 401)
 
 from app.config import settings as _settings  # noqa: E402
-_old_dev, _old_tok = _settings.DEV_MODE, _settings.DEV_TOKEN
-_settings.DEV_MODE = True
+_old_tok = _settings.DEV_TOKEN
 r = c.get("/api/dev/report")
-check("حالت توسعه روشن + کاربر عادی → 404", r.status_code == 404)
+check("کاربر عادیِ واردشده (بدون توکن) → 401", r.status_code == 401)
 r = c2.get("/api/dev/report")
-check("حالت توسعه روشن + ادمین → گزارش JSON", r.status_code == 200
+check("ادمین → گزارش JSON", r.status_code == 200
       and r.json().get("app", {}).get("version") == _ver)
 check("گزارش پرچم‌ها را دارد ولی هیچ رمزی ندارد", "flags" in r.json() and "test-secret-key" not in r.text)
+check("گزارش فیلد dev_mode ندارد (سوییچ حالت حذف شد)",
+      "dev_mode" not in r.json().get("app", {}))
 r = c2.get("/api/dev/logs?tail=5")
 check("GET /api/dev/logs متن لاگ را می‌دهد", r.status_code == 200)
 r = c2.get("/api/dev/updates")
@@ -840,14 +843,14 @@ check("صفحه /dev برای ادمین رندر می‌شود", r.status_code 
 _settings.DEV_TOKEN = "devtok123"
 c3 = TestClient(app, follow_redirects=False)
 r = c3.get("/api/dev/report")
-check("حالت توسعه + بدون توکن/نشست → 404", r.status_code == 404)
+check("بدون توکن/نشست → 401", r.status_code == 401)
 r = c3.get("/api/dev/report", headers={"X-Dev-Token": "devtok123"})
 check("دسترسی با هدر X-Dev-Token", r.status_code == 200)
 r = c3.get("/api/dev/report?token=devtok123")
 check("دسترسی با ?token=", r.status_code == 200)
 r = c3.get("/api/dev/report", headers={"X-Dev-Token": "wrong"})
-check("توکن غلط → 404", r.status_code == 404)
-_settings.DEV_MODE, _settings.DEV_TOKEN = _old_dev, _old_tok
+check("توکن غلط → 401", r.status_code == 401)
+_settings.DEV_TOKEN = _old_tok
 
 print()
 print("— آپدیت خودکار از گیت‌هاب (v0.2.12) —")
@@ -871,14 +874,16 @@ check("install.sh تایمر tls-store را می‌گذارد و فعال می�
       "systemctl enable --now parastoo-tls-store.timer" in inst
       and "deploy/systemd/$_u" in inst and "__INSTALL_DIR__" in inst)
 check("install.sh وضعیت اولیهٔ استقرار (.parastoo-deploy) را می‌نویسد", ".parastoo-deploy" in inst)
-check("install.sh متغیرهای آپدیت خودکار و حالت توسعه را در .env می‌گذارد",
-      "PARASTOO_AUTO_UPDATE=" in inst and "PARASTOO_DEV_MODE=" in inst)
+check("install.sh متغیرهای آپدیت خودکار و توکن کنسول را در .env می‌گذارد (بدون سوییچ حالت)",
+      "PARASTOO_AUTO_UPDATE=" in inst and "PARASTOO_DEV_TOKEN=" in inst
+      and "PARASTOO_DEV_MODE" not in inst)
 sd_svc = (ROOT / "deploy/systemd/parastoo-autoupdate.service").read_text()
 sd_tmr = (ROOT / "deploy/systemd/parastoo-autoupdate.timer").read_text()
 check("واحد systemd مسیر نصب را پارامتری دارد", "__INSTALL_DIR__" in sd_svc and "auto-update.sh" in sd_svc)
 check("تایمر WantedBy=timers.target دارد (فعال‌پذیر)", "WantedBy=timers.target" in sd_tmr)
-check("compose حالت توسعه و کامیت مستقر را به هسته می‌دهد",
-      "PARASTOO_DEV_MODE" in compose_src and "PARASTOO_DEPLOYED_COMMIT" in compose_src)
+check("compose توکن کنسول و کامیت مستقر را به هسته می‌دهد (بدون سوییچ حالت)",
+      "PARASTOO_DEV_TOKEN" in compose_src and "PARASTOO_DEPLOYED_COMMIT" in compose_src
+      and "PARASTOO_DEV_MODE" not in compose_src)
 check("تاریخچهٔ آپدیت به هسته سوار می‌شود (ro)", "./logs:/app/host-logs:ro" in compose_src)
 cli = (ROOT / "bin/parastoo").read_text()
 check("CLI دستور autoupdate (status/on/off/run) دارد", "autoupdate)" in cli and "run)" in cli)
@@ -887,9 +892,10 @@ check("CLI autoupdate on واحدها را در صورت نبود از deploy/sy
 check("CLI update از مسیر آپدیت خودکار (گیت‌هاب) می‌رود", "auto-update.sh" in cli)
 uni = (ROOT / "uninstall.sh").read_text()
 check("uninstall تایمر آپدیت خودکار را هم پاک می‌کند", "parastoo-autoupdate.timer" in uni)
-check("config.py DEV_MODE/DEV_TOKEN/DEPLOYED_COMMIT دارد",
-      "PARASTOO_DEV_MODE" in (ROOT / "core/app/config.py").read_text()
-      and "PARASTOO_DEPLOYED_COMMIT" in (ROOT / "core/app/config.py").read_text())
+check("config.py DEV_TOKEN/DEPLOYED_COMMIT دارد و سوییچ DEV_MODE حذف شده",
+      "PARASTOO_DEV_TOKEN" in (ROOT / "core/app/config.py").read_text()
+      and "PARASTOO_DEPLOYED_COMMIT" in (ROOT / "core/app/config.py").read_text()
+      and "PARASTOO_DEV_MODE" not in (ROOT / "core/app/config.py").read_text())
 check("main.py خطاهای ۵۰۰ را لاگ می‌کند (قابل دریافت در گزارش)",
       "log.exception" in (ROOT / "core/app/main.py").read_text())
 
@@ -955,23 +961,23 @@ check("بیلدور سرویس‌محور است: مانیفست/تشخیص خو
       and workers_src.index("images[spec.name] = dockerops.build_and_push")
           < workers_src.index("_sync_services(db, project, specs, images"))
 
-# ---------------- پل دسترسی عامل: netcheck/sql — فقط حالت توسعه ----------------
+# ---------------- پل دسترسی عامل: netcheck/sql — لایهٔ عملیاتی همیشه روشن ----------------
 # (مسیر exec «معادل SSH» در v0.3.11 به دستور مالک کامل حذف شد؛ تنها مسیر اجرای
 #  دستور عامل روی سرور، access-agent مستقل است.)
 from app.config import settings as _settings  # noqa: E402
 from app.services import agentops as _agentops  # noqa: E402
 from app.routes import dev as _devroutes  # noqa: E402
 
-print("— پل دسترسی عامل: گارد در حالت تجاری (dev خاموش) —")
+print("— پل دسترسی عامل: گارد بدون حالت (احراز یا 401) —")
 r = c.get("/api/dev/netcheck")
-check("netcheck با dev خاموش → 404", r.status_code == 404)
+check("netcheck با کاربر عادی (بدون توکن) → 401", r.status_code == 401)
 r = c.post("/api/dev/sql", json={"sql": "SELECT 1"})
-check("sql با dev خاموش → 404", r.status_code == 404)
+check("sql بدون احراز → 401", r.status_code == 401)
 r = c.get("/api/dns/zones")
-check("dns API با dev خاموش + کاربر عادی → 404", r.status_code == 404)
+check("dns API با کاربر عادی (بدون توکن) → 401", r.status_code == 401)
 
-_old_dev, _old_token = _settings.DEV_MODE, _settings.DEV_TOKEN
-_settings.DEV_MODE, _settings.DEV_TOKEN = True, "smoke-dev-token"
+_old_token = _settings.DEV_TOKEN
+_settings.DEV_TOKEN = "smoke-dev-token"
 DEVH = {"X-Dev-Token": "smoke-dev-token"}
 try:
     print("— حذف کامل پل exec (v0.3.11 — دستور مالک) —")
@@ -1093,7 +1099,7 @@ try:
     _dnsops._FORCE_TRANSPORT = _httpx.MockTransport(_pdns)
     try:
         r = c.get("/api/dns/zones")
-        check("dns API کاربر عادی → 404", r.status_code == 404)
+        check("dns API کاربر عادی → 401 (شفاف — بدون حالت، v0.5.29)", r.status_code == 401)
         r = c.get("/api/dns/zones", headers=DEVH)
         check("dns API با توکن → 200 و فهرست خالی", r.status_code == 200 and r.json().get("zones") == [])
         r = c.get("/api/dns/status", headers=DEVH)
@@ -1193,7 +1199,7 @@ try:
     check("رکورد audit عملیات‌های DNS هم ثبت شده", any(_json.loads(l)["kind"] == "dns"
           for l in _audit.read_text().splitlines() if l.strip()))
 finally:
-    _settings.DEV_MODE, _settings.DEV_TOKEN = _old_dev, _old_token
+    _settings.DEV_TOKEN = _old_token
 
 print("— درس میدانی v0.3.16: ایمیل ACME + نظافت پوشهٔ داینامیک —")
 import tempfile as _tmpmod  # noqa: E402

@@ -148,7 +148,7 @@ parastoo autoupdate off           # خاموش کردن
 
 ```bash
 curl -s https://panel.example.com/api/version
-# {"ok":true,"app":"parastoo","version":"...","commit":"abc123...","deployed_at":"...","dev_mode":false}
+# {"ok":true,"app":"parastoo","version":"...","commit":"abc123...","deployed_at":"..."}
 ```
 
 تاریخچهٔ هر استقرار در `/opt/parastoo/logs/updates.jsonl` ثبت می‌شود.
@@ -159,19 +159,18 @@ curl -s https://panel.example.com/api/version
 
 - **منوی «DNS» در پنل (ادمین):** ساخت زون با یک کلیک (`customer` یا `base`)، افزودن/ویرایش/حذف رکورد (A/AAAA/CNAME/MX/TXT/NS/SRV/CAA)، حذف زون.
 - **سرویس `dns` در compose:** PowerDNS Authoritative با SQLite در volume؛ پورت ۵۳ سرور جواب می‌دهد؛ API آن فقط داخل شبکهٔ داکر است.
-- **API:** `GET/POST /api/dns/zones|records` — با نشست ادمین یا (در حالت dev) هدر `X-Dev-Token`.
+- **API:** `GET/POST /api/dns/zones|records` — با نشست ادمین یا هدر `X-Dev-Token`.
 - راهنمای کامل فارسی (ایرنیک، گلو-رکورد، پذیرش دامنهٔ مشتری، ns2 دوم، عیب‌یابی): **`docs/DOMAIN_DNS_GUIDE.fa.md`**
 
-## حالت توسعه‌دهنده
+## کنسول توسعه (همیشه روشن)
 
-روی نصب آزمایشی، در `.env`:
+معماری پرستو **واحد** است — تجاریِ همواره در حال توسعه مستمر (فرمان مالک ۲۰۲۶-۱۱-۱۲: حذف مفهوم دو-حالتی توسعه‌دهنده/تجاری). ابزارهای عملیاتی همیشه جزء محصول‌اند و ملاک دسترسی فقط احراز هویت است. توکن اختیاری (برای دسترسی curl/عامل بدون لاگین) در `.env`:
 
 ```
-PARASTOO_DEV_MODE=true
-PARASTOO_DEV_TOKEN=یک-رشته-تصادفی   # اختیاری؛ برای دسترسی curl بدون لاگین
+PARASTOO_DEV_TOKEN=یک-رشته-تصادفی   # اختیاری؛ هدر X-Dev-Token
 ```
 
-با روشن بودنش: منوی «توسعه» و صفحه `/dev` با گزارش زنده (نسخه/کامیت مستقر، سلامت، تاریخچهٔ آپدیت، بیلدهای ناموفق، لاگ زندهٔ هسته) و APIهای `GET /api/dev/report|logs|updates|netcheck` و `POST /api/dev/sql`. دسترسی: ادمینِ واردشده یا هدر `X-Dev-Token`. در حالت استفاده (`false`) همهٔ این مسیرها **اصلاً وجود ندارند** (پاسخ 404 — نه 403 — تا وجودشان هم لو نرود).
+منوی «توسعه» (ادمین) و صفحه `/dev` همیشه در دسترس‌اند: گزارش زنده (نسخه/کامیت مستقر، سلامت، تاریخچهٔ آپدیت، بیلدهای ناموفق، لاگ زندهٔ هسته) و APIهای `GET /api/dev/report|logs|updates|netcheck` و `POST /api/dev/sql`. دسترسی: ادمینِ واردشده یا هدر `X-Dev-Token`. بدون احراز معتبر پاسخ **401** است (شفاف — وجود این لایه پنهان نیست).
 
 **بازگشت به تنظیمات کارخانه:** با دستور ۲ بالا (`curl ... scripts/factory-reset.sh | sudo bash` یا همان `parastoo reset`). برای حذف کامل به‌همراه کد: `sudo bash uninstall.sh` (به سوال ولوم‌ها «y» بدهید) و سپس با دستور ۱ دوباره نصب کنید.
 

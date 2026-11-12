@@ -28,5 +28,5 @@ ROUTERS = (
     hooks.router,        # وب‌هوک gitea
     bridge.router,       # پل عامل پروژه (v0.4.3): /api/bridge/* + شیم گیت
     tickets.router,      # تیکتینگ عضو‌به‌عضو (v0.5.17): /api/tickets*
-    dev.router,          # حالت توسعه‌دهنده
+    dev.router,          # کنسول توسعه (همیشه روشن؛ ادمین یا X-Dev-Token)
 )

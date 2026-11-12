@@ -155,10 +155,9 @@ services:
       PARASTOO_CONFIG_DIR: /app/host-config
       PARASTOO_TRAEFIK_CONTAINER: parastoo-traefik
       PARASTOO_DNS_CONTAINER: parastoo-dns
-      # آپدیت خودکار و حالت توسعه‌دهنده (v0.2.12) — از .env خوانده می‌شوند
+      # آپدیت خودکار (v0.2.12) و توکن کنسول توسعه (v0.5.29 — بدون سوییچ حالت) — از .env خوانده می‌شوند
       PARASTOO_DEPLOYED_COMMIT: ${PARASTOO_DEPLOYED_COMMIT:-}
       PARASTOO_DEPLOYED_AT: ${PARASTOO_DEPLOYED_AT:-}
-      PARASTOO_DEV_MODE: ${PARASTOO_DEV_MODE:-false}
       PARASTOO_DEV_TOKEN: ${PARASTOO_DEV_TOKEN:-}
       # نیم‌سرور اختصاصی (v0.3.9) — هسته فقط با REST API با پاوردی‌ان‌اس حرف می‌زند
       PARASTOO_DNS_API_URL: ${PARASTOO_DNS_API_URL:-http://dns:8081/api/v1}

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""راستی‌آزمایی زندهٔ پرستو — لایهٔ عمومی (+ لایهٔ توسعه‌دهنده اگر توکن باشد).
+"""راستی‌آزمایی زندهٔ پرستو — لایهٔ عمومی (+ لایهٔ عملیاتی اگر توکن باشد).
 
 این هارنس استانداردِ گام M6 از docs/AI_AGENT_LOOP.fa.md است: بعد از هر استقرار،
 وضعیت سرور واقعی را «از چشم بیرون» آزمود و بدون هیچ POST تغییردهنده‌ای خارج می‌شود.
@@ -103,7 +103,7 @@ def main() -> int:
         d = json.loads(body)
         if not d.get("ok") or d.get("app") != "parastoo":
             return FAIL, f"بدنهٔ غیرمنتظره: {str(d)[:120]}"
-        note = f"version={d.get('version')} commit={str(d.get('commit'))[:12]} dev_mode={d.get('dev_mode')}"
+        note = f"version={d.get('version')} commit={str(d.get('commit'))[:12]}"
         # v0.3.29 — تطبیق پیشوندی: انتظار ممکن است SHA کوتاه (۸ رقمی) باشد
         if expect_commit and not (d.get("commit") or "").startswith(expect_commit):
             return FAIL, f"کامیت مستقر {str(d.get('commit'))[:12]} ≠ انتظار {expect_commit[:12]} ({note})"
@@ -142,11 +142,11 @@ def main() -> int:
 
     def c_dev_page_anon():
         st, _, _ = fetch("GET", f"{base}/dev", timeout=timeout)
-        return (PASS, "404 — وجودش لو نمی‌رود") if st == 404 else (FAIL, f"HTTP {st} (انتظار 404)")
+        return (PASS, "401 — بدون احراز (همیشه روشن؛ شفاف)") if st == 401 else (FAIL, f"HTTP {st} (انتظار 401)")
 
     def c_dev_api_anon():
         st, _, _ = fetch("GET", f"{base}/api/dev/report", timeout=timeout)
-        return (PASS, "404 — گارد حالت توسعه") if st == 404 else (FAIL, f"HTTP {st} (انتظار 404)")
+        return (PASS, "401 — گارد احراز کنسول توسعه") if st == 401 else (FAIL, f"HTTP {st} (انتظار 401)")
 
     def c_static():
         st, _, body = fetch("GET", f"{base}/static/style.css", timeout=timeout)
@@ -179,15 +179,15 @@ def main() -> int:
             return PASS, f"رد شد: {d.get('error')}"
         return FAIL, f"HTTP {st} — پاسخ غیرمنتظره: {str(d)[:80]}"
 
-    check("version", "/api/version — نسخه/کامیت/dev_mode", c_version)
+    check("version", "/api/version — نسخه/کامیت", c_version)
     check("healthz", "/healthz — سلامت db", c_healthz)
     check("landing", "/ — لندینگ یا ریدایرکت", c_landing)
     check("login-page", "/login — فرم ورود سالم", c_login_page)
     check("register", "/register — در دسترس (یا بستهٔ تمیز)", c_register_page)
     check("gate-dashboard", "/dashboard ناشناس → ریدایرکت", lambda: _gate("/dashboard"))
     check("gate-admin", "/admin ناشناس → ریدایرکت", lambda: _gate("/admin"))
-    check("dev-page-anon", "/dev ناشناس → 404", c_dev_page_anon)
-    check("dev-api-anon", "/api/dev/report ناشناس → 404", c_dev_api_anon)
+    check("dev-page-anon", "/dev ناشناس → 401", c_dev_page_anon)
+    check("dev-api-anon", "/api/dev/report ناشناس → 401", c_dev_api_anon)
     check("static", "/static/style.css — استاتیک سالم", c_static)
 
     def c_agent_docs():
@@ -203,9 +203,9 @@ def main() -> int:
     check("sec-headers", "هدرهای امنیتی", c_headers)
     check("webhook-reject", "وب‌هوک بدون امضا رد می‌شود (ok:false)", c_webhook_reject)
 
-    # ---------- لایهٔ توسعه‌دهنده (فقط با توکن) ----------
+    # ---------- لایهٔ عملیاتی (فقط با توکن X-Dev-Token) ----------
     if not dev_token:
-        print("[−] dev-report      لایهٔ توسعه‌دهنده رد شد — PARASTOO_DEV_TOKEN خالی است (برای چرخهٔ کامل §۲ سند)")
+        print("[−] dev-report      لایهٔ عملیاتی رد شد — PARASTOO_DEV_TOKEN خالی است (برای چرخهٔ کامل §۲ سند)")
         results.append((SKIP, "dev-report", ""))
         print("[−] dev-updates     — (وابسته به توکن)")
         results.append((SKIP, "dev-updates", ""))
@@ -217,7 +217,7 @@ def main() -> int:
         def c_dev_report():
             st, _, body = fetch("GET", f"{base}/api/dev/report", headers=h, timeout=timeout)
             if st != 200:
-                return FAIL, f"HTTP {st} (توکن رد شد یا dev خاموش است)"
+                return FAIL, f"HTTP {st} (توکن رد شد)"
             d = json.loads(body)
             miss = [k for k in ("app", "health", "updates", "containers") if k not in d]
             if miss:

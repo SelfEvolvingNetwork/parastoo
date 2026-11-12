@@ -34,7 +34,7 @@
       <a href="/admin/agent-tokens" class="{{ 'active' if path.startswith('/admin/agent-tokens') }}">توکن‌های عامل</a>
       <a href="/admin/dns" class="{{ 'active' if path.startswith('/admin/dns') }}">DNS</a>
       <a href="/setup/domain" class="{{ 'active' if path.startswith('/setup/domain') }}">دامنه‌ها</a>
-      {% if settings.DEV_MODE %}<a href="/dev" class="{{ 'active' if path == '/dev' }}">توسعه</a>{% endif %}{% endif %}
+      <a href="/dev" class="{{ 'active' if path == '/dev' }}">توسعه</a>{% endif %}
     </nav>
     <div class="userbox">
       <span class="balance" title="موجودی کیف پول">{{ money(user.balance) }} {{ settings.CURRENCY }}</span>

@@ -4,22 +4,24 @@
 
 برخلاف e2e_live.py (که فقط خواندنی است)، این هارنس پرستو را «مثل کاربر واقعی»
 می‌آزماید: ثبت‌نام، ورود، ساخت پروژه، شارژ کیف پول با درگاه آزمایشی، بیلد و
-انتشار سایت و پاکسازی کامل. **لایهٔ نوشتاری فقط در حالت توسعه‌دهنده اجرا
-می‌شود** (خط قرمز ۴ سند: در حالت تجاری هیچ نوشتن‌حالتی روی دادهٔ کاربران).
+انتشار سایت و پاکسازی کامل. **لایهٔ نوشتاری فقط با انتخاب صریح اپراتور اجرا
+می‌شود** — PARASTOO_E2E_WRITE=1 — تصمیم لحظه‌ای اپراتور است، نه حالت سرور
+(فرمان مالک ۲۰۲۶-۱۱-۱۲: مفهوم دو-حالتی حذف شد؛ خط قرمز ۴ سند: هیچ نوشتن‌حالتی
+روی دادهٔ کاربران واقعی).
 
 لایه‌ها:
-  L0 خواندنی (هر حالتی)      — تشخیص حالت، لندینگ، فرم ورود، گاردها
-  L1 چرخهٔ محصول (فقط dev)   — register → project → wallet(mock) → [build+publish] → cleanup
+  L0 خواندنی (همیشه)         — نسخه/کامیت، لندینگ، فرم ورود، گاردها
+  L1 چرخهٔ محصول (صریح)       — register → project → wallet(mock) → [build+publish] → cleanup
 
 کاربرد:
-  python3 tests/e2e_user.py                       # خودکار: L0 همیشه؛ L1 فقط اگر dev_mode=true
+  python3 tests/e2e_user.py                       # خودکار: L0 همیشه؛ L1 فقط اگر PARASTOO_E2E_WRITE=1
   python3 tests/e2e_user.py --fast                # L1 بدون انتظار بیلد/انتشار (سریع)
   python3 tests/e2e_user.py --keep                # پاکسازی انجام نشود (اشکال‌زدایی)
   python3 tests/e2e_user.py --base http://127.0.0.1:8765   # نصب محلی/صریح
   python3 tests/e2e_user.py --build-timeout 600   # سقف انتظار بیلد (پیش‌فرض ۴۲۰ث)
 
-متغیرهای محیطی: PARASTOO_PANEL_URL (آدرس پنل)، PARASTOO_DEV_MODE_FORCE=1
-(اجبار اجرای L1 روی نصب محلی که /api/version ندارد).
+متغیرهای محیطی: PARASTOO_PANEL_URL (آدرس پنل)، PARASTOO_E2E_WRITE=1
+(اجبار اجرای L1 — انتخاب صریح اپراتور؛ مثلاً روی نصب محلی بدون /api/version).
 
 خروجی: چک‌به‌چک فارسی + جمع‌بندی؛ کد خروج 0 فقط اگر هیچ FAIL نباشد.
 کاربر تست با پیشوند agent- ساخته می‌شود و در پایان (مگر --keep) پاک می‌شود.
@@ -121,7 +123,7 @@ def main() -> int:
         del args[i:i + 2]
     base = (next((a for a in args if not a.startswith("-")), None)
             or os.environ.get("PARASTOO_PANEL_URL") or DEFAULT_PANEL).rstrip("/")
-    force_dev = os.environ.get("PARASTOO_DEV_MODE_FORCE") == "1"
+    force_dev = os.environ.get("PARASTOO_E2E_WRITE") == "1"
 
     print(f"# هارنس کاربر-محور پرستو — {base}")
     if fast:
@@ -156,23 +158,20 @@ def main() -> int:
         return st
 
     # ---------- L0: خواندنی (همیشه) ----------
-    dev_mode = None
     st, _, body = b.req("GET", "/api/version")
     if st == 200:
         try:
             d = json.loads(body)
-            dev_mode = bool(d.get("dev_mode"))
-            check("mode", "تشخیص حالت از /api/version", PASS,
-                  f"version={d.get('version')} dev_mode={dev_mode}")
+            check("mode", "نسخه/کامیت مستقر از /api/version", PASS,
+                  f"version={d.get('version')} commit={str(d.get('commit'))[:12]}")
         except Exception as e:
-            check("mode", "تشخیص حالت از /api/version", FAIL, f"بدنهٔ نامعتبر: {e}")
+            check("mode", "خواندن /api/version", FAIL, f"بدنهٔ نامعتبر: {e}")
     else:
         if force_dev:
-            check("mode", "تشخیص حالت (نصب محلی بدون /api/version)", SKIP, "— با FORCE ادامه")
+            check("mode", "نسخه (نصب محلی بدون /api/version)", SKIP, "— با E2E_WRITE ادامه")
         else:
             check("mode", "/api/version در دسترس نیست", FAIL, f"HTTP {st} {body[:60].decode(errors='replace')}")
-    if dev_mode is None and force_dev:
-        dev_mode = True
+    write_ok = force_dev  # L1 فقط با انتخاب صریح اپراتور — نه حالت سرور (v0.5.29)
 
     def c_landing():
         st, _, _ = b.req("GET", "/")
@@ -191,10 +190,10 @@ def main() -> int:
     check("login-form", "فرم ورود سالم", *c_login_form())
     check("gate-anon", "داشبورد برای ناشناس بسته است", *c_gate_anon())
 
-    # ---------- L1: چرخهٔ محصول (فقط حالت توسعه) ----------
-    if not dev_mode:
-        print("[−] L1-product      چرخهٔ کاربر رد شد — dev_mode=false است (حالت تجاری؛ خط قرمز ۴ سند).")
-        print("    برای اجرای کامل: فعال‌سازی PARASTOO_DEV_MODE + PARASTOO_DEV_TOKEN روی سرور (§۲ سند).")
+    # ---------- L1: چرخهٔ محصول (فقط با انتخاب صریح — PARASTOO_E2E_WRITE=1) ----------
+    if not write_ok:
+        print("[−] L1-product      چرخهٔ کاربر رد شد — PARASTOO_E2E_WRITE=1 نیست (خط قرمز ۴ سند: نوشتن روی داده فقط با انتخاب صریح).")
+        print("    برای اجرای کامل: PARASTOO_E2E_WRITE=1 python3 tests/e2e_user.py (کاربران تست agent-*؛ پاکسازی خودکار).")
         results.append((SKIP, "L1-product"))
     else:
         artifacts = {"project": False}

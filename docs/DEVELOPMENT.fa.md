@@ -3,7 +3,7 @@
 > مخاطب: کلاه معمار چرخه (I3) — قواعد طلایی و نقشهٔ فایل‌ها، پیش از هر تغییر کد
 
 این سند نقشهٔ دقیق کد و قراردادهای معماری است. هنگام توسعه با AI، همین فایل را به آن بدهید.
-**پروتکل اجرایی چرخهٔ توسعه–تست (گام‌به‌گام، دو حالت توسعه‌دهنده/تجاری، راستی‌آزمایی زنده): `docs/AI_AGENT_LOOP.fa.md`** — این فایل نقشهٔ معماری است، آن فایل فرایند اجراست.
+**پروتکل اجرایی چرخهٔ توسعه–تست (گام‌به‌گام، معماری واحدِ تجاریِ همواره در توسعه، راستی‌آزمایی زنده): `docs/AI_AGENT_LOOP.fa.md`** — این فایل نقشهٔ معماری است، آن فایل فرایند اجراست.
 
 ## قواعد طلایی معماری
 
@@ -31,7 +31,7 @@ scripts/tls-store.sh       فروشگاه ماندگار گواهی: save/restor
 scripts/factory-reset.sh   ریست کارخانه مقاوم (بکاپ → حذف کامل → بازسازی → سلامت‌سنجی)
 
 core/app/
-  config.py     تنظیمات (VERSION، دامنه‌ها، پلن‌ها/قیمت، کمیسیون، توکن نصب، DEPLOYED_COMMIT/AT، DEV_MODE)
+  config.py     تنظیمات (VERSION، دامنه‌ها، پلن‌ها/قیمت، کمیسیون، توکن نصب، DEPLOYED_COMMIT/AT، DEV_TOKEN)
   db.py         engine/session (SQLAlchemy همگام) — اسکیما فقط از مدل‌ها با create_all؛ هیچ مهاجرتی نیست
   models.py     User, Project, Service, Site, Build, WalletTx, Payment, AgentToken, Setting, Heartbeat, Lead
   manifest.py   پارس امن parastoo.yml (ServiceSpec؛ لیست سفید سخت؛ detect_stack بدون مانیفست)
@@ -81,7 +81,7 @@ core/app/
     auth.py         ثبت‌نام/ورود/خروج + یادآوری رمز (v0.5.23): /forgot-password و /reset-password — منطق توکن در services/password_reset.py، نامه‌ها با services/email.py
     dns.py          UI + API مدیریت DNS ادمین
     admin.py        آمار + شارژ دستی + مدیریت کاربران/سایت‌ها
-    dev.py          حالت توسعه‌دهنده: /dev + /api/dev/* (خاموش = 404)
+    dev.py          کنسول توسعه: /dev + /api/dev/* (همیشه روشن؛ ادمین یا X-Dev-Token)
     hooks.py        وب‌هوک gitea (امضای HMAC → صف بیلد)
     __init__.py     ROUTERS — ترتیب ثبت همهٔ روترها در اپ
   web/templates/    قالب‌های فارسی RTL
@@ -112,7 +112,7 @@ core/app/
 
 **آپدیت (v0.5.13 — خودکار پیش‌فرض):** پوش به main → تایمر `parastoo-autoupdate` (tick هر ۶۰ث، حداقل فاصلهٔ بررسی ۱۲۰ث) → `scripts/auto-update.sh`: جایگزینی امنِ فقط پوشه‌های کد (`.env`/`config/`/`backups/`/`logs/` دست نمی‌خورد)، بکاپ کد، نتیجه در `logs/updates.jsonl`. مسیر صریح برای شتاب: `sudo parastoo update` یا lifecycle پل (`POST /api/admin/parastoo/update`). سیکل توسعه: push ← استقرار خودکار (معمولاً ≤۲ دقیقه) ← `curl /api/version` تأیید. خاموشی: `sudo parastoo autoupdate off`؛ نصب/حذف همچنان فقط صریح.
 
-**حالت توسعه‌دهنده:** `PARASTOO_DEV_MODE=true` → صفحه `/dev` و `GET /api/dev/report|logs|updates|netcheck` + `POST /api/dev/sql` (ادمین یا `X-Dev-Token`). خاموش = همهٔ مسیرها 404.
+**کنسول توسعه (همیشه روشن — v0.5.29):** صفحهٔ `/dev` و `GET /api/dev/report|logs|updates|netcheck` + `POST /api/dev/sql` (ادمین یا `X-Dev-Token`) — بدون سوییچ حالت؛ معماری تجاریِ همواره در حال توسعه مستمر است.
 
 ## قرارداد ارتباط سرویس‌ها
 

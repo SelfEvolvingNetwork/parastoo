@@ -1,13 +1,16 @@
-"""حالت توسعه‌دهنده (v0.2.12) + پل دسترسی عامل (v0.3.7): گزارش زنده، لاگ در حافظه،
-تاریخچهٔ آپدیت خودکار، و سه ابزار «دست باز» برای عامل هوشمند (exec/netcheck/sql).
+"""کنسول توسعه (v0.5.29 — فرمان مالک ۲۰۲۶-۱۱-۱۲: حذف مفهوم دو-حالتی توسعه‌دهنده/تجاری):
+گزارش زنده، لاگ در حافظه، تاریخچهٔ آپدیت خودکار، و دو ابزار «دست باز» برای
+عامل هوشمند (netcheck/sql).
 
-قواعد دسترسی:
-- وقتی PARASTOO_DEV_MODE=false (حالت استفاده): همهٔ مسیرهای /dev و /api/dev/*
-  404 می‌دهند — نه 403 — تا حتی وجودشان لو نرود.
-- وقتی روشن است: اگر PARASTOO_DEV_TOKEN در .env ست شده باشد، هدر X-Dev-Token
-  (یا ?token=) کافی است؛ در غیر این صورت فقط ادمینِ واردشده به پنل.
+معماری پرستو واحد است — تجاریِ همواره در حال توسعه مستمر — پس این لایه
+جزء محصول است و **همیشه روشن** است؛ ملاک دسترسی فقط احراز هویت است:
 
-پل دسترسی عامل (در حالت توسعه؛ در حالت تجاری 404):
+- ادمینِ واردشده به پنل، یا اگر PARASTOO_DEV_TOKEN در .env ست شده باشد،
+  هدر X-Dev-Token (یا ?token=).
+- بقیه (ناشناس/کاربر عادی/توکن غلط) → 401 — شفاف و سرراست؛ وجود این
+  ابزارها پنهان نیست، سندشان عمومی است.
+
+ابزارهای عامل:
 - GET  /api/dev/netcheck بررسی واقعی دسترسی سرور به سرویس‌های جهانی (بدون حدس)
 - POST /api/dev/sql      پرس‌وجوی فقط‌خواندنی (SELECT/WITH) روی دیتابیس
 منطق هر دو در services/agentops.py است؛ اینجا فقط ورودی/خروجی وب + گارد.
@@ -52,9 +55,8 @@ def _session_user(request: Request) -> User | None:
 
 
 def _dev_guard(request: Request) -> None:
-    """حالت توسعه خاموش یا دسترسی مجاز نیست → 404 (نه 403)."""
-    if not settings.DEV_MODE:
-        raise HTTPException(status_code=404, detail="not found")
+    """احراز لایهٔ عملیاتی: ادمین یا X-Dev-Token — بدون حالت، همیشه روشن (v0.5.29).
+    بدون احراز معتبر → 401 (شفاف؛ وجود این لایه پنهان نیست)."""
     if settings.DEV_TOKEN:
         given = request.headers.get("X-Dev-Token") or request.query_params.get("token") or ""
         if given == settings.DEV_TOKEN:
@@ -62,7 +64,7 @@ def _dev_guard(request: Request) -> None:
     user = _session_user(request)
     if user is not None and user.is_admin:
         return
-    raise HTTPException(status_code=404, detail="not found")
+    raise HTTPException(status_code=401, detail="unauthorized")
 
 
 # ---------- جمع‌کردن گزارش ----------
@@ -147,7 +149,6 @@ def collect_report() -> dict:
             "version": settings.VERSION,
             "commit": settings.DEPLOYED_COMMIT or None,
             "deployed_at": settings.DEPLOYED_AT or None,
-            "dev_mode": settings.DEV_MODE,
             "python": sys.version.split()[0],
             "uptime_s": int(time.time() - APP_STARTED),
             "pid": os.getpid(),
@@ -205,7 +206,7 @@ def dev_page(request: Request):
     return render("dev.html", ctx(request, user, report=collect_report()))
 
 
-# ---------- پل دسترسی عامل (در حالت توسعه؛ همان گارد بالا) ----------
+# ---------- پل دسترسی عامل (همیشه روشن، پشت همان گارد بالا) ----------
 
 # تاریخچه: POST /api/dev/exec + پنجرهٔ موقت بدون توکن (v0.3.7~v0.3.10) در v0.3.11
 # کامل حذف شد (دستور مالک: «قابلیت ssh را از پرستو کاملاً حذف کن») — چون access-agent

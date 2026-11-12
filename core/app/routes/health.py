@@ -35,5 +35,4 @@ def api_version():
         "ok": True, "app": "parastoo", "version": settings.VERSION,
         "commit": settings.DEPLOYED_COMMIT or None,
         "deployed_at": settings.DEPLOYED_AT or None,
-        "dev_mode": settings.DEV_MODE,
     })

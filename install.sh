@@ -575,8 +575,9 @@ PARASTOO_AUTO_UPDATE="${PARASTOO_AUTO_UPDATE:-true}"
 PARASTOO_AUTO_UPDATE_INTERVAL="${PARASTOO_AUTO_UPDATE_INTERVAL:-120}"
 PARASTOO_UPDATE_CHANNEL="${PARASTOO_UPDATE_CHANNEL:-main}"
 PARASTOO_GH_PROXY="${PARASTOO_GH_PROXY:-}"
-# --- حالت توسعه‌دهنده: صفحه /dev و API گزارش/لاگ (فقط برای نصب آزمایشی true) ---
-PARASTOO_DEV_MODE="${PARASTOO_DEV_MODE:-false}"
+# --- کنسول توسعه (v0.5.29 — حذف مفهوم دو-حالتی): ابزارهای /dev و /api/dev/*
+# همیشه روشن‌اند و پشت احراز هستند (ادمین یا X-Dev-Token) — سوییچ حالت دیگر
+# وجود ندارد؛ معماری تجاریِ همواره در توسعه مستمر است.
 PARASTOO_DEV_TOKEN="${PARASTOO_DEV_TOKEN:-}"
 # --- آخرین استقرار (بعداً auto-update.sh به‌روزرسانی‌اش می‌کند) ---
 # v0.2.13 fix: مقدار پیش‌فرضِ همیشه‌حاضر — bootstrap از تاربال (بدون .git) نصب
@@ -675,9 +676,8 @@ PARASTOO_AUTO_UPDATE_INTERVAL=${PARASTOO_AUTO_UPDATE_INTERVAL}
 PARASTOO_UPDATE_CHANNEL=${PARASTOO_UPDATE_CHANNEL}
 PARASTOO_GH_PROXY=${PARASTOO_GH_PROXY}
 
-# --- حالت توسعه‌دهنده: صفحه /dev + /api/dev/report|logs|updates (گزارش خطاها) ---
-# روی نصب عملیاتی false بماند. اگر PARASTOO_DEV_TOKEN ست شود، گزارش با هدر X-Dev-Token هم در دسترس است.
-PARASTOO_DEV_MODE=${PARASTOO_DEV_MODE}
+# --- کنسول توسعه (همیشه روشن — v0.5.29): توکن اختیاری X-Dev-Token برای دسترسی
+# curl/عامل به /dev و /api/dev/* بدون لاگین؛ ادمینِ پنل همیشه دسترسی دارد.
 PARASTOO_DEV_TOKEN=${PARASTOO_DEV_TOKEN}
 
 # --- آخرین استقرار (توسط auto-update.sh نگه‌داری می‌شود؛ /api/version نشان می‌دهد) ---

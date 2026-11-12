@@ -2,8 +2,8 @@
 
 UI (/admin/dns*): با نشست ادمین + CSRF (admin_guard) — فهرست زون‌ها،
 ساخت زون با پیش‌فرض‌های کامل، مدیریت رکوردها، حذف زون.
-API (/api/dns/*): ادمینِ واردشده در هر حالتی، یا عاملِ توسعه با X-Dev-Token
-(فقط وقتی PARASTOO_DEV_MODE=true) — منطق گارد همان مسیرهای dev است.
+API (/api/dns/*): ادمینِ واردشده، یا عامل با X-Dev-Token — منطق گارد
+همان کنسول توسعه است (routes/dev.py؛ همیشه روشن، بدون حالت — v0.5.29).
 هر فراخوانی API در فایل audit پل عامل (dev/agent-audit.jsonl) ثبت می‌شود.
 
 منطق واقعی در services/dnsops.py است (کلاینت REST پاوردی‌ان‌اس)؛ اینجا
@@ -35,16 +35,16 @@ def _session_user(request: Request):
 
 
 def _api_guard(request: Request) -> None:
-    """ادمینِ واردشده (هر حالتی) یا عامل توسعه با X-Dev-Token (فقط dev mode).
-    ناشناس در هر دو حالت → 404 تا وجود API لو نرود."""
+    """ادمینِ واردشده یا عامل با X-Dev-Token — همیشه، بدون حالت (v0.5.29).
+    بقیه → 401 (شفاف؛ وجود API پنهان نیست)."""
     user = _session_user(request)
     if user is not None and user.is_admin:
         return
-    if settings.DEV_MODE and settings.DEV_TOKEN:
+    if settings.DEV_TOKEN:
         given = request.headers.get("X-Dev-Token") or request.query_params.get("token") or ""
         if given == settings.DEV_TOKEN:
             return
-    raise HTTPException(status_code=404, detail="not found")
+    raise HTTPException(status_code=401, detail="unauthorized")
 
 
 def _dns_flash(e: Exception) -> str:
@@ -141,7 +141,7 @@ def dns_zone_delete(request: Request, zone: str,
 
 
 # ============================================================
-#  API JSON — /api/dns (ادمین یا عامل توسعه)
+#  API JSON — /api/dns (ادمین یا عامل با X-Dev-Token)
 # ============================================================
 
 class ZoneIn(BaseModel):
