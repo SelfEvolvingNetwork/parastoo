@@ -21,7 +21,7 @@
 
 ۱. **کلون قراردادها:** مخزن‌ها عمومی‌اند — اول این سند را از گیت‌هاب بگیر، بعد دست بزن:
    ```bash
-   git clone https://github.com/SelfEvolvingNetwork/parastoo /home/z/my-project/parastoo
+   git clone https://github.com/SelfEvolvingNetwork/parastoo /home/z/my-project/repos/parastoo
    ```
    پیش از ادامه، نقش/کلاه خود را انتخاب کن: `ECOSYSTEM.fa.md` §۵ → `ROLES.fa.md`؛ سپس فقط اسناد همان کلاه را بخوان (این سند برای کلاه‌های I3/I5 است؛ WORKLOG = ۲۰ ردیف آخر).
    اگر کلون از قبل هست: `git pull --ff-only`. سپس به ترتیبِ خوانشِ §۲ سند `INDEX.fa.md` بخوان: **`docs/ECOSYSTEM.fa.md` (متن بیداری — یک صفحه، هرگز صرف‌نظر ممنوع؛ در §۵ همان سند نقش خود را انتخاب کن) → `docs/CHARTER.fa.md` → این سند → `WORKLOG.md` §۵ (۲۰ ردیف آخر + «قرارداد:»های مرتبط با کلاه — ROLES §۵) → `docs/LESSONS.fa.md`**؛ نقشهٔ «موضوع → سند مرجع» همیشه `docs/INDEX.fa.md` است و هیچ سندی متن سند دیگر را تکرار نمی‌کند (قرارداد یکتایی INDEX §۵). همین ترتیب را بلوک تحویل access-agent (v0.6.6+) با سه URL حمل می‌کند.
@@ -38,7 +38,7 @@
 
 > بلوک تحویل خودِ access-agent تولید می‌شود — عامل آن را نمی‌سازد؛ مالک فقط کپی می‌کند.
 
-> **پنجرهٔ بازسازی پل/اپ (فرمان مالک، 2026-11-09):** بازسازی ساختاریِ «اپ → پل → پرستو» در جریان است — اپ ۰.۴.۵ پل را مستقیم از کانال انتشار گیت‌هاب (§۸ قرارداد پل) نصب/به‌روز می‌کند و پل ۰.۵.۲ کانال رلیز + پیاده‌سازی واقعی RESET_TOKENS را دارد. در این پنجره **قطع‌شدن اتصال فعلی عامل به سرور حادثه نیست و مجاز است** — عامل نبودِ دسترسی را به‌عنوان خرابی گزارش نکند؛ فقط وضعیت را صادقانه بگوید. حقیقت از فرمان مالک در چت و تاریخچهٔ گیت است، نه از حدس دربارهٔ سرور. مسیر شروع سرد استانداردِ سرور نو اکنون **اپ-اول** است: مالک با پرستو موبایل پل را از گیت‌هاب نصب می‌کند، پل با lifecycle خودش پرستو را نصب می‌کند، و عامل فقط با بلوک تحویل وارد می‌شود.
+> مسیر شروع سرد استانداردِ سرور نو **اپ-اول** است: مالک با پرستو موبایل پل را از گیت‌هاب نصب می‌کند، پل با lifecycle خودش پرستو را نصب می‌کند، و عامل فقط با بلوک تحویل وارد می‌شود.
 
 ---
 
@@ -47,7 +47,7 @@
 | مورد | مقدار |
 |---|---|
 | مخزن گیت‌هاب | `https://github.com/SelfEvolvingNetwork/parastoo` — شاخهٔ انتشار: `main` |
-| کلون محلی کاری | `/home/z/my-project/parastoo` (sandbox؛ بین جلسات حفظ می‌شود) |
+| کلون محلی کاری | `/home/z/my-project/repos/parastoo` (sandbox؛ بین جلسات حفظ می‌شود) |
 | **پنل زندهٔ پرستو** | **`https://panel.zeolitecenter.ir`** |
 | گیت داخلی سرور | `https://git.zeolitecenter.ir` |
 | الگوی سایت‌های کاربران | `https://<slug>.apps.zeolitecenter.ir` (وایلکارد `*.apps`) |
@@ -61,7 +61,7 @@
 فایل `.secrets/github.env` این کلیدها را دارد: `GITHUB_TOKEN` (پوش به مخزن؛ از broker گرفته می‌شود)، `PARASTOO_PANEL_URL`، `PARASTOO_GIT_URL`، `PARASTOO_BASE_DOMAIN`، `PARASTOO_DEV_TOKEN` (در صورت ثبت). بارگذاری:
 
 ```bash
-set -a; . /home/z/my-project/parastoo/.secrets/github.env; set +a
+set -a; . /home/z/my-project/repos/parastoo/.secrets/github.env; set +a
 ```
 
 اگر توکن گیت‌هاب عوض شد، فقط همین فایل را به‌روز کن — گیتِ کلون با credential-helper (`store --file=.secrets/.git-credentials`) خودکار از آن می‌خواند و توکن هرگز در URL ریموت یا تاریخچه نمی‌نشیند.
@@ -118,7 +118,7 @@ docker compose up -d --build core   # یا: sudo bash scripts/auto-update.sh --f
 ### M0 — همگام‌سازی و خواندن وضعیت
 
 ```bash
-cd /home/z/my-project/parastoo && git pull --ff-only origin main
+cd /home/z/my-project/repos/parastoo && git pull --ff-only origin main
 python3 tests/e2e_live.py        # وضعیت زنده؛ کامیت مستقر را هم نشان می‌دهد
 ```
 
@@ -137,7 +137,7 @@ python3 tests/e2e_live.py        # وضعیت زنده؛ کامیت مستقر �
 ### M3 — چک‌های محلی (دروازهٔ پوش — بدون سبز، پوش ممنوع)
 
 ```bash
-cd /home/z/my-project/parastoo
+cd /home/z/my-project/repos/parastoo
 pip install -q -r core/requirements.txt pyyaml ruff   # بار اول
 export PARASTOO_SMOKE_OFFLINE=1
 python tests/smoke_test.py && python tests/smoke_wizard.py \
