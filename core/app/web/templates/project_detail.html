@@ -77,7 +77,7 @@ services:
     <summary class="btn-link">دعوت بدون توکن + تأیید رمز — راه پیشنهادی (v0.5.27)</summary>
     <p class="muted small">متن دعوت زیر را کپی و در چت عامل خود بچسبانید. <b>هیچ توکن یا رمزی در آن نیست</b> — لورفتنش بی‌خطر است. عامل خودش یک رمز ۵ رقمی می‌سازد و در چت به شما نشان می‌دهد؛ همان رمز را در فرم پایین تأیید کنید تا عامل توکنِ مخصوص همین پروژه را مستقیم از سرور بگیرد. هیچ مقدار حساسی از چت عبور نمی‌کند.</p>
     <pre class="code" id="agent-invite-text" dir="ltr">{{ agent_invite }}</pre>
-    <p class="mt"><button class="btn btn-primary btn-small" type="button" onclick="pstCopy(this,'agent-invite-text')">کپی متن دعوت</button></p>
+    <p class="mt"><button class="btn btn-primary btn-sm" type="button" onclick="pstCopy(this,'agent-invite-text')">کپی متن دعوت</button></p>
     <form method="post" action="/projects/{{ p.slug }}/agent-approve" class="inline-form mt">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <label>رمز ۵ رقمی که عامل در چت نشان داده
@@ -109,7 +109,7 @@ services:
         <td>
           <form method="post" action="/projects/{{ p.slug }}/agent-tokens/{{ t.id }}/revoke" class="inline-form" onsubmit="return confirm('توکن باطل شود؟ عامل متصل بلافاصله قطع می‌شود.')">
             <input type="hidden" name="csrf" value="{{ csrf }}">
-            <button class="btn btn-ghost btn-small" type="submit">ابطال</button>
+            <button class="btn btn-ghost btn-sm" type="submit">ابطال</button>
           </form>
         </td>
       </tr>
@@ -146,7 +146,7 @@ panel: {{ panel_url }}
 git remote (bridge): {{ panel_url }}/bridge/git/{{ p.slug }}.git  # username: anything, password = token
 agent token (project-scoped secret): {{ tok }}
 cli: curl -fsSL {{ panel_url }}/static/pst.py -o pst.py && python3 pst.py init --url {{ panel_url }} --token PST_TOKEN</pre>
-    <p class="mt"><button class="btn btn-ghost btn-small" type="button" onclick="pstCopy(this,'agent-setup-text')">کپی همین متن با یک دکمه</button></p>
+    <p class="mt"><button class="btn btn-ghost btn-sm" type="button" onclick="pstCopy(this,'agent-setup-text')">کپی همین متن با یک دکمه</button></p>
   </details>
 </section>
 
