@@ -1792,11 +1792,11 @@ _s04 = _S04(project_id=1, name="x", env_json="{broken", volumes_json="nope")
 check("env/volumes خراب → خالی (نه کرش)", _s04.env() == {} and _s04.volumes() == [])
 db04.close()
 
-# اسکیمای تازه: جداول اصلی پس از راه‌اندازی وجود دارند (بدون مهاجرت — v0.5.0)
+# اسکیمای تازه: جداول اصلی پس از راه‌اندازی وجود دارند (create_all + مهاجرت خودکار — v0.5.31)
 import sqlalchemy as _sa05  # noqa: E402
 from app.db import engine as _engine05  # noqa: E402
 _tbl05 = set(_sa05.inspect(_engine05).get_table_names())
-check("اسکیمای تازه پس از راه‌اندازی ساخته شده (بدون مهاجرت)",
+check("اسکیمای تازه پس از راه‌اندازی ساخته شده (create_all + مهاجرت خودکار)",
       {"users", "projects", "services", "sites", "builds", "agent_tokens",
        "wallet_tx", "payments", "settings"} <= _tbl05)
 
@@ -2047,6 +2047,42 @@ with TestClient(app, follow_redirects=False) as c2:
     rows = [_json.loads(x) for x in outbox.read_text(encoding="utf-8").splitlines()]
     check("نامهٔ اطلاع تغییر رمز هم رفت",
           len([x for x in rows if "تغییر کرد" in x.get("subject", "")]) == 1)
+
+print("— مهاجرت خودکار افزایشی (خودتوسعه‌دهنده) —")
+import tempfile
+
+from sqlalchemy import create_engine as _mk_engine, inspect as _inspect, text as _sql
+
+from app import models as _models
+from app.db import Base as _Base, auto_migrate as _auto_migrate
+
+with tempfile.TemporaryDirectory() as _td:
+    _eng = _mk_engine(f"sqlite:///{_td}/old.db", connect_args={"check_same_thread": False})
+    _cols = _models.Lead.__table__.columns
+    _drop = "created_at"
+    _old = ", ".join(
+        f"{c.name} {c.type.compile(_eng.dialect)}" for c in _cols if c.name != _drop
+    )
+    with _eng.begin() as _c:
+        _c.execute(_sql(f"CREATE TABLE leads ({_old})"))
+        _c.execute(_sql(
+            "INSERT INTO leads (id, name, contact, service_key)"
+            " VALUES (1, 'قدیمی', 'old@test.local', 'site')"
+        ))
+    _added = _auto_migrate(_eng)
+    check("ستون غایب با auto_migrate افزوده شد",
+          _drop in {c["name"] for c in _inspect(_eng).get_columns("leads")})
+    check("مهاجرت فقط ستون غایب را افزود", _added == [f"leads.{_drop}"])
+    with _eng.begin() as _c:
+        _row = _c.execute(_sql("SELECT name, created_at FROM leads WHERE id = 1")).fetchone()
+    check("دادهٔ قدیمی در مهاجرت ماندگار ماند",
+          _row is not None and _row[0] == "قدیمی" and _row[1] is None)
+    check("مهاجرت idempotent است (اجرای دوباره = هیچ)", _auto_migrate(_eng) == [])
+    _eng2 = _mk_engine(f"sqlite:///{_td}/fresh.db", connect_args={"check_same_thread": False})
+    _Base.metadata.create_all(_eng2)
+    check("دیتابیس تازهٔ create_all نیازی به مهاجرت ندارد", _auto_migrate(_eng2) == [])
+    _eng.dispose()
+    _eng2.dispose()
 
 print()
 print(f"نتیجه: {PASS} موفق، {FAIL} ناموفق")

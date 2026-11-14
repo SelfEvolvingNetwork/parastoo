@@ -17,7 +17,7 @@ from starlette.responses import JSONResponse
 
 from . import devlog, workers
 from .config import settings
-from .db import Base, SessionLocal, engine
+from .db import Base, SessionLocal, auto_migrate, engine
 from .deps import render, resolve_user
 from .routes import ROUTERS
 
@@ -28,7 +28,10 @@ WEB_STATIC = pathlib.Path(__file__).parent / "web" / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(engine)  # اسکیما فقط از مدل‌های همین کد (بدون مهاجرت)
+    Base.metadata.create_all(engine)  # اسکیما از مدل‌های همین کد (جداول تازه)
+    migrated = auto_migrate(engine)  # مهاجرت افزایشی خودکار (خودتوسعه‌دهنده)
+    if migrated:
+        log.info("مهاجرت خودکار: %s", ", ".join(migrated))
     # بوت‌استرپ خودکار توکن عامل پرستو (فرمان مالک ۱۱-۱۱ ششم): هیچ‌گاه از کاربر/ادمین
     # توکن pat_ نخواسته نمی‌شود. agent:1 و توکن فعالش همین‌جا، در هر بالا آمدن،
     # آماده می‌شوند — عامل از ضربان بعد جاروی تیکت زنده می‌کند.

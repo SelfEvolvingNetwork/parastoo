@@ -9,7 +9,7 @@ def _bool(name: str, default: str = "false") -> bool:
 class Settings:
     # --- پایه ---
     APP_NAME: str = "پرستو"
-    VERSION: str = "0.5.30"
+    VERSION: str = "0.5.31"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me")
 
     # --- دیتابیس ---
@@ -51,8 +51,9 @@ class Settings:
     # کامیت مستقر روی این سرور و زمان استقرار — توسط install.sh/auto-update.sh ثبت می‌شود
     DEPLOYED_COMMIT: str = os.environ.get("PARASTOO_DEPLOYED_COMMIT", "").strip()
     DEPLOYED_AT: str = os.environ.get("PARASTOO_DEPLOYED_AT", "").strip()
-    # --- کنسول توسعه (v0.5.29 — فرمان مالک ۲۰۲۶-۱۱-۱۲: حذف مفهوم دو-حالتی) ---
-    # معماری واحد است: تجاریِ همواره در حال توسعه مستمر — ابزارهای /dev و
+    # --- کنسول توسعه (v0.5.29 حذف دو-حالتی؛ v0.5.31 معماری خودتوسعه‌دهنده — فرمان مالک ۲۰۲۶-۱۱-۱۴) ---
+    # معماری واحد است: خودتوسعه‌دهنده — عامل، مهندس یکتای اکوسیستم است و خودش را
+    # با ریل‌های نرم‌افزاری (عمده‌اش API) از بی‌دقتی خودش نگه می‌دارد؛ ابزارهای /dev و
     # /api/dev/* همیشه روشن‌اند و پشت احراز هستند (ادمین یا X-Dev-Token).
     # توکن اختیاری برای دسترسی curl/عامل بدون لاگین: PARASTOO_DEV_TOKEN=xxx ← هدر X-Dev-Token: xxx
     DEV_TOKEN: str = os.environ.get("PARASTOO_DEV_TOKEN", "").strip()
