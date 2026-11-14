@@ -1668,6 +1668,19 @@ check("فروشگاه هرگز فروشگاه سالم را با فایل خرا
       "_json_valid" in _t32 and "refusing to archive garbage" in _t32)
 check("قانون در قرارداد حلقهٔ ایجنت ثبت است (AI_AGENT_LOOP §3 و §0)",
       "قانون گواهی ماندگار" in (ROOT / "docs/AI_AGENT_LOOP.fa.md").read_text())
+_loop0 = (ROOT / "docs/AI_AGENT_LOOP.fa.md").read_text()
+check("قانون مالک «همهٔ کارها را ایجنت انجام می‌دهد» در حلقه ثبت است (LOOP §0، ۲۰۲۶-۱۱-۱۴)",
+      "همهٔ کارها را ایجنت انجام می‌دهد" in _loop0
+      and "مگر اینکه نیاز به کمک داشته باشد" in _loop0)
+check("قانون مالک مرز درخواست کمک را می‌کشد — فقط اعتبار اتصال و تأییدهای §۷",
+      "کانال مالک" in _loop0 and "§۷" in _loop0)
+check("سه لایهٔ توکن در حلقه ثبت است — فایل مانا نزد عامل، توکن اصلی نزد پل، صدور موقت (LOOP §0 گام ۲)",
+      "قانون سه لایهٔ توکن" in _loop0
+      and "عمر فایل = عمر مکالمه" in _loop0
+      and "نه /tmp" in _loop0 and "حافظهٔ گفتگو" in _loop0)
+check("درس «توکن‌مرگی با بازیافت بافت» در LESSONS «پل عامل» ثبت است",
+      "بازیافت بافت" in (ROOT / "docs/LESSONS.fa.md").read_text()
+      and "هر اعتباری که با بازیافت بافت می‌میرد" in (ROOT / "docs/LESSONS.fa.md").read_text())
 
 
 print()
