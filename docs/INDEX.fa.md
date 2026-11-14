@@ -35,6 +35,7 @@
 
 | موضوع | مرجع یکتا |
 |---|---|
+| پاکت هم‌شکل خانواده — مرجع فنی خودمعرف سرویس‌ها (`GET /api/docs` پل و پنل) | `docs/FAMILY_PACKETS.fa.md` (پرستو) |
 | کلیت اکوسیستم و مفاهیم بنیادی (یک صفحه برای بیداری/شروع سرد) | `docs/ECOSYSTEM.fa.md` (پرستو) |
 | نقش‌های عامل و مسیر ورود هدفمند (عمومی/داخلی؛ ضد توکن‌سوزی) | `docs/ROLES.fa.md` (پرستو) |
 | هدف کلان، وصیت بنیان‌گذار و داوری تعارض‌ها | `docs/CHARTER.fa.md` (پرستو) |
@@ -56,6 +57,7 @@
 ## ۴) وضعیت زنده — هیچ سندی جای این‌ها را نمی‌گیرد
 
 - نسخه/کامیت/زمان استقرار: `curl -fsS https://panel.zeolitecenter.ir/api/version`
+- پاکت فنی خودمعرف (هم‌شکل خانواده): `GET /api/docs` پنل · `GET /api/docs` پل access-agent (قرارداد: `FAMILY_PACKETS.fa.md`)
 - سلامت پنل: `/healthz` · سلامت پل: `GET /healthz` پل access-agent
 - سلامت کارگاه: `wb doctor` · تاریخچهٔ دروازه: `/opt/parastoo-sandbox/results/gate-history.log`
 - آخرین قراردادهای ایستاده: ردیف‌های «قرارداد:» در WORKLOG §۵

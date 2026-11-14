@@ -818,6 +818,43 @@ check("/api/version فیلد dev_mode ندارد (سوییچ حالت حذف ش�
       "dev_mode" not in r.json())
 r = c.get("/healthz")
 check("/healthz نسخه و فیلدهای استقرار را دارد", r.status_code == 200 and r.json().get("version") == _ver)
+
+print("— /api/docs — پاکت هم‌شکل خانواده (مرجع فنی خودمعرف — v0.5.30) —")
+r = c.get("/api/docs")
+_d = r.json() if r.status_code == 200 else {}
+check("GET /api/docs عمومی و سبک (بدون لاگین)", r.status_code == 200 and _d.get("ok") is True)
+check("/api/docs هویت سرویس و نسخه را می‌دهد",
+      _d.get("service") == "parastoo" and _d.get("version") == _ver)
+check("/api/docs نقش‌ها و سطوح اندپوینت و خطاها و سقف‌ها دارد",
+      all(k in _d for k in ("roles", "endpoints", "errors", "limits")))
+check("/api/docs سقف‌ها عین ثابت‌های کدند (exec 120s / خروجی 256KB / push 200MB)",
+      _d.get("limits", {}).get("bridge_exec_timeout_s_max") == 120
+      and _d.get("limits", {}).get("bridge_exec_output_bytes_max") == 262144
+      and _d.get("limits", {}).get("git_push_bytes_max") == 209715200)
+_fam = _d.get("family", {})
+check("family چهار سرویس/مخزن خانواده را می‌دهد",
+      {s.get("name") for s in _fam.get("services", [])} == {
+          "access-agent", "parastoo", "parastoo-workbench", "parastoo-mobile"})
+check("family هر سرویس kind/role/repo/docs دارد",
+      all(all(k in s for k in ("name", "kind", "role", "repo", "docs"))
+          for s in _fam.get("services", [])))
+check("family رجیستر INDEX و متن بیداری ECOSYSTEM را می‌دهد",
+      "INDEX.fa.md" in str(_fam.get("registry", ""))
+      and "ECOSYSTEM.fa.md" in str(_fam.get("ecosystem", "")))
+_self = next((s for s in _fam.get("services", []) if s.get("name") == "parastoo"), {})
+check("family خودارجاعی — docs_url زندهٔ خود سرویس",
+      str(_self.get("docs_url", "")).endswith("/api/docs"))
+check("family متن بیداری را تکرار نمی‌کند (فقط اشاره‌گر)",
+      len(str(_fam.get("ecosystem", ""))) < 200)
+_cs = _d.get("cold_start", {})
+check("cold_start زنجیرهٔ خواندن عامل سرد دارد (>=۳ گام) و از ROLES شروع می‌شود",
+      isinstance(_cs.get("steps"), list) and len(_cs.get("steps", [])) >= 3
+      and "ROLES" in str(_cs.get("steps", [""])[0]))
+check("/api/docs داده است، نه دستور رفتاری (next/tell_user/store_token ندارد)",
+      all(k not in _d for k in ("next", "tell_user", "store_token")))
+r = c.post("/api/docs")
+check("POST /api/docs → 405 (فقط GET)", r.status_code == 405)
+
 r = c.get("/api/dev/report")
 check("کنسول توسعه بدون احراز معتبر → 401 (همیشه روشن؛ شفاف)", r.status_code == 401)
 r = c.get("/dev")
